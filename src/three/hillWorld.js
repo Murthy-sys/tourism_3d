@@ -4,23 +4,40 @@ import {createTerrainGeometry,sampleHillHeight,sampleHillSlope} from './terrain'
 
 const HEIGHT_SCALE=3.2
 const TERRAIN_COLORS={grass:'#496b35',earth:'#66513a',rock:'#59605b'}
+export const getHillTerrainColor=slope=>slope<.8?TERRAIN_COLORS.grass:slope<1.45?TERRAIN_COLORS.earth:TERRAIN_COLORS.rock
 const named=name=>{const group=new THREE.Group();group.name=name;return group}
 const deterministic=index=>{
   const value=Math.sin(index*91.731+17.137)*43758.5453
   return value-Math.floor(value)
 }
-const heightAt=(x,z)=>sampleHillHeight(x,z)*HEIGHT_SCALE
-const visualSlopeAt=(x,z)=>sampleHillSlope(x,z)*HEIGHT_SCALE
+const baseHeightAt=(x,z)=>sampleHillHeight(x,z)*HEIGHT_SCALE
+const LODGE_GRADE={x:5,z:-30,height:baseHeightAt(5,-30),innerX:3.4,innerZ:2.7,outerX:5.4,outerZ:4.8}
+const gradeAxisWeight=(distance,inner,outer)=>{
+  if(distance<=inner)return 1
+  if(distance>=outer)return 0
+  const t=(distance-inner)/(outer-inner)
+  return 1-t*t*(3-2*t)
+}
+const lodgeGradeWeight=(x,z)=>Math.min(
+  gradeAxisWeight(Math.abs(x-LODGE_GRADE.x),LODGE_GRADE.innerX,LODGE_GRADE.outerX),
+  gradeAxisWeight(Math.abs(z-LODGE_GRADE.z),LODGE_GRADE.innerZ,LODGE_GRADE.outerZ),
+)
+const heightAt=(x,z)=>THREE.MathUtils.lerp(baseHeightAt(x,z),LODGE_GRADE.height,lodgeGradeWeight(x,z))
+const visualSlopeAt=(x,z)=>{
+  if(lodgeGradeWeight(x,z)===0)return sampleHillSlope(x,z)*HEIGHT_SCALE
+  return Math.hypot(
+    heightAt(x+.15,z)-heightAt(x-.15,z),
+    heightAt(x,z+.15)-heightAt(x,z-.15),
+  )/.3
+}
 
 const addSlopeColors=(geometry,slopeAt=visualSlopeAt)=>{
   const position=geometry.attributes.position
   const colors=new Float32Array(position.count*3)
-  const grass=new THREE.Color(TERRAIN_COLORS.grass)
-  const earth=new THREE.Color(TERRAIN_COLORS.earth)
-  const rock=new THREE.Color(TERRAIN_COLORS.rock)
+  const palette=new Map(Object.values(TERRAIN_COLORS).map(color=>[color,new THREE.Color(color)]))
   for(let i=0;i<position.count;i++){
     const slope=slopeAt(position.getX(i),position.getZ(i))
-    const color=slope<.8?grass:slope<1.45?earth:rock
+    const color=palette.get(getHillTerrainColor(slope))
     color.toArray(colors,i*3)
   }
   geometry.setAttribute('color',new THREE.BufferAttribute(colors,3))
@@ -225,7 +242,9 @@ const createLanding=(materials,start)=>{
 const createLodge=(materials,end)=>{
   const lodge=named('hill-lodge')
   lodge.position.set(end.x,heightAt(end.x,end.z),end.z)
-  lodge.add(mesh(new THREE.BoxGeometry(5.3,.55,4),materials.stone,[0,.28,0]))
+  const foundation=mesh(new THREE.BoxGeometry(5.3,.55,4),materials.stone,[0,.275,0])
+  foundation.name='hill-lodge-foundation'
+  lodge.add(foundation)
   lodge.add(mesh(new THREE.BoxGeometry(4.7,2.4,3.55),materials.wood,[0,1.72,0]))
   lodge.add(mesh(new THREE.BoxGeometry(2.75,.2,4.15),materials.dark,[-1.05,3.15,0],[0,0,-.48]))
   lodge.add(mesh(new THREE.BoxGeometry(2.75,.2,4.15),materials.dark,[1.05,3.15,0],[0,0,.48]))
@@ -256,17 +275,18 @@ const createMist=()=>{
 
 export function createHillWorld(materials,quality='desktop'){
   const world=named('hill-world')
+  const localMaterials=Object.fromEntries(['wood','leaf','leaf2','stone','dark','ivory'].map(key=>[key,materials[key].clone()]))
   const route=createRoute()
   const start=route.points[0]
   const end=route.points.at(-1)
   const mist=createMist()
-  const landing=createLanding(materials,start)
-  const lodge=createLodge(materials,end)
+  const landing=createLanding(localMaterials,start)
+  const lodge=createLodge(localMaterials,end)
   world.add(
     createTerrain(quality),
     createRidges(quality),
-    createForest(materials,quality),
-    createRockFaces(materials,quality),
+    createForest(localMaterials,quality),
+    createRockFaces(localMaterials,quality),
     mist,
     createTrail(route),
     landing,
@@ -287,6 +307,6 @@ export function updateHillWorld(world,elapsed){
   if(!mist)return
   mist.children.forEach(volume=>{
     const {baseX,phase,rate,amplitude}=volume.userData
-    volume.position.x=baseX+Math.sin(elapsed*rate+phase)*amplitude
+    volume.position.x=baseX+(Math.sin(elapsed*rate+phase)-Math.sin(phase))*amplitude
   })
 }

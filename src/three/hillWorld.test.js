@@ -1,7 +1,14 @@
 import * as THREE from 'three'
 import {describe,expect,it} from 'vitest'
-import {createHillWorld,updateHillWorld} from './hillWorld'
+import * as hillWorld from './hillWorld'
 import {createMaterials,disposeObject3D} from './primitives'
+
+const {createHillWorld,updateHillWorld}=hillWorld
+const materialSet=root=>{
+  const materials=new Set()
+  root.traverse(object=>(Array.isArray(object.material)?object.material:[object.material]).filter(Boolean).forEach(material=>materials.add(material)))
+  return materials
+}
 
 describe('hill world',()=>{
   it('creates lush non-conical hill country without ice assets',()=>{
@@ -25,7 +32,20 @@ describe('hill world',()=>{
 
     const colors=new Set()
     const color=terrain.geometry.attributes.color
-    for(let i=0;i<color.count;i++)colors.add(new THREE.Color(color.getX(i),color.getY(i),color.getZ(i)).getHexString())
+    const position=terrain.geometry.attributes.position
+    const mismatches=[]
+    for(let i=0;i<color.count;i++){
+      const actual=new THREE.Color(color.getX(i),color.getY(i),color.getZ(i)).getHexString()
+      const x=position.getX(i),z=position.getZ(i)
+      const slope=Math.hypot(
+        world.userData.heightAt(x+.15,z)-world.userData.heightAt(x-.15,z),
+        world.userData.heightAt(x,z+.15)-world.userData.heightAt(x,z-.15),
+      )/.3
+      const expected=hillWorld.getHillTerrainColor(slope).slice(1)
+      colors.add(actual)
+      if(actual!==expected)mismatches.push({actual,expected,slope})
+    }
+    expect(mismatches).toEqual([])
     ;['496b35','66513a','59605b'].forEach(hex=>expect(colors.has(hex)).toBe(true))
 
     const ridges=world.getObjectByName('hill-ridges').children
@@ -35,6 +55,27 @@ describe('hill world',()=>{
     expect(ridges[0].material.opacity).toBeGreaterThan(ridges[1].material.opacity)
     expect(ridges[1].material.opacity).toBeGreaterThan(ridges[2].material.opacity)
     disposeObject3D(world)
+  })
+
+  it('maps the exact slope thresholds to grass, earth and rock',()=>{
+    expect(hillWorld.getHillTerrainColor(.8-1e-9)).toBe('#496b35')
+    expect(hillWorld.getHillTerrainColor(.8)).toBe('#66513a')
+    expect(hillWorld.getHillTerrainColor(1.45-1e-9)).toBe('#66513a')
+    expect(hillWorld.getHillTerrainColor(1.45)).toBe('#59605b')
+  })
+
+  it('owns materials independently of the shared palette and other hill worlds',()=>{
+    const materials=createMaterials()
+    const first=createHillWorld(materials,'mobile')
+    const second=createHillWorld(materials,'mobile')
+    const shared=new Set(Object.values(materials))
+    const firstMaterials=materialSet(first)
+    const secondMaterials=materialSet(second)
+    expect([...firstMaterials].every(material=>!shared.has(material))).toBe(true)
+    expect([...secondMaterials].every(material=>!shared.has(material))).toBe(true)
+    expect([...firstMaterials].every(material=>!secondMaterials.has(material))).toBe(true)
+    disposeObject3D(first)
+    disposeObject3D(second)
   })
 
   it('places vegetation, rocks, trail endpoints and structures on the terrain',()=>{
@@ -59,6 +100,32 @@ describe('hill world',()=>{
     disposeObject3D(world)
   })
 
+  it('grades the complete lodge foundation footprint to the terrain',()=>{
+    const world=createHillWorld(createMaterials(),'desktop')
+    const lodge=world.getObjectByName('hill-lodge')
+    const foundation=world.getObjectByName('hill-lodge-foundation')
+    expect(foundation).toBeTruthy()
+    world.updateMatrixWorld(true)
+    const bounds=new THREE.Box3().setFromObject(foundation)
+    for(const dx of [-2.55,-1.275,0,1.275,2.55]){
+      for(const dz of [-1.9,-.95,0,.95,1.9]){
+        const terrainY=world.userData.heightAt(lodge.position.x+dx,lodge.position.z+dz)
+        expect(terrainY).toBeCloseTo(bounds.min.y,5)
+        expect(terrainY).toBeLessThan(bounds.max.y)
+      }
+    }
+    const terrain=world.getObjectByName('hill-terrain').geometry.attributes.position
+    let footprintVertices=0
+    for(let i=0;i<terrain.count;i++){
+      const x=terrain.getX(i),z=terrain.getZ(i)
+      if(Math.abs(x-lodge.position.x)>2.65||Math.abs(z-lodge.position.z)>2)continue
+      footprintVertices++
+      expect(terrain.getY(i)).toBeCloseTo(bounds.min.y,5)
+    }
+    expect(footprintVertices).toBeGreaterThan(20)
+    disposeObject3D(world)
+  })
+
   it('drifts exactly eight mist volumes horizontally',()=>{
     const world=createHillWorld(createMaterials(),'desktop')
     const mist=world.userData.mist
@@ -71,6 +138,8 @@ describe('hill world',()=>{
     })
     const before=mist.children.map(volume=>({position:volume.position.clone(),rotation:volume.rotation.clone()}))
     const terrainPosition=world.getObjectByName('hill-terrain').position.clone()
+    updateHillWorld(world,0)
+    mist.children.forEach((volume,index)=>expect(volume.position.x).toBeCloseTo(before[index].position.x,6))
     updateHillWorld(world,12)
     mist.children.forEach((volume,index)=>{
       expect(volume.position.x).not.toBeCloseTo(before[index].position.x,6)
