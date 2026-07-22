@@ -6,7 +6,7 @@ Replace the abrupt forest-to-water and water-to-mountain switches with one visua
 
 ## Scope retained
 
-- Retain the current opening car, jungle jeep, upgraded teal rowboat, interface, written content, menu, plans, contact experience, and booking flow.
+- Retain the current opening car, jungle jeep, upgraded teal rowboat, interface, menu, plans, contact experience, and booking flow. Update only snow/Himalaya-specific plan copy so it accurately describes lush hill country.
 - Retain staged transport handoffs, but make each handoff occur at a visible physical location inside the continuous landscape.
 - Retain the complete removal of background audio and sound controls.
 - Visual quality takes priority over performance optimization.
