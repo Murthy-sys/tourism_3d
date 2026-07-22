@@ -132,7 +132,7 @@ export function updateTrekkingParty(party,curve,progress,elapsed,reducedMotion,h
     const point=curve.getPointAt(routeProgress)
     const tangent=curve.getTangentAt(routeProgress).normalize()
     member.root.position.set(point.x,heightAt(point.x,point.z),point.z)
-    member.root.rotation.y=Math.atan2(tangent.x,tangent.z)
+    member.root.rotation.y=Math.atan2(-tangent.x,-tangent.z)
 
     if(reducedMotion){
       member.limbs.forEach(limb=>{limb.rotation.x=0})

@@ -30,6 +30,20 @@ describe('guide-led trekking party',()=>{
     disposeObject3D(party)
   })
 
+  it('faces every member forward along its sampled route tangent',()=>{
+    const party=createTrekkingParty(createMaterials())
+    const curve=route(),progress=.65,offsets=[0,.055,.11,.165]
+    updateTrekkingParty(party,curve,progress,2,false,()=>0)
+
+    party.userData.members.forEach(({root},index)=>{
+      const routeProgress=THREE.MathUtils.clamp(progress-offsets[index],0,1)
+      const tangent=curve.getTangentAt(routeProgress).normalize()
+      const worldForward=new THREE.Vector3(0,0,-1).transformDirection(root.matrixWorld)
+      expect(worldForward.dot(tangent)).toBeGreaterThan(0)
+    })
+    disposeObject3D(party)
+  })
+
   it('uses the approved phases and route offsets',()=>{
     const party=createTrekkingParty(createMaterials())
     expect(party.userData.members.map(member=>member.phase)).toEqual([0,1.37,2.91,4.42])
