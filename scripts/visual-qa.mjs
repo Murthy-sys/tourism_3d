@@ -9,7 +9,6 @@ page.on('console',m=>{if(['error','warning'].includes(m.type())&&!m.text().inclu
 page.on('pageerror',e=>messages.push(`pageerror: ${e.message}`))
 await page.goto('http://127.0.0.1:4173/',{waitUntil:'networkidle'})
 await page.getByRole('button',{name:'Start'}).waitFor({timeout:15000})
-await page.getByRole('button',{name:/sound/i}).click()
 await page.getByRole('button',{name:'Start'}).click()
 await page.waitForTimeout(1400)
 
@@ -26,12 +25,7 @@ for(const [name,progress] of states){
   await page.screenshot({path:`/tmp/ambassador-india-${requested}-${name}.png`})
 }
 
-const sound=page.getByRole('button',{name:'Toggle ambient sound'})
-const soundStarted=await sound.evaluate(el=>el.classList.contains('sound-toggle--on'))
-await sound.click()
-const soundMuted=await sound.evaluate(el=>!el.classList.contains('sound-toggle--on'))
-await sound.click()
-const soundResumed=await sound.evaluate(el=>el.classList.contains('sound-toggle--on'))
+const soundControls=await page.getByRole('button',{name:/sound/i}).count()
 
 await page.getByRole('button',{name:'Open journey menu'}).click()
 const menuItems=await page.locator('.journey-menu__items button').count()
@@ -49,6 +43,6 @@ await page.getByLabel('Email').fill('qa@example.com')
 await page.getByLabel('Plan or destination').fill('Heritage India')
 await page.getByRole('button',{name:'Request itinerary'}).click()
 const bookingSubmitted=await page.getByText('Journey request received').isVisible()
-const result={requested,seen,soundStarted,soundMuted,soundResumed,menuItems,menuJump,bookingSubmitted,horizontalOverflow:await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),fixedNavbar:await page.locator('.navbar').count(),conventionalSections:await page.locator('#services,#destinations,#testimonials,footer').count(),messages}
+const result={requested,seen,soundControls,menuItems,menuJump,bookingSubmitted,horizontalOverflow:await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),fixedNavbar:await page.locator('.navbar').count(),conventionalSections:await page.locator('#services,#destinations,#testimonials,footer').count(),messages}
 console.log(JSON.stringify(result,null,2))
 await browser.close()

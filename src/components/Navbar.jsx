@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import SoundToggle from './SoundToggle'
 
 const links = [
   { href: '#services', label: 'Services' },
@@ -9,7 +8,7 @@ const links = [
   { href: '#booking', label: 'Book a Trip' },
 ]
 
-export default function Navbar({ soundOn = false }) {
+export default function Navbar() {
   const [scrolled, setScrolled] = useState(false)
   const [open, setOpen] = useState(false)
 
@@ -43,8 +42,6 @@ export default function Navbar({ soundOn = false }) {
         <a href="#booking" className="navbar__cta" onClick={(e) => handleClick(e, '#booking')}>
           Plan My Trip
         </a>
-
-        <SoundToggle initialOn={soundOn} />
 
         <button
           className={`navbar__burger ${open ? 'navbar__burger--open' : ''}`}

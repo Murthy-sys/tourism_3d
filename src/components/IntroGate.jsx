@@ -1,14 +1,11 @@
 import { useState } from 'react'
-import { startAmbient } from '../audio/ambient'
 
 export default function IntroGate({ onEnter }) {
-  const [soundOn, setSoundOn] = useState(false)
   const [leaving, setLeaving] = useState(false)
 
   const handleEnter = () => {
-    startAmbient(soundOn)
     setLeaving(true)
-    setTimeout(() => onEnter(soundOn), 900)
+    setTimeout(() => onEnter(), 900)
   }
 
   return (
@@ -28,14 +25,6 @@ export default function IntroGate({ onEnter }) {
         </button>
 
         <div className="gate__foot">
-          <button
-            type="button"
-            className={`gate__sound ${soundOn ? 'gate__sound--on' : ''}`}
-            onClick={() => setSoundOn((s) => !s)}
-          >
-            <span className="gate__sound-dot" />
-            {soundOn ? 'Sound on' : 'Turn your sound on'}
-          </button>
           <span className="gate__hint">Best experienced on desktop</span>
         </div>
       </div>

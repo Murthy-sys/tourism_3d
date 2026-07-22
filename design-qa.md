@@ -8,7 +8,7 @@
 - Reflective water, shoreline, jetty, rocks, reeds, wake, and water animation: passed.
 - Layered ice mountains, glacier, trail, base camp, drifting snow, and contact shelter: passed.
 - Expedition visibility, mobile ice-layer framing, and trekker-follow camera: passed.
-- Environmental sound state and shared master mute/resume: passed.
+- Background audio implementation and sound controls removed: passed.
 
 ## Desktop — 1440×900
 
@@ -18,7 +18,7 @@
 - Ice world shows the animated trekker, glacier, layered peaks, path, snow, and base camp: passed after closer camera correction.
 - Handoff states render both adjacent environments/transports without abrupt disappearance: passed.
 - Environmental labels identify Jungle by Jeep, Water by Boat, and Himalayas on Foot: passed.
-- Sound starts when chosen, mutes all layers, and resumes: passed.
+- No entry sound prompt, background audio, or fixed sound control: passed.
 - Menu, booking, submission, overflow, and console checks: passed.
 
 ## Mobile — 390×844
@@ -28,13 +28,12 @@
 - Ice trekker remains visible with backpack, pole, route, camp, and mountains: passed after removing the obstructing foreground layer and adding trekker-follow framing.
 - Contact shelter remains readable without mountain occlusion: passed.
 - Required worlds and transports are preserved rather than removed: passed.
-- Menu, sound, booking, overflow, and console checks: passed.
+- Menu, booking, overflow, no-sound, and console checks: passed.
 
 ## Interaction results
 
-- Sound selected at entry: on.
-- Fixed Sound control mute: passed.
-- Fixed Sound control resume: passed.
+- Entry and journey sound controls: absent.
+- Background audio initialization: absent.
 - Plans menu jump: passed.
 - Booking form submission: passed.
 - Conventional navbar, stacked sections, and footer: absent.
