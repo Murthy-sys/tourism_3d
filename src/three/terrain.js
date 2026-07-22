@@ -9,10 +9,12 @@ const wave=(x,z)=>Math.sin(x*.19+Math.sin(z*.11))*1.8+Math.cos(z*.12-x*.07)*1.25
 
 export const sampleHillHeight=(x,z)=>Math.max(0,(wave(x,z)+3.2)*smoothstep(8,-28,z))
 
-export const sampleHillSlope=(x,z)=>Math.hypot(
-  sampleHillHeight(x+.15,z)-sampleHillHeight(x-.15,z),
-  sampleHillHeight(x,z+.15)-sampleHillHeight(x,z-.15),
+const sampleSlope=(heightAt,x,z)=>Math.hypot(
+  heightAt(x+.15,z)-heightAt(x-.15,z),
+  heightAt(x,z+.15)-heightAt(x,z-.15),
 )/.3
+
+export const sampleHillSlope=(x,z)=>sampleSlope(sampleHillHeight,x,z)
 
 export const createTerrainGeometry=({width,depth,segmentsX,segmentsZ,heightAt})=>{
   const geometry=new THREE.PlaneGeometry(width,depth,segmentsX,segmentsZ)
@@ -24,7 +26,7 @@ export const createTerrainGeometry=({width,depth,segmentsX,segmentsZ,heightAt})=
   for(let i=0;i<positions.count;i++){
     const x=positions.getX(i),z=positions.getZ(i),height=heightAt(x,z)
     positions.setY(i,height)
-    const slope=sampleHillSlope(x,z)
+    const slope=sampleSlope(heightAt,x,z)
     slopes[i]=slope
     maxSlope=Math.max(maxSlope,slope)
   }
