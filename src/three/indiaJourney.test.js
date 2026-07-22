@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import * as THREE from 'three'
 import {createExpeditionController} from './expeditionController'
-import {getExpeditionState} from './journeyData'
+import {getExpeditionState,getJourneyState} from './journeyData'
 import {createMaterials,disposeObject3D} from './primitives'
 import {getAtmosphereState,getDampingFactor,getMobileTrekCamera,getRenderQuality,getWorldVisibility,usesMobileTrekCamera} from './indiaJourney'
 
@@ -32,6 +32,17 @@ describe('renderer quality', () => {
     const before=framingAt(.92-1e-6),contact=framingAt(.92)
     expect(new THREE.Vector3(...contact.camera).distanceTo(new THREE.Vector3(...before.camera))).toBeLessThan(.01)
     expect(new THREE.Vector3(...contact.target).distanceTo(new THREE.Vector3(...before.target))).toBeLessThan(.01)
+    disposeObject3D(scene)
+  })
+  it('enters mobile guide following continuously at the trek boundary',()=>{
+    const scene=new THREE.Scene(),controller=createExpeditionController(scene,createMaterials(),'mobile')
+    controller.update(getExpeditionState(.75),2,false)
+    scene.updateMatrixWorld(true)
+    const guide=controller.transports.trekker.userData.members[0].root.getWorldPosition(new THREE.Vector3())
+    const follow=getMobileTrekCamera(guide.toArray())
+    const before=getJourneyState(.75-1e-6)
+    expect(new THREE.Vector3(...follow.camera).distanceTo(new THREE.Vector3(...before.cameraPosition))).toBeLessThan(.05)
+    expect(new THREE.Vector3(...follow.target).distanceTo(new THREE.Vector3(...before.cameraTarget))).toBeLessThan(.05)
     disposeObject3D(scene)
   })
   it('uses frame-rate independent exponential damping',()=>{

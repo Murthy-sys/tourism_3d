@@ -175,16 +175,38 @@ describe('continuous expedition transitions',()=>{
     disposeObject3D(scene)
   })
 
+  it('disables ghost shadow casters at zero weight and restores active casters',()=>{
+    const scene=new THREE.Scene()
+    const controller=createExpeditionController(scene,createMaterials(),'desktop')
+    const terrain=controller.worlds.forest.getObjectByName('forest-track').getObjectByProperty('isMesh',true)
+    const jeepCaster=controller.transports.jeep.getObjectByProperty('isMesh',true)
+    expect(terrain.castShadow).toBe(true)
+    expect(jeepCaster.castShadow).toBe(true)
+    controller.update(getExpeditionState(1),2,false)
+    expect(terrain.castShadow).toBe(false)
+    expect(jeepCaster.castShadow).toBe(false)
+    controller.update(getExpeditionState(.5),2,false)
+    expect(terrain.castShadow).toBe(true)
+    expect(jeepCaster.castShadow).toBe(true)
+    controller.dispose()
+  })
+
   it('disposes owned worlds exactly once and removes them from the scene',()=>{
     const scene=new THREE.Scene()
     const controller=createExpeditionController(scene,createMaterials(),'mobile')
     const terrain=controller.worlds.hills.getObjectByName('hill-terrain')
     const geometryDispose=vi.spyOn(terrain.geometry,'dispose')
     const materialDispose=vi.spyOn(terrain.material,'dispose')
+    const sun=controller.worlds.hills.getObjectByName('hill-country-sun')
+    const shadowMapDispose=vi.fn(),shadowMapPassDispose=vi.fn()
+    sun.shadow.map={dispose:shadowMapDispose}
+    sun.shadow.mapPass={dispose:shadowMapPassDispose}
     controller.dispose()
     controller.dispose()
     expect(scene.children).not.toContain(controller.worlds.hills)
     expect(geometryDispose).toHaveBeenCalledTimes(1)
     expect(materialDispose).toHaveBeenCalledTimes(1)
+    expect(shadowMapDispose).toHaveBeenCalledTimes(1)
+    expect(shadowMapPassDispose).toHaveBeenCalledTimes(1)
   })
 })

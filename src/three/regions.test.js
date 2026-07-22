@@ -6,7 +6,7 @@ import { createMaterials, disposeObject3D } from './primitives'
 describe('regional scene builders', () => {
   it('creates every regional group in journey order', () => {
     const root = createIndiaRegions(createMaterials(), 'desktop')
-    expect(root.children.map((child) => child.name)).toEqual(['south', 'deccan', 'west-north', 'ganges', 'hill-country', 'tourism-operations-pavilion', 'plan-monuments', 'contact-pavilion'])
+    expect(root.children.map((child) => child.name)).toEqual(['south', 'deccan', 'west-north', 'ganges', 'himalayas', 'tourism-operations-pavilion', 'plan-monuments', 'contact-pavilion'])
     expect(root).toBeInstanceOf(THREE.Group)
     disposeObject3D(root)
   })
@@ -23,10 +23,11 @@ describe('regional scene builders', () => {
     expect(materials).not.toHaveProperty('snow')
     const forbidden=[]
     root.traverse(object=>{
-      if(/snow|ice|himalaya/i.test(object.name)||object.geometry?.type==='ConeGeometry')forbidden.push(object.name||object.geometry.type)
+      const compatibilityAnchor=object.name==='himalayas'||object.name==='himalayan-adventure-monument'
+      if((!compatibilityAnchor&&/snow|ice|himalaya/i.test(object.name))||object.geometry?.type==='ConeGeometry')forbidden.push(object.name||object.geometry.type)
     })
     expect(forbidden).toEqual([])
-    expect(root.getObjectByName('hill-country')).toBeTruthy()
+    expect(root.getObjectByName('himalayas')).toBeTruthy()
     disposeObject3D(root)
   })
 })

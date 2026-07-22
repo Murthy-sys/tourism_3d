@@ -9,7 +9,7 @@ export function createIndiaRegions(m,quality='desktop'){
   const deccan=new THREE.Group();deccan.name='deccan';deccan.position.z=-28;for(let i=0;i<n;i++)deccan.add(mesh(new THREE.DodecahedronGeometry(.6+(i%3)*.25,0),m.stone,[(i%5-2)*2,.6,Math.floor(i/5)*2]));deccan.add(createTemple(m,-5,0),mesh(new THREE.PlaneGeometry(14,11),m.water,[8,-.1,-14],[-Math.PI/2,0,0]));addTrees(deccan,m,-8,n);root.add(deccan)
   const west=new THREE.Group();west.name='west-north';west.position.z=-65;west.add(createDome(m,-3,-37),createTemple(m,7,-17));for(let i=0;i<n;i++)west.add(createBuilding(m,(i%6-3)*2,-2-Math.floor(i/6)*3,1.5,1+(i%3),1.6,i%2?m.sand:m.stone));root.add(west)
   const ganges=new THREE.Group();ganges.name='ganges';ganges.position.z=-113;ganges.add(mesh(new THREE.PlaneGeometry(18,20),m.water,[5,-.1,0],[-Math.PI/2,0,0]));for(let i=0;i<n;i++)ganges.add(createBuilding(m,-5+(i%4)*2,-4+Math.floor(i/4)*2,1.8,.5+(i%3)*.45,1.6,i%2?m.sand:m.stone));root.add(ganges)
-  const hills=new THREE.Group();hills.name='hill-country';hills.position.z=-139;for(let i=0;i<(quality==='mobile'?3:8);i++)hills.add(createHillForm(m,(i-3.5)*4,(i%2)*-4,.8+(i%3)*.18));addTrees(hills,m,6,n);root.add(hills)
+  const hills=new THREE.Group();hills.name='himalayas';hills.position.z=-139;for(let i=0;i<(quality==='mobile'?3:8);i++)hills.add(createHillForm(m,(i-3.5)*4,(i%2)*-4,.8+(i%3)*.18));addTrees(hills,m,6,n);root.add(hills)
   const operations=createOperationsPavilion(m,quality);operations.position.set(0,0,-24);root.add(operations)
   const plans=createPlanMonuments(m,quality);plans.position.set(0,0,-72);root.add(plans)
   const contact=createContactPavilion(m,quality);contact.position.set(0,0,-140);root.add(contact)

@@ -16,4 +16,19 @@ export function createHillForm(materials,x,z,s=1){
   group.add(createTree(materials,-1.1*s,.3*s,.65*s),createTree(materials,1.35*s,.2*s,.52*s))
   group.position.set(x,0,z);return group
 }
-export function disposeObject3D(root){ const gs=new Set(),ms=new Set(); root.traverse(o=>{if(o.geometry)gs.add(o.geometry);(Array.isArray(o.material)?o.material:[o.material]).filter(Boolean).forEach(m=>ms.add(m))});gs.forEach(g=>g.dispose());ms.forEach(m=>m.dispose()) }
+const disposedResources=new WeakSet()
+const disposeOnce=resource=>{if(!resource||disposedResources.has(resource))return;disposedResources.add(resource);resource.dispose()}
+export function disposeObject3D(root){
+  const gs=new Set(),ms=new Set(),shadowTargets=new Set()
+  root.traverse(o=>{
+    if(o.geometry)gs.add(o.geometry)
+    ;(Array.isArray(o.material)?o.material:[o.material]).filter(Boolean).forEach(m=>ms.add(m))
+    if(o.isLight&&o.shadow){
+      if(o.shadow.map)shadowTargets.add(o.shadow.map)
+      if(o.shadow.mapPass)shadowTargets.add(o.shadow.mapPass)
+    }
+  })
+  gs.forEach(disposeOnce)
+  ms.forEach(disposeOnce)
+  shadowTargets.forEach(disposeOnce)
+}

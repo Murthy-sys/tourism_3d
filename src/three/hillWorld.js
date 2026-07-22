@@ -285,6 +285,8 @@ export function createHillWorld(materials,quality='desktop'){
   const sun=new THREE.DirectionalLight('#f0ca88',2.6)
   sun.name='hill-country-sun'
   sun.position.set(-12,18,8)
+  sun.target.name='hill-country-sun-target'
+  sun.target.position.set(2,heightAt(2,-18),-18)
   sun.castShadow=quality==='desktop'
   sun.userData.baseIntensity=sun.intensity
   const fill=new THREE.HemisphereLight('#b9d0c0','#3d4936',1.15)
@@ -300,6 +302,7 @@ export function createHillWorld(materials,quality='desktop'){
     landing,
     lodge,
     sun,
+    sun.target,
     fill,
   )
   world.userData={

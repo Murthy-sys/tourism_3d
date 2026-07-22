@@ -24,10 +24,11 @@ describe('architectural tourism environments', () => {
   it('uses a lush hill-country plan without snow or cone geometry',()=>{
     const plans=createPlanMonuments(createMaterials(),'desktop'),forbidden=[]
     plans.traverse(object=>{
-      if(/snow|ice|himalaya/i.test(object.name)||object.geometry?.type==='ConeGeometry')forbidden.push(object.name||object.geometry.type)
+      if((object.name!=='himalayan-adventure-monument'&&/snow|ice|himalaya/i.test(object.name))||object.geometry?.type==='ConeGeometry')forbidden.push(object.name||object.geometry.type)
     })
     expect(forbidden).toEqual([])
-    expect(plans.getObjectByName('hill-country-trek-monument')).toBeTruthy()
+    const hillPlan=plans.children.find(({userData})=>userData.planId==='himalayan-adventure')
+    expect(hillPlan?.name).toBe('himalayan-adventure-monument')
     disposeObject3D(plans)
   })
 })
