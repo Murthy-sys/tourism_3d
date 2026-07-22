@@ -88,7 +88,7 @@ describe('continuous expedition transitions',()=>{
     const scene=new THREE.Scene()
     const controller=createExpeditionController(scene,createMaterials(),'mobile')
     const transition=controller.update(getExpeditionState(.72),2,false)
-    const snapshot=getExpeditionQASnapshot(controller)
+    const snapshot=getExpeditionQASnapshot(controller,scene)
 
     expect(snapshot.guides).toBe(1)
     expect(snapshot.tourists).toBe(3)
@@ -102,6 +102,60 @@ describe('continuous expedition transitions',()=>{
     })
     expect(Object.values(snapshot.zoneWeights).filter(weight=>weight>.05)).toHaveLength(2)
     disposeObject3D(scene)
+  })
+
+  it.each([
+    ['detached',({party,root})=>party.remove(root)],
+    ['empty',({root})=>root.clear()],
+    ['hidden',({root})=>{root.visible=false}],
+    ['zero-opacity',({root})=>root.traverse(object=>{
+      const objectMaterials=Array.isArray(object.material)?object.material:[object.material]
+      objectMaterials.filter(Boolean).forEach(material=>{material.transparent=true;material.opacity=0})
+    })],
+  ])('fails closed when a %s party root is not renderable',(_,mutate)=>{
+    const scene=new THREE.Scene()
+    const controller=createExpeditionController(scene,createMaterials(),'mobile')
+    controller.update(getExpeditionState(.82),2,false)
+    const party=controller.transports.trekker
+    const member=party.userData.members[1]
+    mutate({party,root:member.root})
+    scene.updateMatrixWorld(true)
+
+    const snapshot=getExpeditionQASnapshot(controller,scene)
+    expect(snapshot.guides).toBe(1)
+    expect(snapshot.tourists).toBe(2)
+    expect(snapshot.walkersOnTrail).toBe(3)
+    disposeObject3D(scene)
+  })
+
+  it('requires weighted worlds to remain attached to the active scene',()=>{
+    const scene=new THREE.Scene()
+    const controller=createExpeditionController(scene,createMaterials(),'mobile')
+    controller.update(getExpeditionState(.82),2,false)
+    expect(controller.worlds.hills.userData.zoneWeight).toBe(1)
+    scene.remove(controller.worlds.hills)
+
+    const snapshot=getExpeditionQASnapshot(controller,scene)
+    expect(snapshot.zoneWeights.hills).toBe(0)
+    expect(snapshot.transportWeights.trekker).toBe(0)
+    expect(snapshot.guides).toBe(0)
+    expect(snapshot.tourists).toBe(0)
+    expect(snapshot.walkersOnTrail).toBe(0)
+    controller.dispose()
+  })
+
+  it('finds forbidden snow and ice content anywhere in the active scene',()=>{
+    const scene=new THREE.Scene()
+    const controller=createExpeditionController(scene,createMaterials(),'mobile')
+    controller.update(getExpeditionState(.82),2,false)
+    const overlay=new THREE.Group()
+    overlay.name='decorative-overlay'
+    overlay.userData.description='soft snow overlay'
+    scene.add(overlay)
+
+    const snapshot=getExpeditionQASnapshot(controller,scene)
+    expect(snapshot.iceObjects).toBe(1)
+    controller.dispose()
   })
 
   it('does not jump transports backward at phase boundaries',()=>{

@@ -136,6 +136,34 @@ function createLanding(materials,route){
   return landing
 }
 
+function createLandingBankLayers(materials,endpoint,quality){
+  const layers=nameGroup('forest-landing-bank-layers')
+  const count=quality==='mobile'?24:40
+  for(let index=0;index<count;index++){
+    const type=['shrub','reed','stone','root'][index%4]
+    const side=index%2?-1:1
+    const x=endpoint.x+side*(2.8+hash(index,41)*6)
+    const z=endpoint.z-4+hash(index,42)*9
+    let object
+    if(type==='shrub'){
+      object=nameGroup(`landing-shrub-${index}`)
+      object.add(mesh(new THREE.IcosahedronGeometry(.52,1),materials.broad,[-.28,.38,0]),mesh(new THREE.IcosahedronGeometry(.62,1),materials.fern,[.28,.45,.08]),mesh(new THREE.IcosahedronGeometry(.4,1),materials.grass,[0,.78,-.08]))
+      object.scale.setScalar(.75+hash(index,43)*.65)
+    }else if(type==='reed'){
+      object=nameGroup(`landing-reeds-${index}`)
+      for(let reed=0;reed<5;reed++){const height=.65+hash(index*5+reed,44)*.8;object.add(mesh(new THREE.CylinderGeometry(.015,.025,height,5),materials.reed,[(reed-2)*.1,height/2,(reed%2)*.08]))}
+    }else if(type==='stone'){
+      object=mesh(new THREE.DodecahedronGeometry(.24+hash(index,45)*.32,1),materials.wetStone)
+      object.name=`landing-wet-stone-${index}`;object.position.y=.1;object.scale.set(1.2,.48,.8)
+    }else{
+      object=mesh(new THREE.TorusGeometry(.55+hash(index,46)*.45,.045,6,18,Math.PI*(.7+hash(index,47)*.5)),materials.root,[0,.035,0],[Math.PI/2,hash(index,48)*Math.PI,0])
+      object.name=`landing-root-${index}`;object.scale.y=.5
+    }
+    object.position.x+=x;object.position.z+=z;object.userData.layerType=type;layers.add(object)
+  }
+  return layers
+}
+
 export function createJungleWorld(m,quality='desktop'){
   const localMaterials=Object.fromEntries(['wood','leaf','leaf2','stone','water','sand','dark'].map(key=>[key,m[key].clone()]))
   const world=nameGroup('jungle-world')
@@ -181,7 +209,8 @@ export function createJungleWorld(m,quality='desktop'){
   for(let i=0;i<(quality==='mobile'?3:7);i++)mist.add(mesh(new THREE.PlaneGeometry(14,4),mistMat,[(i%3-1)*7,2,-15+i*5]))
   world.add(mist)
 
-  const endpoint=route.getPoint(1),marsh=createMarshEdge(materials,endpoint,quality),landing=createLanding({...materials,wood:localMaterials.wood},route);world.add(marsh,landing)
+  const endpoint=route.getPoint(1),marsh=createMarshEdge(materials,endpoint,quality),landing=createLanding({...materials,wood:localMaterials.wood},route)
+  const landingBankLayers=createLandingBankLayers(materials,endpoint,quality);world.add(marsh,landing,landingBankLayers)
   const outpost=nameGroup('ranger-outpost');outpost.position.set(-7,0,-13);outpost.add(mesh(new THREE.BoxGeometry(5,.5,3.5),localMaterials.wood,[0,.25,0]),mesh(new THREE.BoxGeometry(4,2.4,2.7),localMaterials.sand,[0,1.7,0]),mesh(new THREE.ConeGeometry(3.5,1.5,4),localMaterials.leaf,[0,3.55,0],[0,Math.PI/4,0]),mesh(new THREE.BoxGeometry(2.4,1.15,.08),localMaterials.dark,[0,1.9,1.39]));world.add(outpost)
   const light=new THREE.SpotLight('#ffd98a',34,35,.5,.75);light.position.set(-8,16,7);light.target.position.set(0,0,-8);world.add(light,light.target)
   world.userData={route,landing,copyAnchor:new THREE.Vector3(-7,3,-13)}

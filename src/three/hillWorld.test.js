@@ -100,6 +100,32 @@ describe('hill world',()=>{
     disposeObject3D(world)
   })
 
+  it('fills the hill country with bushes, dense grass and varied ground detail',()=>{
+    const world=createHillWorld(createMaterials(),'desktop')
+    const bushes=world.getObjectByName('hill-bushes')
+    const grass=world.getObjectByName('hill-grass-clumps')
+    const detail=world.getObjectByName('hill-ground-detail')
+    expect(bushes?.children.length).toBeGreaterThanOrEqual(54)
+    expect(grass?.children.length).toBeGreaterThanOrEqual(110)
+    expect(detail?.children.length).toBeGreaterThanOrEqual(46)
+    expect(new Set(detail.children.map(child=>child.userData.detailType))).toEqual(new Set(['stone','earth','flowers']))
+    const routePoints=world.userData.route.getSpacedPoints(120)
+    const nearTrail=grass.children.filter(clump=>routePoints.some(point=>Math.hypot(point.x-clump.position.x,point.z-clump.position.z)<4.8))
+    expect(nearTrail.length).toBeGreaterThanOrEqual(100)
+    ;[bushes,grass,detail].forEach(group=>group.children.forEach(child=>{
+      expect(Math.abs(child.position.y-world.userData.heightAt(child.position.x,child.position.z))).toBeLessThan(.35)
+    }))
+    disposeObject3D(world)
+  })
+
+  it('keeps meaningful hill ground detail on mobile',()=>{
+    const world=createHillWorld(createMaterials(),'mobile')
+    expect(world.getObjectByName('hill-bushes')?.children.length).toBeGreaterThanOrEqual(32)
+    expect(world.getObjectByName('hill-grass-clumps')?.children.length).toBeGreaterThanOrEqual(62)
+    expect(world.getObjectByName('hill-ground-detail')?.children.length).toBeGreaterThanOrEqual(28)
+    disposeObject3D(world)
+  })
+
   it('grades the complete lodge foundation footprint to the terrain',()=>{
     const world=createHillWorld(createMaterials(),'desktop')
     const lodge=world.getObjectByName('hill-lodge')

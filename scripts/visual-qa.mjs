@@ -1,6 +1,7 @@
-import {mkdir,stat} from 'node:fs/promises'
+import {mkdir} from 'node:fs/promises'
 import path from 'node:path'
 import {chromium} from '@playwright/test'
+import {analyzeRgbaPixels,CANVAS_ISOLATION_STYLE,FRAME_CONTRACTS,validateCanvasEvidence,validateFrameContract} from './visual-qa-core.mjs'
 
 const requested=process.argv[2]||'desktop'
 if(!['desktop','mobile'].includes(requested))throw new Error(`Unknown QA mode "${requested}". Use desktop or mobile.`)
@@ -9,13 +10,8 @@ const baseUrl=process.env.QA_BASE_URL||'http://127.0.0.1:4173/'
 const viewport=requested==='mobile'?{width:390,height:844}:{width:1440,height:900}
 const screenshotDir=path.resolve(process.env.QA_SCREENSHOT_DIR||`/tmp/continuous-landscape-qa/${requested}`)
 const states=[
-  {name:'forest-water-transition',progress:.595,handoff:{zones:['forest','water'],transports:['jeep','boat']}},
-  {name:'water-corridor',progress:.66},
-  {name:'water-hill-transition',progress:.725,handoff:{zones:['water','hills'],transports:['boat','trekker']}},
-  {name:'hill-reveal',progress:.77},
-  {name:'trekking-party',progress:.82},
-  {name:'hill-contact',progress:.96},
-]
+  'forest-water-transition','water-corridor','water-hill-transition','hill-reveal','trekking-party','hill-contact',
+].map(name=>({name,progress:FRAME_CONTRACTS[name].progress}))
 
 await mkdir(screenshotDir,{recursive:true})
 const browser=await chromium.launch({headless:true})
@@ -49,12 +45,39 @@ try{
     await page.waitForTimeout(900)
   }
 
+  const captureCanvasEvidence=async name=>{
+    const canvas=page.locator('.journey__canvas')
+    const screenshot=path.join(screenshotDir,`${name}-canvas.png`)
+    const png=await canvas.screenshot({path:screenshot,style:CANVAS_ISOLATION_STYLE})
+    const presentation=await canvas.evaluate(element=>{
+      const style=getComputedStyle(element),rect=element.getBoundingClientRect()
+      return{
+        visible:style.display!=='none'&&style.visibility!=='hidden'&&Number(style.opacity)>.05&&rect.width>0&&rect.height>0,
+        width:rect.width,
+        height:rect.height,
+      }
+    })
+    const sample=await page.evaluate(async base64=>{
+      const image=new Image()
+      image.src=`data:image/png;base64,${base64}`
+      await image.decode()
+      const canvas=document.createElement('canvas')
+      canvas.width=32;canvas.height=32
+      const context=canvas.getContext('2d',{willReadFrequently:true})
+      context.drawImage(image,0,0,32,32)
+      return Array.from(context.getImageData(0,0,32,32).data)
+    },png.toString('base64'))
+    const pixels=analyzeRgbaPixels(Uint8ClampedArray.from(sample),32,32)
+    return{screenshot,presentation,pixels}
+  }
+
   const captureVehicleSmoke=async(name,progress)=>{
     await scrollToProgress(progress)
     const qa=await page.evaluate(()=>window.__journeyQA())
     const screenshot=path.join(screenshotDir,`${name}-smoke.png`)
     await page.screenshot({path:screenshot})
-    return{qa,screenshot,screenshotBytes:(await stat(screenshot)).size}
+    const canvas=await captureCanvasEvidence(`${name}-smoke`)
+    return{qa,screenshot,canvas}
   }
   const ambassadorSmoke=await captureVehicleSmoke('ambassador',.08)
   const jeepSmoke=await captureVehicleSmoke('jungle-jeep',.48)
@@ -72,37 +95,16 @@ try{
     const canvasSize=await page.locator('.journey__canvas').evaluate(canvas=>({width:canvas.width,height:canvas.height}))
     const screenshot=path.join(screenshotDir,`${state.name}.png`)
     await page.screenshot({path:screenshot})
-    const screenshotBytes=(await stat(screenshot)).size
-    const frame={...state,heading,activePlan,qa,horizontalOverflow,fallback,canvasSize,screenshot,screenshotBytes}
+    const canvas=await captureCanvasEvidence(state.name)
+    const frame={...state,heading,activePlan,qa,horizontalOverflow,fallback,canvasSize,screenshot,canvas}
     seen.push(frame)
 
-    check(qa.guides===1,`${state.name}: expected one guide, received ${qa.guides}`)
-    check(qa.tourists===3,`${state.name}: expected three tourists, received ${qa.tourists}`)
-    check(qa.iceObjects===0,`${state.name}: expected zero snow/ice objects, received ${qa.iceObjects}`)
-    check(qa.walkersOnTrail===4,`${state.name}: expected all four walkers on the trail, received ${qa.walkersOnTrail}`)
-    check(Math.abs(Object.values(qa.zoneWeights).reduce((sum,weight)=>sum+weight,0)-1)<.001,`${state.name}: zone weights are not normalized`)
+    validateFrameContract(state.name,qa,requested).forEach(failure=>check(false,failure))
+    validateCanvasEvidence(canvas).forEach(failure=>check(false,`${state.name}: ${failure}`))
     check(!horizontalOverflow,`${state.name}: horizontal overflow detected`)
     check(fallback===0,`${state.name}: WebGL fallback rendered`)
     check(canvasSize.width>0&&canvasSize.height>0,`${state.name}: canvas has no render dimensions`)
-    check(screenshotBytes>10000,`${state.name}: screenshot is unexpectedly small (${screenshotBytes} bytes)`)
-
-    if(state.handoff){
-      const activeZones=Object.values(qa.zoneWeights).filter(weight=>weight>.05).length
-      check(activeZones>=2,`${state.name}: fewer than two landscape zones exceed .05`)
-      state.handoff.zones.forEach(name=>check(qa.zoneWeights[name]>.05,`${state.name}: ${name} zone weight does not exceed .05`))
-      state.handoff.transports.forEach(name=>{
-        check(qa.transportWeights[name]>.05,`${state.name}: ${name} transport weight does not exceed .05`)
-        check(qa.transports.find(transport=>transport.name===name)?.visible,`${state.name}: ${name} transport center is outside the viewport`)
-      })
-    }
   }
-
-  const partyFrame=seen.find(frame=>frame.name==='trekking-party')
-  check(partyFrame.qa.visibleMembers.guides===1,'trekking-party: the guide is outside the viewport')
-  check(
-    partyFrame.qa.visibleMembers.tourists>=(requested==='mobile'?2:3),
-    `trekking-party: expected ${requested==='mobile'?'at least two':'three'} visible tourists, received ${partyFrame.qa.visibleMembers.tourists}`,
-  )
 
   const soundControls=await page.getByRole('button',{name:/sound/i}).count()
   const audioElements=await page.locator('audio').count()
@@ -137,10 +139,10 @@ try{
   check(JSON.stringify(frameNames)===JSON.stringify(states.map(state=>state.name)),'captured frame names do not match the Task 7 contract')
   check(ambassadorSmoke.qa.phase==='ambassador'&&ambassadorSmoke.qa.transportWeights.ambassador>.95,'opening Ambassador smoke state did not render')
   check(ambassadorSmoke.qa.transports.find(transport=>transport.name==='ambassador')?.visible,'opening Ambassador center is outside the viewport')
-  check(ambassadorSmoke.screenshotBytes>10000,`opening Ambassador screenshot is unexpectedly small (${ambassadorSmoke.screenshotBytes} bytes)`)
+  validateCanvasEvidence(ambassadorSmoke.canvas).forEach(failure=>check(false,`opening Ambassador: ${failure}`))
   check(jeepSmoke.qa.phase==='jungle-jeep'&&jeepSmoke.qa.transportWeights.jeep>.95,'moving jeep smoke state did not render')
   check(jeepSmoke.qa.transports.find(transport=>transport.name==='jeep')?.visible,'moving jeep center is outside the viewport')
-  check(jeepSmoke.screenshotBytes>10000,`moving jeep screenshot is unexpectedly small (${jeepSmoke.screenshotBytes} bytes)`)
+  validateCanvasEvidence(jeepSmoke.canvas).forEach(failure=>check(false,`moving jeep: ${failure}`))
   check(soundControlsBeforeStart===0,`expected no entry sound control, received ${soundControlsBeforeStart}`)
   check(soundControls===0,`expected no journey sound control, received ${soundControls}`)
   check(audioElementsBeforeStart===0&&audioElements===0,`expected no audio elements, received ${audioElementsBeforeStart}/${audioElements}`)
@@ -175,6 +177,7 @@ try{
     screenshotPaths:{
       smoke:[ambassadorSmoke.screenshot,jeepSmoke.screenshot],
       frames:seen.map(frame=>frame.screenshot),
+      canvas:[ambassadorSmoke.canvas.screenshot,jeepSmoke.canvas.screenshot,...seen.map(frame=>frame.canvas.screenshot)],
       menu:menuScreenshot,
       booking:bookingScreenshot,
     },

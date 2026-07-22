@@ -164,6 +164,82 @@ const createRockFaces=(materials,quality)=>{
   return rocks
 }
 
+const routeClearance=(point,routePoints)=>routePoints.reduce((nearest,sample)=>Math.min(nearest,Math.hypot(point.x-sample.x,point.z-sample.z)),Infinity)
+const groundPoint=(index,salt,routePoints,clearance=.8)=>{
+  for(let attempt=0;attempt<40;attempt++){
+    const seed=index*47+salt*131+attempt
+    const x=THREE.MathUtils.lerp(-29,29,deterministic(seed+1))
+    const z=THREE.MathUtils.lerp(-32,16,deterministic(seed+2))
+    if(routeClearance({x,z},routePoints)<clearance||lodgeGradeWeight(x,z)>.08||visualSlopeAt(x,z)>1.15)continue
+    return new THREE.Vector3(x,heightAt(x,z),z)
+  }
+  const x=THREE.MathUtils.lerp(-27,27,deterministic(index+salt+91)),z=THREE.MathUtils.lerp(-28,12,deterministic(index+salt+109))
+  return new THREE.Vector3(x,heightAt(x,z),z)
+}
+const routeSideGroundPoint=(index,count,route)=>{
+  const t=.03+(index/Math.max(1,count-1))*.86
+  const point=route.getPoint(t),tangent=route.getTangent(t).normalize()
+  const side=index%2?-1:1,offset=.75+deterministic(index+305)*3.45
+  const x=point.x-tangent.z*side*offset,z=point.z+tangent.x*side*offset
+  return new THREE.Vector3(x,heightAt(x,z),z)
+}
+
+const createHillGroundCover=(materials,quality,route)=>{
+  const routePoints=route.getSpacedPoints(120)
+  const bushes=named('hill-bushes')
+  const grass=named('hill-grass-clumps')
+  const detail=named('hill-ground-detail')
+  const grassMaterial=new THREE.MeshStandardMaterial({color:'#728746',roughness:.98})
+  const dryGrassMaterial=new THREE.MeshStandardMaterial({color:'#9a8b4f',roughness:1})
+  const earthMaterial=new THREE.MeshStandardMaterial({color:'#6f573b',roughness:1,side:THREE.DoubleSide})
+  const flowerMaterial=new THREE.MeshStandardMaterial({color:'#d5a34f',roughness:.86})
+  const bushCount=quality==='mobile'?34:58
+  const grassCount=quality==='mobile'?88:150
+  const detailCount=quality==='mobile'?30:50
+
+  for(let index=0;index<bushCount;index++){
+    const bush=named(`hill-bush-${index}`),scale=.45+deterministic(index+210)*.62
+    bush.add(
+      mesh(new THREE.IcosahedronGeometry(.48,1),index%3===0?materials.leaf2:materials.leaf,[-.28,.32,0]),
+      mesh(new THREE.IcosahedronGeometry(.56,1),index%4===0?materials.leaf2:materials.leaf,[.2,.38,.08]),
+      mesh(new THREE.IcosahedronGeometry(.38,1),materials.leaf,[0,.68,-.12]),
+    )
+    bush.position.copy(groundPoint(index,4,routePoints,1.05));bush.rotation.y=deterministic(index+240)*Math.PI*2;bush.scale.set(scale,.72*scale,scale);bush.userData.coverType='bush';bushes.add(bush)
+  }
+
+  for(let index=0;index<grassCount;index++){
+    const clump=named(`hill-grass-${index}`),material=index%5===0?dryGrassMaterial:grassMaterial
+    for(let blade=0;blade<4;blade++){
+      const angle=blade/4*Math.PI*2+deterministic(index*7+blade)*.35,height=.36+deterministic(index*11+blade)*.42
+      clump.add(mesh(new THREE.ConeGeometry(.035,height,4),material,[Math.cos(angle)*.11,height/2,Math.sin(angle)*.11],[Math.sin(angle)*.14,0,Math.cos(angle)*.14]))
+    }
+    clump.position.copy(routeSideGroundPoint(index,grassCount,route));clump.rotation.y=deterministic(index+330)*Math.PI*2;clump.scale.setScalar(.9+deterministic(index+350)*.72);clump.userData.coverType='grass';grass.add(clump)
+  }
+
+  for(let index=0;index<detailCount;index++){
+    const type=['stone','earth','flowers'][index%3],position=groundPoint(index,15,routePoints,.5)
+    let object
+    if(type==='stone'){
+      object=mesh(new THREE.DodecahedronGeometry(.16+deterministic(index+410)*.28,0),materials.stone)
+      object.scale.set(1.2+deterministic(index+420),.38+deterministic(index+430)*.3,.75+deterministic(index+440)*.55)
+      object.rotation.set(deterministic(index+450)*.3,deterministic(index+460)*Math.PI,deterministic(index+470)*.22)
+      position.y+=.08
+    }else if(type==='earth'){
+      object=mesh(new THREE.CircleGeometry(.35+deterministic(index+480)*.48,10),earthMaterial,[0,.025,0],[-Math.PI/2,0,0])
+      object.scale.set(1.5+deterministic(index+490),.7+deterministic(index+500)*.5,1)
+      position.y+=.025
+    }else{
+      object=named(`hill-wildflowers-${index}`)
+      for(let flower=0;flower<5;flower++){
+        const angle=flower/5*Math.PI*2,height=.22+(flower%3)*.06
+        object.add(mesh(new THREE.CylinderGeometry(.012,.018,height,4),grassMaterial,[Math.cos(angle)*.1,height/2,Math.sin(angle)*.1]),mesh(new THREE.SphereGeometry(.04,6,4),flowerMaterial,[Math.cos(angle)*.1,height,Math.sin(angle)*.1]))
+      }
+    }
+    object.name=object.name||`hill-${type}-${index}`;object.position.add(position);object.userData.detailType=type;detail.add(object)
+  }
+  return{bushes,grass,detail}
+}
+
 class TerrainRoute extends THREE.CatmullRomCurve3{
   constructor(points,heightSampler){
     super(points,false,'centripetal')
@@ -282,6 +358,7 @@ export function createHillWorld(materials,quality='desktop'){
   const mist=createMist()
   const landing=createLanding(localMaterials,start)
   const lodge=createLodge(localMaterials,end)
+  const groundCover=createHillGroundCover(localMaterials,quality,route)
   const sun=new THREE.DirectionalLight('#f0ca88',2.6)
   sun.name='hill-country-sun'
   sun.position.set(-12,18,8)
@@ -297,6 +374,9 @@ export function createHillWorld(materials,quality='desktop'){
     createRidges(quality),
     createForest(localMaterials,quality),
     createRockFaces(localMaterials,quality),
+    groundCover.bushes,
+    groundCover.grass,
+    groundCover.detail,
     mist,
     createTrail(route),
     landing,

@@ -36,6 +36,15 @@ describe('jungle world',()=>{
     disposeObject3D(world)
   })
 
+  it('layers vegetation and wet-bank detail around the forest landing',()=>{
+    const world=createJungleWorld(createMaterials(),'desktop')
+    const layers=world.getObjectByName('forest-landing-bank-layers')
+    expect(layers).toBeTruthy()
+    expect(layers.children.length).toBeGreaterThanOrEqual(34)
+    expect(new Set(layers.children.map(child=>child.userData.layerType))).toEqual(new Set(['shrub','reed','stone','root']))
+    disposeObject3D(world)
+  })
+
   it('owns materials independently of the shared palette, other jungles and transports',()=>{
     const materials=createMaterials()
     const first=createJungleWorld(materials,'mobile')

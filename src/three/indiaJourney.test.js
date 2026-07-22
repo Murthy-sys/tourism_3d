@@ -34,7 +34,7 @@ describe('renderer quality', () => {
     camera.lookAt(new THREE.Vector3(...framing.target))
     camera.updateMatrixWorld(true)
 
-    const members=getPartyScreenSnapshot(controller.transports.trekker,camera,transition.transports.trekker)
+    const members=getPartyScreenSnapshot(controller.transports.trekker,camera,transition.transports.trekker,scene)
     expect(members.filter(member=>member.visible&&member.role==='guide')).toHaveLength(1)
     expect(members.filter(member=>member.visible&&member.role==='tourist').length).toBeGreaterThanOrEqual(2)
     disposeObject3D(scene)
@@ -49,7 +49,7 @@ describe('renderer quality', () => {
     camera.lookAt(new THREE.Vector3(...framing.cameraTarget))
     camera.updateMatrixWorld(true)
 
-    const members=getPartyScreenSnapshot(controller.transports.trekker,camera,transition.transports.trekker)
+    const members=getPartyScreenSnapshot(controller.transports.trekker,camera,transition.transports.trekker,scene)
     expect(members.filter(member=>member.visible)).toHaveLength(4)
     disposeObject3D(scene)
   })
@@ -66,13 +66,31 @@ describe('renderer quality', () => {
       target.x+=getMobileHandoffTargetOffset(getExpeditionState(progress))
       camera.lookAt(target)
       camera.updateMatrixWorld(true)
-      const transports=getTransportScreenSnapshot(controller.transports,camera,transition.transports)
+      const transports=getTransportScreenSnapshot(controller.transports,camera,transition.transports,scene)
       names.forEach(name=>{
         const transport=transports.find(candidate=>candidate.name===name)
         if(!transport?.visible)missing.push({progress,name,ndc:transport?.ndc})
       })
     }
     expect(missing).toEqual([])
+    disposeObject3D(scene)
+  })
+  it('does not project hidden or non-renderable party roots as visible',()=>{
+    const scene=new THREE.Scene(),controller=createExpeditionController(scene,createMaterials(),'mobile')
+    const transition=controller.update(getExpeditionState(.82),2,false)
+    scene.updateMatrixWorld(true)
+    const guide=controller.transports.trekker.userData.members[0].root.getWorldPosition(new THREE.Vector3())
+    const framing=getMobileTrekCamera(guide.toArray())
+    const camera=new THREE.PerspectiveCamera(getRenderFov('mobile'),390/844,.1,300)
+    camera.position.set(...framing.camera)
+    camera.lookAt(new THREE.Vector3(...framing.target))
+    camera.updateMatrixWorld(true)
+    const party=controller.transports.trekker
+    const member=party.userData.members[1].root
+    member.visible=false
+
+    const members=getPartyScreenSnapshot(party,camera,transition.transports.trekker,scene)
+    expect(members.find(candidate=>candidate.name===member.name)?.visible).toBe(false)
     disposeObject3D(scene)
   })
   it('keeps mobile guide framing continuous into contact',()=>{

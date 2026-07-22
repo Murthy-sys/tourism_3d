@@ -1,6 +1,6 @@
 import * as THREE from 'three'
 import {createAmbassador,updateAmbassador} from './ambassador'
-import {createExpeditionController,getExpeditionQASnapshot} from './expeditionController'
+import {createExpeditionController,getExpeditionQASnapshot,hasRenderableMesh} from './expeditionController'
 import {clamp01,getJourneyState} from './journeyData'
 import {createMaterials,disposeObject3D,mesh} from './primitives'
 import {createIndiaRegions} from './regions'
@@ -19,19 +19,19 @@ export const getMobileHandoffTargetOffset=state=>state.phase==='jeep-to-boat'
 export const getMobileTrekCamera=([x,y,z])=>({camera:[x+3,y+3.5,z+20],target:[x,y+.7,z+4]})
 export const usesMobileTrekCamera=phase=>phase==='hill-trek'||phase==='contact'
 export const getDampingFactor=delta=>1-Math.exp(-Math.max(0,delta)*4.5)
-export const getPartyScreenSnapshot=(party,camera,weight)=>{
+export const getPartyScreenSnapshot=(party,camera,weight,scene)=>{
   camera.updateMatrixWorld(true)
   return (party.userData.members||[]).map(({role,root})=>{
     const clip=root.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0,1,0)).project(camera)
     return{
       name:root.name,
       role,
-      visible:weight>.05&&Math.abs(clip.x)<=1&&Math.abs(clip.y)<=1&&clip.z>=-1&&clip.z<=1,
+      visible:weight>.05&&hasRenderableMesh(root,scene)&&Math.abs(clip.x)<=1&&Math.abs(clip.y)<=1&&clip.z>=-1&&clip.z<=1,
       ndc:{x:clip.x,y:clip.y,z:clip.z},
     }
   })
 }
-export const getTransportScreenSnapshot=(transports,camera,weights)=>{
+export const getTransportScreenSnapshot=(transports,camera,weights,scene)=>{
   camera.updateMatrixWorld(true)
   return Object.entries(transports).map(([name,transport])=>{
     const bounds=new THREE.Box3().setFromObject(transport)
@@ -39,7 +39,7 @@ export const getTransportScreenSnapshot=(transports,camera,weights)=>{
     const clip=center.project(camera)
     return{
       name,
-      visible:(weights[name]||0)>.05&&Math.abs(clip.x)<=1&&Math.abs(clip.y)<=1&&clip.z>=-1&&clip.z<=1,
+      visible:(weights[name]||0)>.05&&hasRenderableMesh(transport,scene)&&Math.abs(clip.x)<=1&&Math.abs(clip.y)<=1&&clip.z>=-1&&clip.z<=1,
       ndc:{x:clip.x,y:clip.y,z:clip.z},
     }
   })
@@ -138,10 +138,11 @@ export function createIndiaJourney(canvas,{reducedMotion=false,onContextLost=()=
 
   const getQASnapshot=()=>{
     const state=getJourneyState(progress)
-    const snapshot=getExpeditionQASnapshot(expedition)
-    const transportWeights={ambassador:latestTransition?.transports.ambassador||0,...snapshot.transportWeights}
-    const members=getPartyScreenSnapshot(expedition.transports.trekker,camera,transportWeights.trekker)
-    const transports=getTransportScreenSnapshot({ambassador,...expedition.transports},camera,transportWeights)
+    const snapshot=getExpeditionQASnapshot(expedition,scene)
+    const ambassadorWeight=hasRenderableMesh(ambassador,scene)?latestTransition?.transports.ambassador||0:0
+    const transportWeights={ambassador:ambassadorWeight,...snapshot.transportWeights}
+    const members=getPartyScreenSnapshot(expedition.transports.trekker,camera,transportWeights.trekker,scene)
+    const transports=getTransportScreenSnapshot({ambassador,...expedition.transports},camera,transportWeights,scene)
     return{
       ...snapshot,
       progress,

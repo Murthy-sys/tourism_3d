@@ -54,6 +54,18 @@ describe('water world',()=>{
     disposeObject3D(world)
   })
 
+  it('keeps a layered forest bank readable around the incoming landing',()=>{
+    const world=createWaterWorld(createMaterials(),'desktop')
+    const detail=world.getObjectByName('forest-handoff-bank-detail')
+    expect(detail).toBeTruthy()
+    expect(world.getObjectByName('wet-bank-shelves')).toBeTruthy()
+    expect(detail.children.length).toBeGreaterThanOrEqual(30)
+    expect(new Set(detail.children.map(child=>child.userData.detailType))).toEqual(new Set(['tree','shrub','reed','rock']))
+    const landing=world.getObjectByName('forest-water-landing')
+    detail.children.forEach(child=>expect(Math.abs(child.position.z-landing.position.z)).toBeLessThan(10))
+    disposeObject3D(world)
+  })
+
   it('parks the boat hull beside each landing deck with docking clearance',()=>{
     const materials=createMaterials(),world=createWaterWorld(materials,'desktop'),boat=createExpeditionBoat(materials)
     world.add(boat)

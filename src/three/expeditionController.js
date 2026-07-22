@@ -119,7 +119,51 @@ const alignWorldAnchor=(world,anchor,target)=>{
   world.updateMatrixWorld(true)
 }
 
-const legacyIcePattern=/(^|[-_])(ice|snow|glacier)($|[-_])/i
+const forbiddenIcePattern=/(snow|ice|glacier)/i
+const isAttachedToScene=(root,scene)=>{
+  if(!root?.isObject3D||!scene?.isScene)return false
+  for(let current=root;current;current=current.parent)if(current===scene)return true
+  return false
+}
+const hasVisibleAncestors=(object,scene)=>{
+  for(let current=object;current;current=current.parent){
+    if(current.visible===false)return false
+    if(current===scene)return true
+  }
+  return false
+}
+const hasVisibleMaterial=object=>{
+  const materials=Array.isArray(object.material)?object.material:[object.material]
+  return materials.filter(Boolean).some(material=>material.visible!==false&&(material.opacity??1)>.05)
+}
+export const hasRenderableMesh=(root,scene)=>{
+  if(!isAttachedToScene(root,scene))return false
+  let renderable=false
+  root.traverse(object=>{
+    if(!renderable&&object.isMesh&&hasVisibleAncestors(object,scene)&&hasVisibleMaterial(object))renderable=true
+  })
+  return renderable
+}
+const containsForbiddenContent=value=>{
+  const seen=new WeakSet()
+  const inspect=candidate=>{
+    if(typeof candidate==='string')return forbiddenIcePattern.test(candidate)
+    if(!candidate||typeof candidate!=='object'||candidate.isObject3D||candidate.isMaterial)return false
+    if(seen.has(candidate))return false
+    seen.add(candidate)
+    return Object.values(candidate).some(inspect)
+  }
+  return inspect(value)
+}
+const countForbiddenSceneObjects=scene=>{
+  if(!scene?.isScene)return 0
+  let count=0
+  scene.traverse(object=>{
+    const materials=(Array.isArray(object.material)?object.material:[object.material]).filter(Boolean)
+    if(forbiddenIcePattern.test(object.name||'')||containsForbiddenContent(object.userData)||materials.some(material=>forbiddenIcePattern.test(material.name||'')))count++
+  })
+  return count
+}
 const distanceToLine=(point,start,end,minimum=0,maximum=1)=>{
   const dx=end.x-start.x,dz=end.z-start.z,lengthSquared=dx*dx+dz*dz
   const projected=lengthSquared?((point.x-start.x)*dx+(point.z-start.z)*dz)/lengthSquared:0
@@ -138,19 +182,16 @@ const distanceToRoute=(point,route)=>{
   )))
 }
 
-export function getExpeditionQASnapshot({worlds,transports}){
-  const members=transports.trekker.userData.members||[]
-  let iceObjects=0
-  ;[...Object.values(worlds),...Object.values(transports)].forEach(root=>root.traverse(object=>{
-    if(legacyIcePattern.test(object.name))iceObjects++
-  }))
+export function getExpeditionQASnapshot({worlds,transports},scene){
+  const members=(transports.trekker.userData.members||[]).filter(member=>hasRenderableMesh(member.root,scene))
+  const activeWeight=root=>hasRenderableMesh(root,scene)?Number(root.userData.zoneWeight??root.userData.transitionWeight??0):0
   return{
     guides:members.filter(member=>member.role==='guide').length,
     tourists:members.filter(member=>member.role==='tourist').length,
-    iceObjects,
+    iceObjects:countForbiddenSceneObjects(scene),
     walkersOnTrail:members.filter(member=>distanceToRoute(member.root.position,worlds.hills.userData.route)<.12).length,
-    zoneWeights:Object.fromEntries(Object.entries(worlds).map(([name,world])=>[name,world.userData.zoneWeight||0])),
-    transportWeights:Object.fromEntries(Object.entries(transports).map(([name,transport])=>[name,transport.userData.transitionWeight||0])),
+    zoneWeights:Object.fromEntries(Object.entries(worlds).map(([name,world])=>[name,activeWeight(world)])),
+    transportWeights:Object.fromEntries(Object.entries(transports).map(([name,transport])=>[name,activeWeight(transport)])),
   }
 }
 
