@@ -7,16 +7,16 @@ const centerAt=t=>-3*(1-t)+Math.sin(t*Math.PI)*.7
 const widthAt=t=>12-(7*t)
 const innerEdge=(side,t)=>centerAt(t)+(side*widthAt(t)/2)
 
-function createStripGeometry(side,outerOffset=0){
+function createStripGeometry(side,waterOffset=0){
   const positions=[],indices=[]
   for(let index=0;index<=BANK_SECTIONS;index++){
     const t=index/BANK_SECTIONS,z=THREE.MathUtils.lerp(START_Z,END_Z,t),inner=innerEdge(side,t)
-    const outer=outerOffset?inner+(side*outerOffset):side*26
+    const outer=waterOffset?inner-(side*waterOffset):side*26
     positions.push(inner,0,z,outer,0,z)
   }
   for(let index=0;index<BANK_SECTIONS;index++){
     const current=index*2,next=current+2
-    if(side<0)indices.push(current,next,current+1,next,next+1,current+1)
+    if(waterOffset?side>0:side<0)indices.push(current,next,current+1,next,next+1,current+1)
     else indices.push(current,current+1,next,current+1,next+1,next)
   }
   const geometry=new THREE.BufferGeometry()
@@ -24,8 +24,8 @@ function createStripGeometry(side,outerOffset=0){
   return geometry
 }
 
-function createLanding(name,position,materials,width){
-  const landing=named(name);landing.position.copy(position)
+function createLanding(name,position,materials,width,lateralOffset){
+  const landing=named(name);landing.position.copy(position);landing.position.x+=lateralOffset
   for(let plank=0;plank<8;plank++)landing.add(mesh(new THREE.BoxGeometry(width,.16,.42),materials.wood,[0,.12,(plank-3.5)*.43]))
   ;[-1,1].forEach(side=>[-1.15,1.15].forEach(z=>landing.add(mesh(new THREE.CylinderGeometry(.08,.11,1.1,8),materials.wood,[side*(width/2-.25),-.28,z]))))
   return landing
@@ -66,8 +66,8 @@ export function createWaterWorld(m,quality='desktop'){
   const route=new THREE.CatmullRomCurve3([
     new THREE.Vector3(-3,.1,16),new THREE.Vector3(-2.4,.1,9),new THREE.Vector3(-.7,.1,2),new THREE.Vector3(.45,.1,-7),new THREE.Vector3(0,.1,-16),
   ])
-  const forestLanding=createLanding('forest-water-landing',route.getPoint(0),local,4.8)
-  const hillLanding=createLanding('hill-water-landing',route.getPoint(1),local,3.7)
+  const forestLanding=createLanding('forest-water-landing',route.getPoint(0),local,4.8,-4)
+  const hillLanding=createLanding('hill-water-landing',route.getPoint(1),local,3.7,3.3)
   world.add(forestLanding,hillLanding)
 
   const shore=named('water-shoreline'),treeCount=quality==='mobile'?10:24

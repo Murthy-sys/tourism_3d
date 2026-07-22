@@ -1,7 +1,7 @@
 import { describe,expect,it } from 'vitest'
 import * as THREE from 'three'
 import { createMaterials,disposeObject3D } from './primitives'
-import { createExpeditionBoat } from './expeditionVehicles'
+import { createExpeditionBoat,updateBoat } from './expeditionVehicles'
 import { createJungleWorld } from './jungleWorld'
 import { createWaterWorld,updateWaterWorld } from './waterWorld'
 
@@ -18,13 +18,16 @@ const bankCoordinatesAt=(bank,z)=>{
   return coordinates
 }
 
+const horizontalGap=(first,second)=>{
+  const xGap=Math.max(first.min.x-second.max.x,second.min.x-first.max.x,0)
+  const zGap=Math.max(first.min.z-second.max.z,second.min.z-first.max.z,0)
+  return Math.hypot(xGap,zGap)
+}
+
 describe('water world',()=>{
   it('connects the forest landing to a narrowing hill-side river corridor',()=>{
     const world=createWaterWorld(createMaterials(),'desktop')
     ;['forest-water-landing','hill-water-landing','river-banks','water-shallows','water-reflection-layer'].forEach(name=>expect(world.getObjectByName(name)).toBeTruthy())
-    const routeStart=world.userData.route.getPoint(0),routeEnd=world.userData.route.getPoint(1)
-    expect(world.getObjectByName('forest-water-landing').position.distanceTo(routeStart)).toBeLessThan(1)
-    expect(world.getObjectByName('hill-water-landing').position.distanceTo(routeEnd)).toBeLessThan(1)
 
     const leftBank=world.getObjectByName('left-river-bank'),rightBank=world.getObjectByName('right-river-bank')
     const startZ=Math.max(...Array.from(leftBank.geometry.getAttribute('position').array).filter((_,index)=>index%3===2))
@@ -36,6 +39,32 @@ describe('water world',()=>{
     expect(endSeparation).toBeLessThan(startSeparation)
     expect(leftBank.position.y).toBeGreaterThan(world.getObjectByName('left-water-shallows').position.y)
     expect(world.getObjectByName('left-water-shallows').position.y).toBeGreaterThan(world.getObjectByName('water-reflection-layer').position.y)
+    disposeObject3D(world)
+  })
+
+  it('exposes both shallow-water strips laterally inside the river banks',()=>{
+    const world=createWaterWorld(createMaterials(),'desktop')
+    const leftBank=world.getObjectByName('left-river-bank'),rightBank=world.getObjectByName('right-river-bank')
+    const leftShallows=world.getObjectByName('left-water-shallows'),rightShallows=world.getObjectByName('right-water-shallows')
+    const sampleZ=0
+    const leftInnerEdge=Math.max(...bankCoordinatesAt(leftBank,sampleZ))
+    const rightInnerEdge=Math.min(...bankCoordinatesAt(rightBank,sampleZ))
+    expect(Math.max(...bankCoordinatesAt(leftShallows,sampleZ))-leftInnerEdge).toBeGreaterThan(1)
+    expect(rightInnerEdge-Math.min(...bankCoordinatesAt(rightShallows,sampleZ))).toBeGreaterThan(1)
+    disposeObject3D(world)
+  })
+
+  it('parks the boat hull beside each landing deck with docking clearance',()=>{
+    const materials=createMaterials(),world=createWaterWorld(materials,'desktop'),boat=createExpeditionBoat(materials)
+    world.add(boat)
+    ;[[0,'forest-water-landing'],[1,'hill-water-landing']].forEach(([progress,landingName])=>{
+      updateBoat(boat,world.userData.route,progress,0,true);world.updateMatrixWorld(true)
+      const hullBox=new THREE.Box3().setFromObject(boat.getObjectByName('boat-hull'))
+      const deckBox=new THREE.Box3().setFromObject(world.getObjectByName(landingName))
+      const clearance=horizontalGap(hullBox,deckBox)
+      expect(clearance).toBeGreaterThan(.25)
+      expect(clearance).toBeLessThan(1.2)
+    })
     disposeObject3D(world)
   })
 
