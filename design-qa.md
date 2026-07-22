@@ -6,6 +6,7 @@
 - Explicit Ambassador-to-jeep, jeep-to-boat, and boat-to-trek handoff ranges: passed.
 - Dense jungle foreground, midground, background, track, mist, rocks, puddles, and outpost: passed.
 - Reflective water, shoreline, jetty, rocks, reeds, wake, and water animation: passed.
+- Reference-matched teal rowboat, seated orange-clad rower, detailed interior, and synchronized twin-oar stroke: passed.
 - Layered ice mountains, glacier, trail, base camp, drifting snow, and contact shelter: passed.
 - Expedition visibility, mobile ice-layer framing, and trekker-follow camera: passed.
 - Background audio implementation and sound controls removed: passed.
@@ -15,6 +16,7 @@
 - Ambassador opening and Who We Are pavilion remain intact: passed.
 - Jungle scene fills the viewport and frames the moving jeep on the forest track: passed after camera correction.
 - Water world frames the moving boat, traveller, shoreline, and jetty: passed after closer camera and reflection correction.
+- Upgraded boat hull reads as one coherent longitudinal craft; rower and oars remain seated inside its silhouette: passed.
 - Ice world shows the animated trekker, glacier, layered peaks, path, snow, and base camp: passed after closer camera correction.
 - Handoff states render both adjacent environments/transports without abrupt disappearance: passed.
 - Environmental labels identify Jungle by Jeep, Water by Boat, and Himalayas on Foot: passed.
@@ -25,6 +27,7 @@
 
 - Jungle jeep remains visible with its traveller and road: passed.
 - Water boat remains visible with traveller, jetty, and water surface: passed.
+- Teal hull, orange rower, and both orange-bladed oars remain readable in mobile framing: passed.
 - Ice trekker remains visible with backpack, pole, route, camp, and mountains: passed after removing the obstructing foreground layer and adding trekker-follow framing.
 - Contact shelter remains readable without mountain occlusion: passed.
 - Required worlds and transports are preserved rather than removed: passed.

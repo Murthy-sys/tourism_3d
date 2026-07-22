@@ -12,12 +12,35 @@ describe('expedition transports',()=>{
     expect(jeep.getObjectByName('expedition-traveller')).toBeTruthy()
     disposeObject3D(jeep)
   })
-  it('creates a boat with traveller, shaped hull and wake anchors',()=>{
+  it('creates a reference-matched teal rowboat with articulated rower and oars',()=>{
     const boat=createExpeditionBoat(createMaterials())
     expect(boat.name).toBe('water-boat')
-    expect(boat.getObjectByName('boat-hull')).toBeTruthy()
+    expect(boat.getObjectByName('boat-hull').material.color.getHexString()).toBe('176f70')
     expect(boat.userData.wakeAnchors).toHaveLength(2)
-    expect(boat.getObjectByName('expedition-traveller')).toBeTruthy()
+    expect(boat.getObjectByName('boat-rower')).toBeTruthy()
+    expect(boat.getObjectByName('boat-rower-torso').material.color.getHexString()).toBe('e86524')
+    expect(boat.getObjectByName('boat-oar-port')).toBeTruthy()
+    expect(boat.getObjectByName('boat-oar-starboard')).toBeTruthy()
+    expect(boat.getObjectByName('boat-oar-port-blade').material.color.getHexString()).toBe('f2a229')
+    const hullSize=new THREE.Box3().setFromObject(boat.getObjectByName('boat-hull')).getSize(new THREE.Vector3())
+    expect(hullSize.z).toBeGreaterThan(hullSize.x*2)
+    expect(boat.getObjectByName('boat-rower').position.y).toBeLessThan(.5)
+    disposeObject3D(boat)
+  })
+  it('animates the rower and both oars as one rowing stroke',()=>{
+    const boat=createExpeditionBoat(createMaterials())
+    const curve=new THREE.CatmullRomCurve3([new THREE.Vector3(0,0,0),new THREE.Vector3(0,0,-8)])
+    updateBoat(boat,curve,.4,0,false)
+    const first={
+      port:boat.getObjectByName('boat-oar-port').rotation.x,
+      torso:boat.getObjectByName('boat-rower-torso-pivot').rotation.x,
+      elbow:boat.getObjectByName('boat-rower-left-elbow').rotation.x,
+    }
+    updateBoat(boat,curve,.5,.72,false)
+    expect(boat.getObjectByName('boat-oar-port').rotation.x).not.toBe(first.port)
+    expect(boat.getObjectByName('boat-oar-starboard').rotation.x).toBeCloseTo(boat.getObjectByName('boat-oar-port').rotation.x)
+    expect(boat.getObjectByName('boat-rower-torso-pivot').rotation.x).not.toBe(first.torso)
+    expect(boat.getObjectByName('boat-rower-left-elbow').rotation.x).not.toBe(first.elbow)
     disposeObject3D(boat)
   })
   it('creates and animates an articulated trekker',()=>{

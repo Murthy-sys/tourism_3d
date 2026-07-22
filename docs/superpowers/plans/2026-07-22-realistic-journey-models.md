@@ -1,5 +1,7 @@
 # Realistic Journey Models Implementation Plan
 
+> **Scope revision — 2026-07-22:** The user requested that the current car and trekker remain unchanged. Only the realistic boat work in Task 4 is being executed; Tasks 1–3 and 5 are superseded for this branch.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Replace the procedural opening car, water boat, and ice trekker with licensed, high-detail PBR 3D subjects that match the approved references and retain all existing journey behavior.

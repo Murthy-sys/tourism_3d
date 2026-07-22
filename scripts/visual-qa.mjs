@@ -1,13 +1,14 @@
 import { chromium } from '@playwright/test'
 
 const requested=process.argv[2]||'desktop'
+const baseUrl=process.env.QA_BASE_URL||'http://127.0.0.1:4173/'
 const viewport=requested==='mobile'?{width:390,height:844}:{width:1440,height:900}
 const browser=await chromium.launch({headless:true})
 const page=await browser.newPage({viewport})
 const messages=[]
 page.on('console',m=>{if(['error','warning'].includes(m.type())&&!m.text().includes('ReadPixels'))messages.push(`${m.type()}: ${m.text()}`)})
 page.on('pageerror',e=>messages.push(`pageerror: ${e.message}`))
-await page.goto('http://127.0.0.1:4173/',{waitUntil:'networkidle'})
+await page.goto(baseUrl,{waitUntil:'networkidle'})
 await page.getByRole('button',{name:'Start'}).waitFor({timeout:15000})
 await page.getByRole('button',{name:'Start'}).click()
 await page.waitForTimeout(1400)
