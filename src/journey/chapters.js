@@ -4,7 +4,7 @@ export const SERVICES=[
 export const TRAVEL_PLANS=[
   {id:'southern-discovery',name:'Southern Discovery',days:'10 days',route:'Kerala · Tamil Nadu · Hampi · Goa',style:'Jungle by jeep'},
   {id:'heritage-india',name:'Heritage India',days:'9 days',route:'Backwaters · Lakes · River country',style:'Water by boat'},
-  {id:'himalayan-adventure',name:'Himalayan Adventure',days:'8 days',route:'Rishikesh · Manali · Dharamshala',style:'Himalayas on foot'},
+  {id:'himalayan-adventure',name:'Hill Country Trek',days:'8 days',route:'Munnar · Coorg · Nilgiris',style:'Lush hills on foot'},
 ]
 export const STORIES=[
   {quote:'Every transfer, stay and local experience felt effortless.',name:'Ananya Rao',trip:'Kerala to Goa'},

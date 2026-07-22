@@ -6,6 +6,15 @@ describe('journey chapters', () => {
     expect(CHAPTERS.map((chapter) => chapter.id)).toEqual(['home','who-we-are','plans','contact'])
     expect(TRAVEL_PLANS.map((plan) => plan.id)).toEqual(['southern-discovery','heritage-india','himalayan-adventure'])
   })
+  it('changes only the snow-specific plan to a lush hill-country trek',()=>{
+    expect(TRAVEL_PLANS.slice(0,2)).toEqual([
+      {id:'southern-discovery',name:'Southern Discovery',days:'10 days',route:'Kerala · Tamil Nadu · Hampi · Goa',style:'Jungle by jeep'},
+      {id:'heritage-india',name:'Heritage India',days:'9 days',route:'Backwaters · Lakes · River country',style:'Water by boat'},
+    ])
+    expect(TRAVEL_PLANS[2]).toEqual({
+      id:'himalayan-adventure',name:'Hill Country Trek',days:'8 days',route:'Munnar · Coorg · Nilgiris',style:'Lush hills on foot',
+    })
+  })
   it('maps progress and menu targets to stable chapters', () => {
     expect(getChapterAtProgress(0).id).toBe('home')
     expect(getChapterAtProgress(1).id).toBe('contact')

@@ -15,7 +15,7 @@ await page.waitForTimeout(1400)
 
 const track=page.locator('.experience__track')
 const height=await track.evaluate(el=>el.offsetHeight)
-const states=[['opening-drive',.08],['who-we-are',.25],['ambassador-to-jeep',.39],['jungle-jeep',.48],['jeep-to-boat',.60],['water-boat',.66],['boat-to-trek',.72],['ice-trek',.82],['contact',.96]]
+const states=[['opening-drive',.08],['who-we-are',.25],['ambassador-to-jeep',.39],['jungle-jeep',.48],['jeep-to-boat',.60],['water-boat',.66],['boat-to-trek',.72],['hill-trek',.82],['contact',.96]]
 const seen=[]
 for(const [name,progress] of states){
   await page.evaluate(({y})=>{document.documentElement.style.scrollBehavior='auto';scrollTo(0,y)},{y:(height-viewport.height)*progress})

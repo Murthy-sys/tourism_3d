@@ -45,6 +45,18 @@ describe('India journey data', () => {
     expect(getExpeditionState(.39).handoff).toBe('ambassador-to-jeep')
     expect(getExpeditionState(.60).handoff).toBe('jeep-to-boat')
     expect(getExpeditionState(.72).handoff).toBe('boat-to-trek')
+    expect(getExpeditionState(.82).phase).toBe('hill-trek')
+  })
+  it('eases camera interpolation and centers intermediate frames on both landings',()=>{
+    expect(getJourneyState(.5025).cameraPosition[0]).toBeCloseTo(1.09375,5)
+    expect(getJourneyState(.595).cameraTarget).toEqual([0,1.2,-75])
+    expect(getJourneyState(.725).cameraTarget).toEqual([-2,1.5,-113])
+  })
+  it('describes the final stop as lush hill country without snow or Himalayan copy',()=>{
+    const finalStop=JOURNEY_STOPS.at(-1)
+    expect(finalStop.name).toBe('Hill Country Trek')
+    expect(finalStop.description).toBe('Finish among forested ridges, mist-filled valleys and winding green trails.')
+    expect(`${finalStop.name} ${finalStop.kicker} ${finalStop.description}`).not.toMatch(/snow|ice|Himalaya/i)
   })
   it('keeps each expedition transport close enough to read clearly',()=>{
     ;[.48,.66,.82].forEach(progress=>{
