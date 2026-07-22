@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import {describe,expect,it} from 'vitest'
+import {describe,expect,it,vi} from 'vitest'
 import {createMaterials,disposeObject3D} from './primitives'
 import {createExpeditionController,getTransitionState} from './expeditionController'
 import {getExpeditionState} from './journeyData'
@@ -117,5 +117,74 @@ describe('continuous expedition transitions',()=>{
     expect(horizontalDistance(controller.transports.boat.position,controller.worlds.water.userData.route.getPointAt(1))).toBeLessThan(.01)
     expect(horizontalDistance(guide.position,controller.worlds.hills.userData.route.getPointAt(0))).toBeLessThan(.01)
     disposeObject3D(scene)
+  })
+
+  it('aligns both cross-world landing decks at shared world-space handoffs',()=>{
+    const scene=new THREE.Scene()
+    const controller=createExpeditionController(scene,createMaterials(),'mobile')
+    scene.updateMatrixWorld(true)
+    const position=object=>object.getWorldPosition(new THREE.Vector3())
+    expect(position(controller.worlds.forest.userData.landing).distanceTo(position(controller.worlds.water.userData.forestLanding))).toBeLessThan(.01)
+    expect(position(controller.worlds.water.userData.hillLanding).distanceTo(position(controller.worlds.hills.userData.landing))).toBeLessThan(.01)
+    disposeObject3D(scene)
+  })
+
+  it('keeps parked transports visibly clear of their shared landing deck',()=>{
+    const scene=new THREE.Scene()
+    const controller=createExpeditionController(scene,createMaterials(),'mobile')
+    const centerClearance=(object,deck)=>{
+      scene.updateMatrixWorld(true)
+      const center=object.getWorldPosition(new THREE.Vector3())
+      const bounds=new THREE.Box3().setFromObject(deck)
+      const closest=bounds.clampPoint(center,new THREE.Vector3())
+      return Math.hypot(center.x-closest.x,center.z-closest.z)
+    }
+
+    controller.update(getExpeditionState(.60),2,false)
+    expect(centerClearance(controller.transports.jeep,controller.worlds.forest.userData.landing)).toBeGreaterThan(.5)
+    expect(centerClearance(controller.transports.jeep,controller.worlds.forest.userData.landing)).toBeLessThan(3)
+    expect(centerClearance(controller.transports.boat,controller.worlds.water.userData.forestLanding)).toBeGreaterThan(.5)
+    expect(centerClearance(controller.transports.boat,controller.worlds.water.userData.forestLanding)).toBeLessThan(3)
+
+    controller.update(getExpeditionState(.72),2,false)
+    const guide=controller.transports.trekker.userData.members[0].root
+    expect(centerClearance(controller.transports.boat,controller.worlds.water.userData.hillLanding)).toBeGreaterThan(.5)
+    expect(centerClearance(controller.transports.boat,controller.worlds.water.userData.hillLanding)).toBeLessThan(3)
+    expect(centerClearance(guide,controller.worlds.hills.userData.landing)).toBeGreaterThan(.5)
+    expect(centerClearance(guide,controller.worlds.hills.userData.landing)).toBeLessThan(3)
+    disposeObject3D(scene)
+  })
+
+  it('keeps all four party members separated while they fade in at the boat handoff',()=>{
+    const scene=new THREE.Scene()
+    const controller=createExpeditionController(scene,createMaterials(),'mobile')
+    const transition=controller.update(getExpeditionState(.72),2,false)
+    const positions=controller.transports.trekker.userData.members.map(({root})=>root.getWorldPosition(new THREE.Vector3()))
+    expect(transition.transports.trekker).toBeGreaterThan(.05)
+    for(let index=1;index<positions.length;index++)expect(positions[index].distanceTo(positions[index-1])).toBeGreaterThan(.45)
+    disposeObject3D(scene)
+  })
+
+  it('blends named hill-local lighting with the hill transition weight',()=>{
+    const scene=new THREE.Scene()
+    const controller=createExpeditionController(scene,createMaterials(),'mobile')
+    const transition=controller.update(getExpeditionState(.72),2,false)
+    const sun=controller.worlds.hills.getObjectByName('hill-country-sun')
+    expect(sun).toBeTruthy()
+    expect(sun.intensity).toBeCloseTo(sun.userData.baseIntensity*transition.worlds.hills,6)
+    disposeObject3D(scene)
+  })
+
+  it('disposes owned worlds exactly once and removes them from the scene',()=>{
+    const scene=new THREE.Scene()
+    const controller=createExpeditionController(scene,createMaterials(),'mobile')
+    const terrain=controller.worlds.hills.getObjectByName('hill-terrain')
+    const geometryDispose=vi.spyOn(terrain.geometry,'dispose')
+    const materialDispose=vi.spyOn(terrain.material,'dispose')
+    controller.dispose()
+    controller.dispose()
+    expect(scene.children).not.toContain(controller.worlds.hills)
+    expect(geometryDispose).toHaveBeenCalledTimes(1)
+    expect(materialDispose).toHaveBeenCalledTimes(1)
   })
 })

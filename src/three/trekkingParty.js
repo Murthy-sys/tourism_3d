@@ -127,10 +127,13 @@ export function createTrekkingParty(materials){
 }
 
 export function updateTrekkingParty(party,curve,progress,elapsed,reducedMotion,heightAt){
+  const routeLength=curve.getLength()
   party.userData.members.forEach((member,index)=>{
-    const routeProgress=THREE.MathUtils.clamp(progress-OFFSETS[index],0,1)
+    const rawProgress=progress-OFFSETS[index]
+    const routeProgress=THREE.MathUtils.clamp(rawProgress,0,1)
     const point=curve.getPointAt(routeProgress)
     const tangent=curve.getTangentAt(routeProgress).normalize()
+    if(rawProgress<0)point.addScaledVector(tangent,rawProgress*routeLength)
     member.root.position.set(point.x,heightAt(point.x,point.z),point.z)
     member.root.rotation.y=Math.atan2(-tangent.x,-tangent.z)
 
@@ -146,7 +149,7 @@ export function updateTrekkingParty(party,curve,progress,elapsed,reducedMotion,h
 
     member.pole.position.y=.83
     party.updateMatrixWorld(true)
-    const tipPosition=member.pole.userData.tip.getWorldPosition(new THREE.Vector3())
+    const tipPosition=party.worldToLocal(member.pole.userData.tip.getWorldPosition(new THREE.Vector3()))
     member.pole.position.y+=heightAt(tipPosition.x,tipPosition.z)-tipPosition.y
   })
   party.updateMatrixWorld(true)

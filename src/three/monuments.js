@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import { createMountain, createTree, mesh } from './primitives'
+import { createHillForm, createTree, mesh } from './primitives'
 
 const person=(m,x,z,color=m.gold)=>{const g=new THREE.Group();g.add(mesh(new THREE.CapsuleGeometry(.12,.45,4,8),color,[0,.42,0]),mesh(new THREE.SphereGeometry(.13,10,8),m.sand,[0,.85,0]));g.position.set(x,0,z);return g}
 const arch=(m,width=4,height=3,material=m.sand)=>{const g=new THREE.Group();g.add(mesh(new THREE.BoxGeometry(width,.28,.65),material,[0,height,0]));[-1,1].forEach(s=>g.add(mesh(new THREE.CylinderGeometry(.22,.28,height,12),material,[s*(width/2-.25),height/2,0])));return g}
@@ -20,11 +20,11 @@ export function createOperationsPavilion(m,quality='desktop'){
 
 const coastalPlan=m=>{const g=new THREE.Group();g.name='southern-discovery-monument';g.add(mesh(new THREE.CylinderGeometry(3.8,4.3,.6,32),m.ivory,[0,.3,0]));for(let i=0;i<8;i++){const a=i/8*Math.PI*2;g.add(mesh(new THREE.CylinderGeometry(.13,.18,2.5,12),m.ivory,[Math.cos(a)*3,1.55,Math.sin(a)*2]))}g.add(mesh(new THREE.TorusGeometry(3,.12,10,40),m.gold,[0,2.8,0],[Math.PI/2,0,0]),mesh(new THREE.CircleGeometry(2.7,32),m.water,[0,.62,0],[-Math.PI/2,0,0]));for(let i=0;i<5;i++)g.add(createTree(m,-4+i*2,2.7+(i%2),.7));return g}
 const heritagePlan=m=>{const g=new THREE.Group();g.name='heritage-india-monument';for(let level=0;level<3;level++)g.add(mesh(new THREE.BoxGeometry(8-level*1.2,.35,5-level*.7),level%2?m.stone:m.sand,[0,.18+level*.35,0]));g.add(arch(m,5.5,4,m.sand));[-2.4,2.4].forEach(x=>{g.add(mesh(new THREE.CylinderGeometry(.75,.9,3.8,12),m.stone,[x,2.1,.2]),mesh(new THREE.SphereGeometry(.78,16,8,0,Math.PI*2,0,Math.PI/2),m.gold,[x,4,.2]))});g.add(mesh(new THREE.TorusGeometry(1.4,.18,10,28,Math.PI),m.ivory,[0,2.1,-.08]));return g}
-const mountainPlan=m=>{const g=new THREE.Group();g.name='himalayan-adventure-monument';for(let i=0;i<4;i++)g.add(createMountain(m,(i-1.5)*2.6,-1-(i%2)*2,.55+(i%2)*.14));g.add(mesh(new THREE.BoxGeometry(5,.45,3.2),m.stone,[0,.22,1.5]),mesh(new THREE.BoxGeometry(4,2.2,2.5),m.wood,[0,1.55,1.5]),mesh(new THREE.ConeGeometry(3.4,1.6,4),m.snow,[0,3.35,1.5],[0,Math.PI/4,0]));[-1.3,0,1.3].forEach(x=>g.add(mesh(new THREE.BoxGeometry(.7,.9,.08),m.gold,[x,1.65,.2])));return g}
+const hillPlan=m=>{const g=new THREE.Group();g.name='hill-country-trek-monument';for(let i=0;i<4;i++)g.add(createHillForm(m,(i-1.5)*2.6,-1-(i%2)*2,.55+(i%2)*.14));g.add(mesh(new THREE.BoxGeometry(5,.45,3.2),m.stone,[0,.22,1.5]),mesh(new THREE.BoxGeometry(4,2.2,2.5),m.wood,[0,1.55,1.5]),mesh(new THREE.BoxGeometry(2.9,.18,3.4),m.dark,[-1.05,3.25,1.5],[0,0,-.48]),mesh(new THREE.BoxGeometry(2.9,.18,3.4),m.dark,[1.05,3.25,1.5],[0,0,.48]));[-1.3,0,1.3].forEach(x=>g.add(mesh(new THREE.BoxGeometry(.7,.9,.08),m.gold,[x,1.65,.2])));return g}
 
 export function createPlanMonuments(m,quality='desktop'){
   const root=new THREE.Group();root.name='plan-monuments'
-  const specs=[['southern-discovery',coastalPlan(m),-13],['heritage-india',heritagePlan(m),0],['himalayan-adventure',mountainPlan(m),13]]
+  const specs=[['southern-discovery',coastalPlan(m),-13],['heritage-india',heritagePlan(m),0],['himalayan-adventure',hillPlan(m),13]]
   specs.forEach(([id,g,x])=>{g.position.x=x;g.userData={planId:id,anchor:new THREE.Vector3(x,4,0)};root.add(g)})
   if(quality==='desktop'){[-19,-7,7,19].forEach((x,i)=>root.add(lamp(m,x,(i%2?3:-3))))}
   return root

@@ -1,9 +1,11 @@
+import * as THREE from 'three'
 import {createExpeditionBoat,createExpeditionJeep,updateBoat,updateJeep} from './expeditionVehicles'
 import {createHillWorld,updateHillWorld} from './hillWorld'
 import {createJungleWorld} from './jungleWorld'
 import {getLandscapeWeights,smoothstep} from './terrain'
 import {createTrekkingParty,updateTrekkingParty} from './trekkingParty'
 import {createWaterWorld,updateWaterWorld} from './waterWorld'
+import {disposeObject3D} from './primitives'
 
 const PHASE_RANGES={
   ambassador:[0,.38],
@@ -98,13 +100,21 @@ const setTransportWeight=(transport,materials,weight)=>{
   setMaterialWeight(materials,weight)
 }
 
+const alignWorldAnchor=(world,anchor,target)=>{
+  world.updateMatrixWorld(true)
+  const current=anchor.getWorldPosition(new THREE.Vector3())
+  world.position.add(target.clone().sub(current))
+  world.updateMatrixWorld(true)
+}
+
 export function createExpeditionController(scene,materials,quality){
   const forest=createJungleWorld(materials,quality)
   const water=createWaterWorld(materials,quality)
   const hills=createHillWorld(materials,quality)
   forest.position.z=-52
-  water.position.z=-94
-  hills.position.z=-132
+  forest.updateMatrixWorld(true)
+  alignWorldAnchor(water,water.userData.forestLanding,forest.userData.landing.getWorldPosition(new THREE.Vector3()))
+  alignWorldAnchor(hills,hills.userData.landing,water.userData.hillLanding.getWorldPosition(new THREE.Vector3()))
 
   const worldMaterials={
     forest:collectMaterials(forest),
@@ -133,6 +143,7 @@ export function createExpeditionController(scene,materials,quality){
 
   const worlds={forest,water,hills}
   const transports={jeep,boat,trekker}
+  let disposed=false
   const update=(state,elapsed,reducedMotion)=>{
     const transition=getTransitionState(state)
     Object.entries(worlds).forEach(([name,world])=>setWorldWeight(world,worldMaterials[name],worldLights[name],transition.worlds[name]))
@@ -150,5 +161,11 @@ export function createExpeditionController(scene,materials,quality){
     return transition
   }
 
-  return{update,worlds,transports,dispose:()=>{scene.remove(forest,water,hills)}}
+  const dispose=()=>{
+    if(disposed)return
+    disposed=true
+    scene.remove(forest,water,hills)
+    Object.values(worlds).forEach(disposeObject3D)
+  }
+  return{update,worlds,transports,dispose}
 }

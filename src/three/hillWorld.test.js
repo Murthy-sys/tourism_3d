@@ -94,7 +94,7 @@ describe('hill world',()=>{
     expect(world.userData.route.points).toHaveLength(30)
     const [start]=world.userData.route.points
     const end=world.userData.route.points.at(-1)
-    expect(world.userData.landing.position.distanceTo(new THREE.Vector3(start.x,start.y-.08,start.z))).toBeLessThan(.01)
+    expect(world.userData.landing.position.distanceTo(new THREE.Vector3(start.x-3.3,start.y-.08,start.z))).toBeLessThan(.01)
     expect(world.getObjectByName('hill-lodge').position.distanceTo(new THREE.Vector3(end.x,end.y-.08,end.z))).toBeLessThan(.01)
     expect(world.userData.copyAnchor.y).toBeGreaterThan(end.y)
     disposeObject3D(world)
@@ -148,6 +148,16 @@ describe('hill world',()=>{
       expect(volume.rotation.toArray()).toEqual(before[index].rotation.toArray())
     })
     expect(world.getObjectByName('hill-terrain').position.equals(terrainPosition)).toBe(true)
+    disposeObject3D(world)
+  })
+
+  it('owns warm local hill-country lighting for transition blending',()=>{
+    const world=createHillWorld(createMaterials(),'mobile')
+    const sun=world.getObjectByName('hill-country-sun')
+    const fill=world.getObjectByName('hill-country-fill')
+    expect(sun?.isDirectionalLight).toBe(true)
+    expect(fill?.isHemisphereLight).toBe(true)
+    expect(sun.userData.baseIntensity).toBeGreaterThan(0)
     disposeObject3D(world)
   })
 })

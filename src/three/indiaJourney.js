@@ -13,6 +13,7 @@ const ATMOSPHERES={
 
 export const getRenderQuality=width=>width<768?'mobile':'desktop'
 export const getMobileTrekCamera=([x,y,z])=>({camera:[x+3,y+2.2,z+8],target:[x,y+.9,z]})
+export const usesMobileTrekCamera=phase=>phase==='hill-trek'||phase==='contact'
 export const getDampingFactor=delta=>1-Math.exp(-Math.max(0,delta)*4.5)
 export const getAtmosphereState=weights=>{
   const fogColor=new THREE.Color(0,0,0)
@@ -134,7 +135,7 @@ export function createIndiaJourney(canvas,{reducedMotion=false,onContextLost=()=
     let desiredTarget=state.phase==='vehicle-intro'
       ? ambassador.position.clone().add(new THREE.Vector3(0,1,0))
       : new THREE.Vector3(...state.cameraTarget)
-    if(quality==='mobile'&&state.expedition.phase==='hill-trek'){
+    if(quality==='mobile'&&usesMobileTrekCamera(state.expedition.phase)){
       const party=expedition.transports.trekker
       const guide=party.userData.members?.[0]?.root||party
       const framing=getMobileTrekCamera(guide.getWorldPosition(new THREE.Vector3()).toArray())
@@ -180,6 +181,7 @@ export function createIndiaJourney(canvas,{reducedMotion=false,onContextLost=()=
       cancelAnimationFrame(raf)
       ro.disconnect()
       canvas.removeEventListener('webglcontextlost',onLost)
+      expedition.dispose()
       disposeObject3D(scene)
       renderer.dispose()
     },

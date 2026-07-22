@@ -130,7 +130,7 @@ function createMarshEdge(materials,endpoint,quality){
 
 function createLanding(materials,route){
   const landing=nameGroup('forest-landing'),endpoint=route.getPoint(1),tangent=route.getTangent(1).normalize()
-  landing.position.copy(endpoint).addScaledVector(tangent,1.6);landing.rotation.y=Math.atan2(tangent.x,tangent.z)
+  landing.position.copy(endpoint).addScaledVector(tangent,4.2);landing.rotation.y=Math.atan2(tangent.x,tangent.z)
   for(let plank=0;plank<9;plank++)landing.add(namedMesh('landing-plank',new THREE.BoxGeometry(4.8,.2,.48),materials.landingWood,[0,.14,(plank-4)*.5]))
   ;[-2.05,2.05].forEach(x=>[-1.7,1.7].forEach(z=>landing.add(namedMesh('landing-pile',new THREE.CylinderGeometry(.13,.18,1.25,8),materials.wood,[x,-.34,z]))))
   return landing

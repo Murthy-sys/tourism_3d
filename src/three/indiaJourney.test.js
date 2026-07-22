@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import {getAtmosphereState,getDampingFactor,getMobileTrekCamera,getRenderQuality,getWorldVisibility} from './indiaJourney'
+import * as THREE from 'three'
+import {createExpeditionController} from './expeditionController'
+import {getExpeditionState} from './journeyData'
+import {createMaterials,disposeObject3D} from './primitives'
+import {getAtmosphereState,getDampingFactor,getMobileTrekCamera,getRenderQuality,getWorldVisibility,usesMobileTrekCamera} from './indiaJourney'
 
 describe('renderer quality', () => {
   it('selects the simplified mobile scene at narrow widths', () => {
@@ -13,6 +17,22 @@ describe('renderer quality', () => {
   })
   it('frames the mobile trekker from a readable trailing distance',()=>{
     expect(getMobileTrekCamera([2,1,-130])).toEqual({camera:[5,3.2,-122],target:[2,1.9,-130]})
+    expect(usesMobileTrekCamera('hill-trek')).toBe(true)
+    expect(usesMobileTrekCamera('contact')).toBe(true)
+    expect(usesMobileTrekCamera('water-boat')).toBe(false)
+  })
+  it('keeps mobile guide framing continuous into contact',()=>{
+    const scene=new THREE.Scene(),controller=createExpeditionController(scene,createMaterials(),'mobile')
+    const framingAt=progress=>{
+      controller.update(getExpeditionState(progress),2,false)
+      scene.updateMatrixWorld(true)
+      const guide=controller.transports.trekker.userData.members[0].root.getWorldPosition(new THREE.Vector3())
+      return getMobileTrekCamera(guide.toArray())
+    }
+    const before=framingAt(.92-1e-6),contact=framingAt(.92)
+    expect(new THREE.Vector3(...contact.camera).distanceTo(new THREE.Vector3(...before.camera))).toBeLessThan(.01)
+    expect(new THREE.Vector3(...contact.target).distanceTo(new THREE.Vector3(...before.target))).toBeLessThan(.01)
+    disposeObject3D(scene)
   })
   it('uses frame-rate independent exponential damping',()=>{
     const at60Fps=getDampingFactor(1/60)

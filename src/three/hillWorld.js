@@ -232,7 +232,7 @@ const createTrail=(route)=>{
 
 const createLanding=(materials,start)=>{
   const landing=named('hill-landing')
-  landing.position.set(start.x,heightAt(start.x,start.z),start.z)
+  landing.position.set(start.x-3.3,heightAt(start.x,start.z),start.z)
   landing.add(mesh(new THREE.BoxGeometry(4.5,.35,2.8),materials.stone,[0,.18,0]))
   for(let x=-1.7;x<=1.7;x+=.68)landing.add(mesh(new THREE.BoxGeometry(.5,.16,3.15),materials.wood,[x,.43,0]))
   ;[-1.9,1.9].forEach(x=>[-1.15,1.15].forEach(z=>landing.add(mesh(new THREE.CylinderGeometry(.09,.12,1.2,8),materials.wood,[x,-.2,z]))))
@@ -282,6 +282,14 @@ export function createHillWorld(materials,quality='desktop'){
   const mist=createMist()
   const landing=createLanding(localMaterials,start)
   const lodge=createLodge(localMaterials,end)
+  const sun=new THREE.DirectionalLight('#f0ca88',2.6)
+  sun.name='hill-country-sun'
+  sun.position.set(-12,18,8)
+  sun.castShadow=quality==='desktop'
+  sun.userData.baseIntensity=sun.intensity
+  const fill=new THREE.HemisphereLight('#b9d0c0','#3d4936',1.15)
+  fill.name='hill-country-fill'
+  fill.userData.baseIntensity=fill.intensity
   world.add(
     createTerrain(quality),
     createRidges(quality),
@@ -291,6 +299,8 @@ export function createHillWorld(materials,quality='desktop'){
     createTrail(route),
     landing,
     lodge,
+    sun,
+    fill,
   )
   world.userData={
     route,

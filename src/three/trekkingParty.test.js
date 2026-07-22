@@ -79,4 +79,27 @@ describe('guide-led trekking party',()=>{
     })
     disposeObject3D(party)
   })
+
+  it('converts translated world coordinates back to hill-local space for pole contact',()=>{
+    const hill=new THREE.Group()
+    hill.position.set(18,4,-122)
+    const party=createTrekkingParty(createMaterials())
+    hill.add(party)
+    const heightAt=(x,z)=>x*.04-z*.015
+    updateTrekkingParty(party,route(),.65,2,false,heightAt)
+
+    party.userData.members.forEach(({pole})=>{
+      const localTip=hill.worldToLocal(pole.userData.tip.getWorldPosition(new THREE.Vector3()))
+      expect(localTip.y).toBeCloseTo(heightAt(localTip.x,localTip.z),5)
+    })
+    disposeObject3D(hill)
+  })
+
+  it('preserves the complete four-person formation at route progress zero',()=>{
+    const party=createTrekkingParty(createMaterials())
+    updateTrekkingParty(party,route(),0,2,false,()=>0)
+    const positions=party.userData.members.map(({root})=>root.position)
+    for(let index=1;index<positions.length;index++)expect(positions[index].distanceTo(positions[index-1])).toBeGreaterThan(.45)
+    disposeObject3D(party)
+  })
 })
