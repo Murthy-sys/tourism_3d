@@ -1,6 +1,6 @@
 import * as THREE from 'three'
 import {createAmbassador,updateAmbassador} from './ambassador'
-import {createExpeditionController} from './expeditionController'
+import {createExpeditionController,getExpeditionQASnapshot} from './expeditionController'
 import {clamp01,getJourneyState} from './journeyData'
 import {createMaterials,disposeObject3D,mesh} from './primitives'
 import {createIndiaRegions} from './regions'
@@ -12,9 +12,38 @@ const ATMOSPHERES={
 }
 
 export const getRenderQuality=width=>width<768?'mobile':'desktop'
-export const getMobileTrekCamera=([x,y,z])=>({camera:[x+3,y+2.2,z+8],target:[x,y+.9,z]})
+export const getRenderFov=quality=>quality==='mobile'?64:48
+export const getMobileHandoffTargetOffset=state=>state.phase==='jeep-to-boat'
+  ? Math.sin(Math.PI*clamp01(state.localProgress))
+  : 0
+export const getMobileTrekCamera=([x,y,z])=>({camera:[x+3,y+3.5,z+20],target:[x,y+.7,z+4]})
 export const usesMobileTrekCamera=phase=>phase==='hill-trek'||phase==='contact'
 export const getDampingFactor=delta=>1-Math.exp(-Math.max(0,delta)*4.5)
+export const getPartyScreenSnapshot=(party,camera,weight)=>{
+  camera.updateMatrixWorld(true)
+  return (party.userData.members||[]).map(({role,root})=>{
+    const clip=root.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0,1,0)).project(camera)
+    return{
+      name:root.name,
+      role,
+      visible:weight>.05&&Math.abs(clip.x)<=1&&Math.abs(clip.y)<=1&&clip.z>=-1&&clip.z<=1,
+      ndc:{x:clip.x,y:clip.y,z:clip.z},
+    }
+  })
+}
+export const getTransportScreenSnapshot=(transports,camera,weights)=>{
+  camera.updateMatrixWorld(true)
+  return Object.entries(transports).map(([name,transport])=>{
+    const bounds=new THREE.Box3().setFromObject(transport)
+    const center=bounds.isEmpty()?transport.getWorldPosition(new THREE.Vector3()):bounds.getCenter(new THREE.Vector3())
+    const clip=center.project(camera)
+    return{
+      name,
+      visible:(weights[name]||0)>.05&&Math.abs(clip.x)<=1&&Math.abs(clip.y)<=1&&clip.z>=-1&&clip.z<=1,
+      ndc:{x:clip.x,y:clip.y,z:clip.z},
+    }
+  })
+}
 export const getAtmosphereState=weights=>{
   const fogColor=new THREE.Color(0,0,0)
   const state={fogColor,fogNear:0,fogFar:0,exposure:0}
@@ -64,7 +93,7 @@ const setObjectWeight=(root,states,weight)=>{
 export function createIndiaJourney(canvas,{reducedMotion=false,onContextLost=()=>{}}={}){
   const quality=getRenderQuality(window.innerWidth)
   const scene=new THREE.Scene()
-  const camera=new THREE.PerspectiveCamera(48,1,.1,300)
+  const camera=new THREE.PerspectiveCamera(getRenderFov(quality),1,.1,300)
   const renderer=new THREE.WebGLRenderer({canvas,antialias:quality==='desktop',alpha:false,powerPreference:'high-performance'})
   renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,quality==='mobile'?1.25:2))
   renderer.outputColorSpace=THREE.SRGBColorSpace
@@ -105,6 +134,28 @@ export function createIndiaJourney(canvas,{reducedMotion=false,onContextLost=()=
   let paused=false
   let target=new THREE.Vector3()
   let lost=false
+  let latestTransition
+
+  const getQASnapshot=()=>{
+    const state=getJourneyState(progress)
+    const snapshot=getExpeditionQASnapshot(expedition)
+    const transportWeights={ambassador:latestTransition?.transports.ambassador||0,...snapshot.transportWeights}
+    const members=getPartyScreenSnapshot(expedition.transports.trekker,camera,transportWeights.trekker)
+    const transports=getTransportScreenSnapshot({ambassador,...expedition.transports},camera,transportWeights)
+    return{
+      ...snapshot,
+      progress,
+      phase:state.expedition.phase,
+      transportWeights,
+      members,
+      transports,
+      visibleMembers:{
+        guides:members.filter(member=>member.visible&&member.role==='guide').length,
+        tourists:members.filter(member=>member.visible&&member.role==='tourist').length,
+      },
+    }
+  }
+  window.__journeyQA=getQASnapshot
 
   const resize=()=>{
     const parent=canvas.parentElement
@@ -128,6 +179,7 @@ export function createIndiaJourney(canvas,{reducedMotion=false,onContextLost=()=
 
     updateAmbassador(ambassador,routeCurve,Math.min(progress,.41),elapsed,reducedMotion)
     const transition=expedition.update(state.expedition,elapsed,reducedMotion)
+    latestTransition=transition
     setObjectWeight(ambassador,ambassadorMaterials,transition.transports.ambassador)
     route.visible=transition.transports.ambassador>0
     journeyGround.visible=state.phase==='vehicle-intro'||state.phase==='operations'
@@ -135,6 +187,7 @@ export function createIndiaJourney(canvas,{reducedMotion=false,onContextLost=()=
     let desiredTarget=state.phase==='vehicle-intro'
       ? ambassador.position.clone().add(new THREE.Vector3(0,1,0))
       : new THREE.Vector3(...state.cameraTarget)
+    if(quality==='mobile')desiredTarget.x+=getMobileHandoffTargetOffset(state.expedition)
     if(quality==='mobile'&&usesMobileTrekCamera(state.expedition.phase)){
       const party=expedition.transports.trekker
       const guide=party.userData.members?.[0]?.root||party
@@ -175,12 +228,14 @@ export function createIndiaJourney(canvas,{reducedMotion=false,onContextLost=()=
     setProgress:value=>{progress=clamp01(value)},
     setPointer:(x,y)=>{pointer={x,y}},
     setReducedMotion:value=>{reducedMotion=value},
+    getQASnapshot,
     pause:()=>{paused=true;cancelAnimationFrame(raf)},
     resume:()=>{if(paused){paused=false;clock.getDelta();animate()}},
     dispose:()=>{
       cancelAnimationFrame(raf)
       ro.disconnect()
       canvas.removeEventListener('webglcontextlost',onLost)
+      if(window.__journeyQA===getQASnapshot)delete window.__journeyQA
       expedition.dispose()
       disposeObject3D(scene)
       renderer.dispose()

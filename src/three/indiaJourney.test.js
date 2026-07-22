@@ -3,12 +3,14 @@ import * as THREE from 'three'
 import {createExpeditionController} from './expeditionController'
 import {getExpeditionState,getJourneyState} from './journeyData'
 import {createMaterials,disposeObject3D} from './primitives'
-import {getAtmosphereState,getDampingFactor,getMobileTrekCamera,getRenderQuality,getWorldVisibility,usesMobileTrekCamera} from './indiaJourney'
+import {getAtmosphereState,getDampingFactor,getMobileHandoffTargetOffset,getMobileTrekCamera,getPartyScreenSnapshot,getRenderFov,getRenderQuality,getTransportScreenSnapshot,getWorldVisibility,usesMobileTrekCamera} from './indiaJourney'
 
 describe('renderer quality', () => {
   it('selects the simplified mobile scene at narrow widths', () => {
     expect(getRenderQuality(390)).toBe('mobile')
     expect(getRenderQuality(1440)).toBe('desktop')
+    expect(getRenderFov('mobile')).toBe(64)
+    expect(getRenderFov('desktop')).toBe(48)
   })
   it('isolates cinematic architecture from competing legacy regions',()=>{
     expect(getWorldVisibility('operations')).toEqual(['deccan','tourism-operations-pavilion'])
@@ -16,10 +18,62 @@ describe('renderer quality', () => {
     expect(getWorldVisibility('contact')).toEqual([])
   })
   it('frames the mobile trekker from a readable trailing distance',()=>{
-    expect(getMobileTrekCamera([2,1,-130])).toEqual({camera:[5,3.2,-122],target:[2,1.9,-130]})
+    expect(getMobileTrekCamera([2,1,-130])).toEqual({camera:[5,4.5,-110],target:[2,1.7,-126]})
     expect(usesMobileTrekCamera('hill-trek')).toBe(true)
     expect(usesMobileTrekCamera('contact')).toBe(true)
     expect(usesMobileTrekCamera('water-boat')).toBe(false)
+  })
+  it('reports the guide and at least two tourists inside the mobile party frame',()=>{
+    const scene=new THREE.Scene(),controller=createExpeditionController(scene,createMaterials(),'mobile')
+    const transition=controller.update(getExpeditionState(.82),2,false)
+    scene.updateMatrixWorld(true)
+    const guide=controller.transports.trekker.userData.members[0].root.getWorldPosition(new THREE.Vector3())
+    const framing=getMobileTrekCamera(guide.toArray())
+    const camera=new THREE.PerspectiveCamera(getRenderFov('mobile'),390/844,.1,300)
+    camera.position.set(...framing.camera)
+    camera.lookAt(new THREE.Vector3(...framing.target))
+    camera.updateMatrixWorld(true)
+
+    const members=getPartyScreenSnapshot(controller.transports.trekker,camera,transition.transports.trekker)
+    expect(members.filter(member=>member.visible&&member.role==='guide')).toHaveLength(1)
+    expect(members.filter(member=>member.visible&&member.role==='tourist').length).toBeGreaterThanOrEqual(2)
+    disposeObject3D(scene)
+  })
+  it('reports all four walkers inside the desktop party frame',()=>{
+    const scene=new THREE.Scene(),controller=createExpeditionController(scene,createMaterials(),'desktop')
+    const transition=controller.update(getExpeditionState(.82),2,false)
+    scene.updateMatrixWorld(true)
+    const framing=getJourneyState(.82)
+    const camera=new THREE.PerspectiveCamera(48,1440/900,.1,300)
+    camera.position.set(...framing.cameraPosition)
+    camera.lookAt(new THREE.Vector3(...framing.cameraTarget))
+    camera.updateMatrixWorld(true)
+
+    const members=getPartyScreenSnapshot(controller.transports.trekker,camera,transition.transports.trekker)
+    expect(members.filter(member=>member.visible)).toHaveLength(4)
+    disposeObject3D(scene)
+  })
+  it('keeps both sides of each mobile handoff inside the portrait frame',()=>{
+    const scene=new THREE.Scene(),controller=createExpeditionController(scene,createMaterials(),'mobile')
+    const camera=new THREE.PerspectiveCamera(getRenderFov('mobile'),390/844,.1,300)
+    const missing=[]
+    for(const [progress,names] of [[.595,['jeep','boat']],[.725,['boat','trekker']]]){
+      const transition=controller.update(getExpeditionState(progress),2,false)
+      scene.updateMatrixWorld(true)
+      const framing=getJourneyState(progress)
+      camera.position.set(...framing.cameraPosition)
+      const target=new THREE.Vector3(...framing.cameraTarget)
+      target.x+=getMobileHandoffTargetOffset(getExpeditionState(progress))
+      camera.lookAt(target)
+      camera.updateMatrixWorld(true)
+      const transports=getTransportScreenSnapshot(controller.transports,camera,transition.transports)
+      names.forEach(name=>{
+        const transport=transports.find(candidate=>candidate.name===name)
+        if(!transport?.visible)missing.push({progress,name,ndc:transport?.ndc})
+      })
+    }
+    expect(missing).toEqual([])
+    disposeObject3D(scene)
   })
   it('keeps mobile guide framing continuous into contact',()=>{
     const scene=new THREE.Scene(),controller=createExpeditionController(scene,createMaterials(),'mobile')

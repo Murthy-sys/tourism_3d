@@ -41,7 +41,7 @@ describe('India journey data', () => {
     expect(getJourneyState(.25).cameraTarget[2]).toBeCloseTo(-24,0)
     expect(getJourneyState(.48).cameraTarget[2]).toBeCloseTo(-53,0)
     expect(getJourneyState(.66).cameraTarget[2]).toBeCloseTo(-92.5,0)
-    expect(getJourneyState(.82).cameraTarget[2]).toBeCloseTo(-129.5,0)
+    expect(getJourneyState(.82).cameraTarget[2]).toBeCloseTo(-125.4,0)
   })
   it('moves through Ambassador, jeep, boat and trekking phases',()=>{
     expect([.1,.34,.43,.55,.64,.78,.9].map(p=>getExpeditionState(p).activeTransport)).toEqual(['ambassador','ambassador','jeep','jeep','boat','trekker','trekker'])
@@ -62,15 +62,18 @@ describe('India journey data', () => {
     expect(new THREE.Vector3(...getJourneyState(.725).cameraTarget).distanceTo(hillLanding)).toBeLessThan(.25)
     disposeObject3D(scene)
   })
-  it('targets the elevated hill trail and lodge with continuous desktop framing',()=>{
+  it('targets the guide-led hill party and lodge with continuous desktop framing',()=>{
     const scene=new THREE.Scene(),controller=createExpeditionController(scene,createMaterials(),'mobile')
     controller.update(getExpeditionState(.82),2,false)
     scene.updateMatrixWorld(true)
-    const guide=controller.transports.trekker.userData.members[0].root.getWorldPosition(new THREE.Vector3())
+    const partyCenter=controller.transports.trekker.userData.members
+      .map(member=>member.root.getWorldPosition(new THREE.Vector3()))
+      .reduce((sum,position)=>sum.add(position),new THREE.Vector3())
+      .multiplyScalar(1/controller.transports.trekker.userData.members.length)
     const hillTarget=new THREE.Vector3(...getJourneyState(.82).cameraTarget)
-    expect(Math.hypot(hillTarget.x-guide.x,hillTarget.z-guide.z)).toBeLessThan(2)
-    expect(hillTarget.y-guide.y).toBeGreaterThanOrEqual(.5)
-    expect(hillTarget.y-guide.y).toBeLessThan(3)
+    expect(Math.hypot(hillTarget.x-partyCenter.x,hillTarget.z-partyCenter.z)).toBeLessThan(.1)
+    expect(hillTarget.y-partyCenter.y).toBeGreaterThanOrEqual(.5)
+    expect(hillTarget.y-partyCenter.y).toBeLessThan(2)
 
     const lodge=controller.worlds.hills.getObjectByName('hill-lodge').getWorldPosition(new THREE.Vector3())
     const contactTarget=new THREE.Vector3(...getJourneyState(.92).cameraTarget)

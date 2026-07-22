@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 import {describe,expect,it,vi} from 'vitest'
 import {createMaterials,disposeObject3D} from './primitives'
-import {createExpeditionController,getTransitionState} from './expeditionController'
+import {createExpeditionController,getExpeditionQASnapshot,getTransitionState} from './expeditionController'
 import {getExpeditionState} from './journeyData'
 
 const sampleTransitions=()=>Array.from({length:201},(_,index)=>{
@@ -81,6 +81,26 @@ describe('continuous expedition transitions',()=>{
     expect(controller.transports.trekker.name).toBe('guide-led-trekking-party')
     expect(controller.transports.trekker.userData.members).toHaveLength(4)
     expect(controller.worlds.hills.name).toBe('hill-world')
+    disposeObject3D(scene)
+  })
+
+  it('reports browser QA counters, live blend weights and trail placement',()=>{
+    const scene=new THREE.Scene()
+    const controller=createExpeditionController(scene,createMaterials(),'mobile')
+    const transition=controller.update(getExpeditionState(.72),2,false)
+    const snapshot=getExpeditionQASnapshot(controller)
+
+    expect(snapshot.guides).toBe(1)
+    expect(snapshot.tourists).toBe(3)
+    expect(snapshot.iceObjects).toBe(0)
+    expect(snapshot.walkersOnTrail).toBe(4)
+    expect(snapshot.zoneWeights).toEqual(transition.worlds)
+    expect(snapshot.transportWeights).toEqual({
+      jeep:transition.transports.jeep,
+      boat:transition.transports.boat,
+      trekker:transition.transports.trekker,
+    })
+    expect(Object.values(snapshot.zoneWeights).filter(weight=>weight>.05)).toHaveLength(2)
     disposeObject3D(scene)
   })
 

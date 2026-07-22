@@ -119,6 +119,41 @@ const alignWorldAnchor=(world,anchor,target)=>{
   world.updateMatrixWorld(true)
 }
 
+const legacyIcePattern=/(^|[-_])(ice|snow|glacier)($|[-_])/i
+const distanceToLine=(point,start,end,minimum=0,maximum=1)=>{
+  const dx=end.x-start.x,dz=end.z-start.z,lengthSquared=dx*dx+dz*dz
+  const projected=lengthSquared?((point.x-start.x)*dx+(point.z-start.z)*dz)/lengthSquared:0
+  const t=Math.min(maximum,Math.max(minimum,projected))
+  return Math.hypot(point.x-(start.x+dx*t),point.z-(start.z+dz*t))
+}
+
+const distanceToRoute=(point,route)=>{
+  const samples=route.getSpacedPoints(160)
+  return Math.min(...samples.slice(1).map((end,index)=>distanceToLine(
+    point,
+    samples[index],
+    end,
+    index===0?Number.NEGATIVE_INFINITY:0,
+    index===samples.length-2?Number.POSITIVE_INFINITY:1,
+  )))
+}
+
+export function getExpeditionQASnapshot({worlds,transports}){
+  const members=transports.trekker.userData.members||[]
+  let iceObjects=0
+  ;[...Object.values(worlds),...Object.values(transports)].forEach(root=>root.traverse(object=>{
+    if(legacyIcePattern.test(object.name))iceObjects++
+  }))
+  return{
+    guides:members.filter(member=>member.role==='guide').length,
+    tourists:members.filter(member=>member.role==='tourist').length,
+    iceObjects,
+    walkersOnTrail:members.filter(member=>distanceToRoute(member.root.position,worlds.hills.userData.route)<.12).length,
+    zoneWeights:Object.fromEntries(Object.entries(worlds).map(([name,world])=>[name,world.userData.zoneWeight||0])),
+    transportWeights:Object.fromEntries(Object.entries(transports).map(([name,transport])=>[name,transport.userData.transitionWeight||0])),
+  }
+}
+
 export function createExpeditionController(scene,materials,quality){
   const forest=createJungleWorld(materials,quality)
   const water=createWaterWorld(materials,quality)
