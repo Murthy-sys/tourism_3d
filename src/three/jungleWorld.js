@@ -137,6 +137,7 @@ function createLanding(materials,route){
 }
 
 export function createJungleWorld(m,quality='desktop'){
+  const localMaterials=Object.fromEntries(['wood','leaf','leaf2','stone','water','sand','dark'].map(key=>[key,m[key].clone()]))
   const world=nameGroup('jungle-world')
   const ground=new THREE.MeshStandardMaterial({color:'#182b1c',roughness:.95})
   const materials={
@@ -152,7 +153,7 @@ export function createJungleWorld(m,quality='desktop'){
     wetStone:new THREE.MeshPhysicalMaterial({color:'#45524c',roughness:.28,clearcoat:.75}),
     landingWood:new THREE.MeshStandardMaterial({color:'#5a3d29',roughness:.84}),
   }
-  const foliage=[m.leaf,m.leaf2,materials.fern,materials.broad,materials.moss,materials.grass]
+  const foliage=[localMaterials.leaf,localMaterials.leaf2,materials.fern,materials.broad,materials.moss,materials.grass]
   world.add(mesh(new THREE.PlaneGeometry(44,46,14,14),ground,[0,-.18,0],[-Math.PI/2,0,0]))
 
   const points=[]
@@ -163,25 +164,25 @@ export function createJungleWorld(m,quality='desktop'){
   const foreground=nameGroup('jungle-foreground'),mid=nameGroup('jungle-midground'),back=nameGroup('jungle-background')
   const treeTarget=quality==='mobile'?34:58,treePositions=[]
   for(let i=0;i<treeTarget;i++){
-    const position=forestPosition(i,routePoints,3.15,true),scale=.68+hash(i,4)*.55,tree=jungleTree(m,foliage,i,position,scale)
+    const position=forestPosition(i,routePoints,3.15,true),scale=.68+hash(i,4)*.55,tree=jungleTree(localMaterials,foliage,i,position,scale)
     ;(position.z>7?foreground:position.z>-8?mid:back).add(tree);treePositions.push(position)
   }
   world.add(foreground,mid,back)
 
   const undergrowth=nameGroup('jungle-undergrowth');addUndergrowth(undergrowth,materials,routePoints,quality);world.add(undergrowth)
   const vines=nameGroup('jungle-vines');addVines(vines,materials,treePositions,quality);world.add(vines)
-  const timber=nameGroup('jungle-fallen-timber');addFallenTimber(timber,{...materials,wood:m.wood},routePoints,quality);world.add(timber)
+  const timber=nameGroup('jungle-fallen-timber');addFallenTimber(timber,{...materials,wood:localMaterials.wood},routePoints,quality);world.add(timber)
 
   const rocks=nameGroup('jungle-rocks')
-  for(let i=0;i<(quality==='mobile'?8:18);i++){const position=forestPosition(i+1700,routePoints,2.2);rocks.add(mesh(new THREE.DodecahedronGeometry(.25+(i%4)*.13,1),m.stone,[position.x,.12,position.z],[i*.2,0,i*.1]))}
+  for(let i=0;i<(quality==='mobile'?8:18);i++){const position=forestPosition(i+1700,routePoints,2.2);rocks.add(mesh(new THREE.DodecahedronGeometry(.25+(i%4)*.13,1),localMaterials.stone,[position.x,.12,position.z],[i*.2,0,i*.1]))}
   world.add(rocks)
-  const puddles=nameGroup('jungle-puddles');[-8,0,7].forEach((z,i)=>puddles.add(mesh(new THREE.CircleGeometry(.6+i*.2,24),m.water,[i%2?1.4:-1.2,.04,z],[-Math.PI/2,0,0])));world.add(puddles)
+  const puddles=nameGroup('jungle-puddles');[-8,0,7].forEach((z,i)=>puddles.add(mesh(new THREE.CircleGeometry(.6+i*.2,24),localMaterials.water,[i%2?1.4:-1.2,.04,z],[-Math.PI/2,0,0])));world.add(puddles)
   const mist=nameGroup('jungle-mist'),mistMat=new THREE.MeshBasicMaterial({color:'#b4cdb6',transparent:true,opacity:.09,depthWrite:false})
   for(let i=0;i<(quality==='mobile'?3:7);i++)mist.add(mesh(new THREE.PlaneGeometry(14,4),mistMat,[(i%3-1)*7,2,-15+i*5]))
   world.add(mist)
 
-  const endpoint=route.getPoint(1),marsh=createMarshEdge(materials,endpoint,quality),landing=createLanding({...materials,wood:m.wood},route);world.add(marsh,landing)
-  const outpost=nameGroup('ranger-outpost');outpost.position.set(-7,0,-13);outpost.add(mesh(new THREE.BoxGeometry(5,.5,3.5),m.wood,[0,.25,0]),mesh(new THREE.BoxGeometry(4,2.4,2.7),m.sand,[0,1.7,0]),mesh(new THREE.ConeGeometry(3.5,1.5,4),m.leaf,[0,3.55,0],[0,Math.PI/4,0]),mesh(new THREE.BoxGeometry(2.4,1.15,.08),m.dark,[0,1.9,1.39]));world.add(outpost)
+  const endpoint=route.getPoint(1),marsh=createMarshEdge(materials,endpoint,quality),landing=createLanding({...materials,wood:localMaterials.wood},route);world.add(marsh,landing)
+  const outpost=nameGroup('ranger-outpost');outpost.position.set(-7,0,-13);outpost.add(mesh(new THREE.BoxGeometry(5,.5,3.5),localMaterials.wood,[0,.25,0]),mesh(new THREE.BoxGeometry(4,2.4,2.7),localMaterials.sand,[0,1.7,0]),mesh(new THREE.ConeGeometry(3.5,1.5,4),localMaterials.leaf,[0,3.55,0],[0,Math.PI/4,0]),mesh(new THREE.BoxGeometry(2.4,1.15,.08),localMaterials.dark,[0,1.9,1.39]));world.add(outpost)
   const light=new THREE.SpotLight('#ffd98a',34,35,.5,.75);light.position.set(-8,16,7);light.target.position.set(0,0,-8);world.add(light,light.target)
   world.userData={route,landing,copyAnchor:new THREE.Vector3(-7,3,-13)}
   return world

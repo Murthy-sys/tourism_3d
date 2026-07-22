@@ -1,10 +1,16 @@
 import { describe,expect,it } from 'vitest'
 import { createJungleWorld } from './jungleWorld'
+import { createExpeditionJeep } from './expeditionVehicles'
 import { createMaterials,disposeObject3D } from './primitives'
 
 const treeCount=world=>['jungle-foreground','jungle-midground','jungle-background']
   .reduce((count,name)=>count+world.getObjectByName(name).children.length,0)
 const meshCount=object=>{let count=0;object.traverse(child=>{if(child.isMesh)count++});return count}
+const materialSet=root=>{
+  const materials=new Set()
+  root.traverse(object=>(Array.isArray(object.material)?object.material:[object.material]).filter(Boolean).forEach(material=>materials.add(material)))
+  return materials
+}
 
 describe('jungle world',()=>{
   it('contains dense layered vegetation, timber, marsh edge and landing',()=>{
@@ -28,5 +34,23 @@ describe('jungle world',()=>{
     expect(world.userData.landing).toBe(world.getObjectByName('forest-landing'))
     expect(world.userData.landing.position.distanceTo(endpoint)).toBeLessThanOrEqual(6)
     disposeObject3D(world)
+  })
+
+  it('owns materials independently of the shared palette, other jungles and transports',()=>{
+    const materials=createMaterials()
+    const first=createJungleWorld(materials,'mobile')
+    const second=createJungleWorld(materials,'mobile')
+    const jeep=createExpeditionJeep(materials)
+    const shared=new Set(Object.values(materials))
+    const firstMaterials=materialSet(first)
+    const secondMaterials=materialSet(second)
+    const jeepMaterials=materialSet(jeep)
+    expect([...firstMaterials].every(material=>!shared.has(material))).toBe(true)
+    expect([...secondMaterials].every(material=>!shared.has(material))).toBe(true)
+    expect([...firstMaterials].every(material=>!secondMaterials.has(material))).toBe(true)
+    expect([...firstMaterials].every(material=>!jeepMaterials.has(material))).toBe(true)
+    disposeObject3D(first)
+    disposeObject3D(second)
+    disposeObject3D(jeep)
   })
 })
