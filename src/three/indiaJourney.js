@@ -6,10 +6,21 @@ import { createMaterials,disposeObject3D } from './primitives'
 export const getRenderQuality=width=>width<768?'mobile':'desktop'
 export const getWorldVisibility=()=>[]
 export const getDampingFactor=delta=>1-Math.exp(-Math.max(0,delta)*4.5)
+export const getCameraDampingFactor=delta=>getDampingFactor(Math.min(Math.max(delta,0),.5))
+const distance3=(a,b)=>Math.hypot(...a.map((value,index)=>value-b[index]))
+export const getCameraRailJump=(progress,step=.001)=>{
+  const from=getJourneyState(clamp01(progress))
+  const nextProgress=progress+step<=1?progress+step:progress-step
+  const to=getJourneyState(clamp01(nextProgress))
+  return rounded(Math.max(
+    distance3(from.cameraPosition,to.cameraPosition),
+    distance3(from.cameraTarget,to.cameraTarget),
+  ))
+}
 
 const rounded=value=>Number(value.toFixed(6))
 const MOBILE_FRAMING={
-  trekker:{camera:[3,2.2,8],targetY:.9},
+  trekker:{camera:[7,12,15],targetY:-.2},
   boat:{camera:[4,2.8,9],targetY:.8},
   jeep:{camera:[4,3.2,9],targetY:1},
 }
@@ -86,10 +97,101 @@ export const getAtmosphere=weights=>({
   directionalColor:weightedColor(weights,'directionalColor'),
 })
 
+const nextBiomeForPhase=phase=>{
+  if(phase==='mountain-trek'||phase==='trek-to-boat') return'water'
+  if(phase==='water-boat'||phase==='boat-to-jeep') return'forest'
+  return null
+}
+
+export const getJourneyQASnapshot=({
+  state,
+  transition,
+  worlds,
+  trekker,
+  cameraJump,
+  consoleFailures=[],
+  audioControls=0,
+})=>{
+  const members=trekker?.userData?.members?.filter(member=>member.visible!==false)||[]
+  const nextBiomeName=nextBiomeForPhase(state?.expedition?.phase)
+  const visibility=Object.fromEntries(
+    Object.entries(worlds).map(([name,world])=>[name,world.visible!==false]),
+  )
+  return{
+    phase:state.expedition.phase,
+    biomeWeights:{...transition.worlds},
+    transportWeights:{...transition.transports},
+    visibleMembers:{
+      guides:members.filter(member=>(member.role||member.userData?.role)==='guide').length,
+      tourists:members.filter(member=>(member.role||member.userData?.role)==='tourist').length,
+    },
+    distantVisibility:{
+      nextBiome:nextBiomeName?visibility[nextBiomeName]===true:true,
+      nextBiomeName,
+      ...visibility,
+    },
+    cameraJump:rounded(cameraJump),
+    consoleFailures:[...consoleFailures],
+    audioControls,
+  }
+}
+
+const getProjectedVisualDebug=(scene,camera,cameraTarget,desiredCamera,desiredTarget)=>{
+  scene.updateMatrixWorld(true)
+  camera.updateMatrixWorld(true)
+  const candidates=[]
+  const corner=new THREE.Vector3()
+  scene.traverse(object=>{
+    if(
+      object.visible===false||
+      !object.name||
+      !/^(jungle-tree-|crown-silhouette-|mist-veil|jungle-mist|jungle-sun-shafts|hill-mist-pocket)/.test(object.name)
+    ) return
+    const bounds=new THREE.Box3().setFromObject(object)
+    if(bounds.isEmpty()) return
+    const minimum=new THREE.Vector2(Infinity,Infinity)
+    const maximum=new THREE.Vector2(-Infinity,-Infinity)
+    for(const x of [bounds.min.x,bounds.max.x]){
+      for(const y of [bounds.min.y,bounds.max.y]){
+        for(const z of [bounds.min.z,bounds.max.z]){
+          corner.set(x,y,z).project(camera)
+          if(!Number.isFinite(corner.x)||!Number.isFinite(corner.y)) continue
+          minimum.min(corner)
+          maximum.max(corner)
+        }
+      }
+    }
+    const left=THREE.MathUtils.clamp((minimum.x+1)/2,0,1)
+    const right=THREE.MathUtils.clamp((maximum.x+1)/2,0,1)
+    const top=THREE.MathUtils.clamp((1-maximum.y)/2,0,1)
+    const bottom=THREE.MathUtils.clamp((1-minimum.y)/2,0,1)
+    const center=bounds.getCenter(new THREE.Vector3())
+    candidates.push({
+      name:object.name,
+      coverage:rounded(Math.max(0,right-left)*Math.max(0,bottom-top)),
+      distance:rounded(center.distanceTo(camera.position)),
+      containsCamera:bounds.containsPoint(camera.position),
+      center:center.toArray().map(rounded),
+    })
+  })
+  candidates.sort((a,b)=>
+    Number(b.containsCamera)-Number(a.containsCamera)||
+    b.coverage-a.coverage||
+    a.distance-b.distance
+  )
+  return{
+    camera:camera.position.toArray().map(rounded),
+    cameraTarget:cameraTarget.toArray().map(rounded),
+    desiredCamera:desiredCamera.toArray().map(rounded),
+    desiredTarget:desiredTarget.toArray().map(rounded),
+    topObjects:candidates.slice(0,16),
+  }
+}
+
 export function createIndiaJourney(canvas,{reducedMotion=false,onContextLost=()=>{}}={}){
   const quality=getRenderQuality(window.innerWidth)
   const scene=new THREE.Scene()
-  const camera=new THREE.PerspectiveCamera(48,1,.1,420)
+  const camera=new THREE.PerspectiveCamera(quality==='mobile'?60:48,1,.1,420)
   const renderer=new THREE.WebGLRenderer({
     canvas,
     antialias:quality==='desktop',
@@ -143,6 +245,8 @@ export function createIndiaJourney(canvas,{reducedMotion=false,onContextLost=()=
   const atmosphereColor=new THREE.Color()
   const directionalColor=new THREE.Color()
   let progress=0
+  let latestState=initialState
+  let latestTransition=initialTransition
   let pointer={x:0,y:0}
   let frame
   let paused=false
@@ -151,11 +255,11 @@ export function createIndiaJourney(canvas,{reducedMotion=false,onContextLost=()=
 
   const animate=()=>{
     if(paused||lost||disposed) return
-    const delta=Math.min(clock.getDelta(),.1)
+    const delta=clock.getDelta()
     const elapsed=clock.elapsedTime
     const state=getJourneyState(progress)
     const transition=expedition.update(state.expedition,elapsed,reducedMotion)
-    const damping=getDampingFactor(delta)
+    const damping=getCameraDampingFactor(delta)
     desiredCamera.set(...state.cameraPosition)
     desiredTarget.set(...state.cameraTarget)
 
@@ -180,6 +284,8 @@ export function createIndiaJourney(canvas,{reducedMotion=false,onContextLost=()=
     camera.position.lerp(desiredCamera,damping)
     cameraTarget.lerp(desiredTarget,damping)
     camera.lookAt(cameraTarget)
+    latestState=state
+    latestTransition=transition
 
     const atmosphere=getAtmosphere(transition.worlds)
     atmosphereColor.copy(atmosphere.background)
@@ -217,6 +323,24 @@ export function createIndiaJourney(canvas,{reducedMotion=false,onContextLost=()=
     setProgress:value=>{progress=clamp01(value)},
     setPointer:(x,y)=>{pointer={x,y}},
     setReducedMotion:value=>{reducedMotion=value},
+    getQASnapshot:extras=>({
+      ...getJourneyQASnapshot({
+        state:latestState,
+        transition:latestTransition,
+        worlds:expedition.worlds,
+        trekker:expedition.transports.trekker,
+        cameraJump:getCameraRailJump(progress),
+        ...extras,
+      }),
+      visualDebug:getProjectedVisualDebug(
+        scene,
+        camera,
+        cameraTarget,
+        desiredCamera,
+        desiredTarget,
+      ),
+    }),
+    resetQAMetrics:()=>{},
     pause:()=>{
       paused=true
       cancelAnimationFrame(frame)

@@ -94,9 +94,9 @@ const createBlendState=root=>{
       if(materials.has(material)) return
       materials.set(material,{
         opacity:material.opacity,
+        transparent:material.transparent,
         depthWrite:material.depthWrite,
       })
-      material.transparent=true
     })
     if(object.isLight) lights.set(object,object.intensity)
     if(object.isMesh) shadows.set(object,object.castShadow)
@@ -107,7 +107,6 @@ const createBlendState=root=>{
 const resetBlendState=({materials,lights,shadows})=>{
   materials.forEach((base,material)=>{
     material.opacity=base.opacity
-    material.depthWrite=base.depthWrite
   })
   lights.forEach((intensity,light)=>{light.intensity=intensity})
   shadows.forEach((castShadow,object)=>{object.castShadow=castShadow})
@@ -115,7 +114,12 @@ const resetBlendState=({materials,lights,shadows})=>{
 
 const applyBlendWeight=(blendState,weight)=>{
   blendState.materials.forEach((base,material)=>{
-    material.opacity*=weight
+    const transparent=base.transparent||weight<.999
+    material.opacity=base.opacity*weight
+    if(material.transparent!==transparent){
+      material.transparent=transparent
+      material.needsUpdate=true
+    }
     material.depthWrite=base.depthWrite&&weight>.999
   })
   blendState.lights.forEach((intensity,light)=>{light.intensity=intensity*weight})
@@ -178,7 +182,7 @@ export function createExpeditionController(scene,materials,quality){
     x>=mountainDeckSurface.min.x&&x<=mountainDeckSurface.max.x&&
     z>=mountainDeckSurface.min.z&&z<=mountainDeckSurface.max.z
       ?mountainDeckSurface.max.y
-      :point.y
+      :mountain.userData.heightAt(x,z)
 
   updateBoat(boat,water.userData.route,0,0,true)
   transportRoot.updateMatrixWorld(true)

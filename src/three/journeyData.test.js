@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { JOURNEY_STOPS, clamp01, getExpeditionState, getJourneyState } from './journeyData'
-import { LANDMARKS } from './terrain'
+import { LANDMARKS,sampleMountainHeight } from './terrain'
 
 describe('India journey data', () => {
   it('runs south to north through every approved tourism stop', () => {
@@ -73,6 +73,33 @@ describe('India journey data', () => {
       const {cameraPosition,cameraTarget}=getJourneyState(progress)
       const distance=Math.hypot(...cameraPosition.map((value,index)=>value-cameraTarget[index]))
       expect(distance).toBeLessThan(15)
+    })
+  })
+
+  it('keeps the mountain opening far enough back to frame the whole party',()=>{
+    const {cameraPosition,cameraTarget}=getJourneyState(.08)
+    const distance=Math.hypot(...cameraPosition.map((value,index)=>value-cameraTarget[index]))
+    expect(distance).toBeGreaterThan(12)
+    expect(distance).toBeLessThan(16)
+    expect(cameraPosition[2]).toBeLessThanOrEqual(4.5)
+    expect(cameraTarget[2]).toBeLessThanOrEqual(-3)
+    expect(cameraPosition[1]-sampleMountainHeight(cameraPosition[0],cameraPosition[2]))
+      .toBeGreaterThan(4)
+  })
+
+  it('keeps the forest camera inside the protected route corridor',()=>{
+    const {cameraPosition,cameraTarget}=getJourneyState(.84)
+    expect(Math.abs(cameraPosition[0]-cameraTarget[0])).toBeLessThanOrEqual(2)
+    expect(Math.hypot(...cameraPosition.map((value,index)=>value-cameraTarget[index])))
+      .toBeLessThan(9)
+  })
+
+  it('keeps the landing camera behind the full trekking party during the water reveal',()=>{
+    ;[.26,.35].forEach(progress=>{
+      const {cameraPosition,cameraTarget}=getJourneyState(progress)
+      expect(cameraPosition[2]-cameraTarget[2]).toBeGreaterThan(11)
+      expect(Math.hypot(...cameraPosition.map((value,index)=>value-cameraTarget[index])))
+        .toBeGreaterThan(14)
     })
   })
 })

@@ -20,6 +20,19 @@ const rowWidth=(water,row)=>{
     .distanceTo(new THREE.Vector3().fromBufferAttribute(position,offset+columns-1))
 }
 
+const maximumBankWidth=bank=>{
+  const positions=bank.geometry.getAttribute('position')
+  let maximum=0
+  for(let index=0;index<positions.count;index+=2){
+    maximum=Math.max(
+      maximum,
+      new THREE.Vector3().fromBufferAttribute(positions,index)
+        .distanceTo(new THREE.Vector3().fromBufferAttribute(positions,index+1)),
+    )
+  }
+  return maximum
+}
+
 describe('water world',()=>{
   it('contains water, shoreline, jetty, rocks and reeds',()=>{
     const world=createWaterWorld(createMaterials(),'desktop')
@@ -46,6 +59,24 @@ describe('water world',()=>{
     const water=createWaterWorld(createMaterials(),'desktop')
     expect(averageNormalY(water.getObjectByName('left-river-bank'))).toBeGreaterThan(.5)
     expect(averageNormalY(water.getObjectByName('right-river-bank'))).toBeGreaterThan(.5)
+    disposeObject3D(water)
+  })
+
+  it('keeps both bank ribbons narrow enough to avoid folding across bends',()=>{
+    const water=createWaterWorld(createMaterials(),'desktop')
+    expect(maximumBankWidth(water.getObjectByName('left-river-bank'))).toBeLessThan(4.2)
+    expect(maximumBankWidth(water.getObjectByName('right-river-bank'))).toBeLessThan(4.2)
+    disposeObject3D(water)
+  })
+
+  it('builds a layered distant forest without oversized repeated crowns',()=>{
+    const water=createWaterWorld(createMaterials(),'desktop')
+    const forest=water.getObjectByName('distant-forest-silhouette')
+    const sizes=[]
+    forest.children.forEach(band=>band.children.forEach(crown=>{
+      sizes.push(new THREE.Box3().setFromObject(crown).getSize(new THREE.Vector3()))
+    }))
+    expect(Math.max(...sizes.map(size=>Math.max(size.x,size.y,size.z)))).toBeLessThan(3.8)
     disposeObject3D(water)
   })
 
@@ -81,8 +112,38 @@ describe('water world',()=>{
     const surface=water.getObjectByName('reflective-water')
     const rows=surface.geometry.userData.routeSegments||76
     const start=rowWidth(surface,0),middle=rowWidth(surface,Math.floor(rows/2)),end=rowWidth(surface,rows)
+    expect(start).toBeLessThan(11)
     expect(end).toBeLessThan(start)
     expect(end).toBeLessThan(middle)
+    disposeObject3D(water)
+  })
+
+  it('builds shallows directly from the route edge without offset-curve overshoot',()=>{
+    const water=createWaterWorld(createMaterials(),'desktop')
+    expect(water.getObjectByName('left-water-shallows').geometry.userData.edgeRibbon).toBe(true)
+    expect(water.getObjectByName('right-water-shallows').geometry.userData.edgeRibbon).toBe(true)
+    disposeObject3D(water)
+  })
+
+  it('backs the full curved corridor with continuous ground and rooted distant trees',()=>{
+    const water=createWaterWorld(createMaterials(),'desktop')
+    water.updateMatrixWorld(true)
+    const basin=water.getObjectByName('water-basin-ground')
+    const basinBounds=new THREE.Box3().setFromObject(basin)
+    const bankBounds=new THREE.Box3()
+      .expandByObject(water.getObjectByName('left-river-bank'))
+      .expandByObject(water.getObjectByName('right-river-bank'))
+    expect(basin.geometry.userData.continuousBasin).toBe(true)
+    expect(basinBounds.min.x).toBeLessThan(bankBounds.min.x-4)
+    expect(basinBounds.max.x).toBeGreaterThan(bankBounds.max.x+4)
+    expect(basinBounds.min.z).toBeLessThan(bankBounds.min.z-4)
+    expect(basinBounds.max.z).toBeGreaterThan(bankBounds.max.z+4)
+    const trunks=[]
+    water.getObjectByName('distant-forest-silhouette').traverse(object=>{
+      if(object.name==='distant-forest-trunk') trunks.push(object)
+    })
+    expect(trunks.length).toBeGreaterThanOrEqual(30)
+    expect(water.getObjectByName('forest-sightline-ground')).toBeTruthy()
     disposeObject3D(water)
   })
 

@@ -21,18 +21,19 @@ export const clamp01 = (value) => Math.min(1, Math.max(0, Number.isFinite(value)
 const lerp = (a, b, t) => a + (b - a) * t
 const lerp3 = (a, b, t) => a.map((value, index) => lerp(value, b[index], t))
 const CINEMATIC_KEYFRAMES=[
-  {p:0,camera:[5,7,20],target:[0,5.9,12]},
-  {p:.18,camera:[8,5.5,-14],target:[0,2,-24]},
-  {p:.28,camera:[9,4.8,-25],target:[2,1,-34]},
-  {p:.35,camera:[7,4.2,-27],target:[2,1,-34]},
+  {p:0,camera:[5,15,18],target:[0,3,8]},
+  {p:.08,camera:[4.2,13,4],target:[0,4,-3.5]},
+  {p:.18,camera:[4.5,9.8,-10],target:[0,3,-20]},
+  {p:.28,camera:[8,7,-18],target:[2,1,-31.5]},
+  {p:.35,camera:[7,6,-19],target:[2,1,-33]},
   {p:.42,camera:[-4,4,-27],target:[2,1,-34]},
   {p:.52,camera:[8,3,-51],target:[0,1,-59]},
   {p:.60,camera:[-8,4,-78],target:[-2,1,-86]},
   {p:.67,camera:[5,3.5,-78],target:[-2,1,-86]},
   {p:.74,camera:[7,4,-82],target:[-2,1,-86]},
-  {p:.84,camera:[8,4,-105],target:[0,1,-114]},
-  {p:.94,camera:[8,5,-124],target:[1,1,-132]},
-  {p:1,camera:[8,5,-124],target:[1,1,-132]},
+  {p:.84,camera:[0,3.6,-100.5],target:[.15,1.15,-108]},
+  {p:.94,camera:[1,3.8,-122],target:[1,.95,-130]},
+  {p:1,camera:[1,3.8,-122],target:[1,.95,-130]},
 ]
 const cinematicState=value=>{
   const found=CINEMATIC_KEYFRAMES.findIndex(keyframe=>value<=keyframe.p)

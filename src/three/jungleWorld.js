@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import { mesh } from './primitives'
 import { LANDMARKS } from './terrain'
+import { getJourneyState } from './journeyData'
 
 const ROUTE_CLEARANCE=1.4
 const nameGroup=name=>{const group=new THREE.Group();group.name=name;return group}
@@ -22,6 +23,13 @@ const distanceToRoute=(route,x,z)=>{
   return closest
 }
 
+const distanceToSegmentXZ=(x,z,start,end)=>{
+  const dx=end.x-start.x,dz=end.z-start.z
+  const lengthSquared=dx*dx+dz*dz
+  const t=THREE.MathUtils.clamp(((x-start.x)*dx+(z-start.z)*dz)/(lengthSquared||1),0,1)
+  return Math.hypot(x-(start.x+dx*t),z-(start.z+dz*t))
+}
+
 const obstacleFootprint=object=>{
   const bounds=new THREE.Box3().setFromObject(object)
   const center=bounds.getCenter(new THREE.Vector3())
@@ -34,7 +42,7 @@ const obstacleClearance=(route,object)=>{
   return distanceToRoute(route,center.x,center.z)-radius
 }
 
-const offsetFromRoute=(route,index,salt,minDistance,maxDistance,radius=0)=>{
+const offsetFromRoute=(route,index,salt,minDistance,maxDistance,radius=0,sightlines=[])=>{
   const progress=.015+hashed(index,salt)*.97
   const point=route.getPointAt(progress)
   const tangent=route.getTangentAt(progress).normalize()
@@ -47,14 +55,31 @@ const offsetFromRoute=(route,index,salt,minDistance,maxDistance,radius=0)=>{
     x=point.x-tangent.z*side*distance+tangent.x*along
     z=point.z+tangent.x*side*distance+tangent.z*along
     distance+=.35
-  }while(distanceToRoute(route,x,z)-radius<ROUTE_CLEARANCE)
+  }while(
+    distanceToRoute(route,x,z)-radius<ROUTE_CLEARANCE||
+    sightlines.some(({start,end,clearance})=>
+      distanceToSegmentXZ(x,z,start,end)-radius<clearance
+    )||
+    sightlines.some(({start,cameraClearance=clearance})=>
+      Math.hypot(x-start.x,z-start.z)-radius<cameraClearance
+    )
+  )
   return new THREE.Vector3(x,0,z)
 }
 
 const createForestMaterials=m=>({
   trunk:new THREE.MeshStandardMaterial({color:'#302218',roughness:1}),
+  trunkAlt:new THREE.MeshStandardMaterial({color:'#473025',roughness:.96}),
   bark:new THREE.MeshStandardMaterial({color:'#4a3022',roughness:.98}),
-  leaf:[m.leaf,m.leaf2,new THREE.MeshStandardMaterial({color:'#173e29',roughness:.95}),new THREE.MeshStandardMaterial({color:'#2c5c32',roughness:.94})],
+  barkAlt:new THREE.MeshStandardMaterial({color:'#5a4030',roughness:.94}),
+  leaf:[
+    m.leaf,
+    m.leaf2,
+    new THREE.MeshStandardMaterial({color:'#173e29',roughness:.9}),
+    new THREE.MeshStandardMaterial({color:'#2c5c32',roughness:.88}),
+    new THREE.MeshStandardMaterial({color:'#416b38',roughness:.9}),
+    new THREE.MeshStandardMaterial({color:'#235044',roughness:.87}),
+  ],
   fern:new THREE.MeshStandardMaterial({color:'#3c7644',roughness:.94,side:THREE.DoubleSide}),
   grass:new THREE.MeshStandardMaterial({color:'#6b8547',roughness:.96,side:THREE.DoubleSide}),
   damp:new THREE.MeshStandardMaterial({color:'#271f18',roughness:.88}),
@@ -71,20 +96,20 @@ const createCrown=(materials,variant,scale)=>{
   const leaf=materials.leaf[variant%materials.leaf.length]
   const add=(geometry,position,size=[1,1,1])=>crown.add(scaledMesh(geometry,leaf,position,size))
   if(variant===0){
-    add(new THREE.IcosahedronGeometry(1,1),[0,0,0],[1.5*scale,1.05*scale,1.4*scale])
+    add(new THREE.IcosahedronGeometry(1,2),[0,0,0],[1.5*scale,1.05*scale,1.4*scale])
   }else if(variant===1){
-    add(new THREE.SphereGeometry(1,10,7),[0,0,0],[1.75*scale,.72*scale,1.35*scale])
-    add(new THREE.SphereGeometry(1,9,6),[.55*scale,.25*scale,0],[.9*scale,.65*scale,.9*scale])
+    add(new THREE.SphereGeometry(1,16,10),[0,0,0],[1.75*scale,.72*scale,1.35*scale])
+    add(new THREE.SphereGeometry(1,14,9),[.55*scale,.25*scale,0],[.9*scale,.65*scale,.9*scale])
   }else if(variant===2){
     add(new THREE.ConeGeometry(1.35*scale,2.2*scale,8),[0,.15*scale,0])
     add(new THREE.ConeGeometry(1.05*scale,1.7*scale,8),[0,1.05*scale,0])
   }else if(variant===3){
-    ;[[-.65,0,0],[.5,.2,.2],[0,.48,-.45]].forEach(([x,y,z],part)=>add(new THREE.DodecahedronGeometry((part?1:1.15)*scale,0),[x*scale,y*scale,z*scale]))
+    ;[[-.65,0,0],[.5,.2,.2],[0,.48,-.45]].forEach(([x,y,z],part)=>add(new THREE.DodecahedronGeometry((part?1:1.15)*scale,1),[x*scale,y*scale,z*scale]))
   }else if(variant===4){
-    add(new THREE.SphereGeometry(1,10,6),[0,.1*scale,0],[1.9*scale,.55*scale,1.55*scale])
-    add(new THREE.ConeGeometry(.75*scale,1.25*scale,7),[-.45*scale,-.35*scale,.2*scale])
+    add(new THREE.SphereGeometry(1,16,10),[0,.1*scale,0],[1.9*scale,.55*scale,1.55*scale])
+    add(new THREE.ConeGeometry(.75*scale,1.25*scale,10),[-.45*scale,-.35*scale,.2*scale])
   }else{
-    add(new THREE.ConeGeometry(1.45*scale,2.5*scale,6),[0,.2*scale,0])
+    add(new THREE.ConeGeometry(1.45*scale,2.5*scale,10),[0,.2*scale,0])
     add(new THREE.IcosahedronGeometry(.72*scale,1),[.65*scale,.45*scale,-.25*scale])
     add(new THREE.IcosahedronGeometry(.6*scale,1),[-.65*scale,.25*scale,.25*scale])
   }
@@ -93,13 +118,17 @@ const createCrown=(materials,variant,scale)=>{
 
 const createJungleTree=(materials,index,scale)=>{
   const tree=nameGroup(`jungle-tree-${index}`)
-  const trunk=mesh(new THREE.CylinderGeometry(.16*scale,.34*scale,3.9*scale,7),materials.trunk,[0,1.95*scale,0])
+  const trunk=mesh(
+    new THREE.CylinderGeometry(.16*scale,.34*scale,3.9*scale,9),
+    index%3?materials.trunk:materials.trunkAlt,
+    [0,1.95*scale,0],
+  )
   trunk.name='tree-trunk'
   tree.add(trunk)
   ;[-1,1].forEach((side,branch)=>{
     const fork=mesh(
       new THREE.CylinderGeometry(.055*scale,.11*scale,1.55*scale,6),
-      materials.bark,
+      (index+branch)%2?materials.bark:materials.barkAlt,
       [side*.34*scale,3.15*scale,(branch?-.08:.1)*scale],
       [0,side*.45,side*.72],
     )
@@ -240,6 +269,22 @@ export function createJungleWorld(m,quality='desktop'){
     new THREE.Vector3(...LANDMARKS.forestEnd),
   ]
   const route=new THREE.CatmullRomCurve3(routePoints)
+  const forestState=getJourneyState(.84)
+  const jeepSightlineEnd=route.getPointAt(.5)
+  const sightlines=[
+    {
+      start:new THREE.Vector3(...forestState.cameraPosition),
+      end:jeepSightlineEnd,
+      clearance:1.1,
+      cameraClearance:8.2,
+    },
+    {
+      start:jeepSightlineEnd.clone().add(new THREE.Vector3(4,3.2,9)),
+      end:jeepSightlineEnd,
+      clearance:1.1,
+      cameraClearance:8.2,
+    },
+  ]
   const track=nameGroup('forest-track')
   const trackSurface=mesh(createTrackGeometry(route),new THREE.MeshStandardMaterial({color:'#4a3524',roughness:1}))
   trackSurface.name='jeep-track-surface'
@@ -255,17 +300,20 @@ export function createJungleWorld(m,quality='desktop'){
     {name:'forest-far-layer',legacy:'jungle-background',desktop:24,mobile:14,min:13,max:21,salt:60},
   ]
   let treeCount=0
+  const sightlineTrees=[]
   layers.forEach(layer=>{
     const group=nameGroup(layer.name)
     const count=quality==='mobile'?layer.mobile:layer.desktop
     for(let index=0;index<count;index+=1){
-      const scale=.68+hashed(index,layer.salt+7)*.66
-      const radius=.34*scale
-      const position=offsetFromRoute(route,index,layer.salt,layer.min,layer.max,radius)
+      const scale=.46+hashed(index,layer.salt+7)*.36
       const tree=createJungleTree(forestMaterials,treeCount,scale)
-      tree.position.copy(position)
       tree.rotation.y=hashed(index,layer.salt+9)*Math.PI*2
+      tree.updateMatrixWorld(true)
+      const radius=obstacleFootprint(tree).radius
+      const position=offsetFromRoute(route,index,layer.salt,layer.min,layer.max,radius,sightlines)
+      tree.position.copy(position)
       group.add(tree)
+      sightlineTrees.push(tree)
       obstacles.push(tree.getObjectByName('tree-trunk'))
       treeCount+=1
     }
@@ -279,8 +327,10 @@ export function createJungleWorld(m,quality='desktop'){
   const undergrowthCount=quality==='mobile'?116:192
   for(let index=0;index<undergrowthCount;index+=1){
     const scale=.45+hashed(index,82)*.65
-    const position=offsetFromRoute(route,index,80,1.8,20,.25*scale)
     const plant=createUndergrowth(forestMaterials,index,scale)
+    plant.updateMatrixWorld(true)
+    const radius=obstacleFootprint(plant).radius
+    const position=offsetFromRoute(route,index,80,1.8,20,radius+.25,sightlines)
     plant.position.copy(position)
     plant.rotation.y=hashed(index,84)*Math.PI*2
     undergrowth.add(plant)
@@ -332,20 +382,37 @@ export function createJungleWorld(m,quality='desktop'){
   world.add(puddles)
 
   const mist=nameGroup('jungle-mist')
-  const mistMaterial=new THREE.MeshBasicMaterial({color:'#b8d2be',transparent:true,opacity:.075,depthWrite:false,side:THREE.DoubleSide})
+  mist.visible=false
+  const mistMaterial=new THREE.MeshBasicMaterial({
+    color:'#b8d2be',
+    transparent:true,
+    opacity:.018,
+    depthWrite:false,
+    side:THREE.DoubleSide,
+  })
   for(let index=0;index<(quality==='mobile'?4:9);index+=1){
     const point=route.getPointAt(.08+index/(quality==='mobile'?4:9)*.86)
-    const veil=mesh(new THREE.PlaneGeometry(15,3.2),mistMaterial,[point.x+(index%3-1)*5,1.35,point.z],[0,(hashed(index,162)-.5)*.45,0])
+    const veil=mesh(new THREE.PlaneGeometry(9,1.7),mistMaterial,[point.x+(index%3-1)*5,1.05,point.z],[0,(hashed(index,162)-.5)*.45,0])
     veil.name='mist-veil'
     mist.add(veil)
   }
   world.add(mist)
 
   const shafts=nameGroup('jungle-sun-shafts')
-  const shaftMaterial=new THREE.MeshBasicMaterial({color:'#f7e4a7',transparent:true,opacity:.045,depthWrite:false,side:THREE.DoubleSide})
+  shafts.visible=false
+  const shaftMaterial=new THREE.MeshBasicMaterial({color:'#f7e4a7',transparent:true,opacity:.025,depthWrite:false,side:THREE.DoubleSide})
   for(let index=0;index<(quality==='mobile'?2:4);index+=1){
     const point=route.getPointAt(.2+index*.2)
-    shafts.add(mesh(new THREE.ConeGeometry(1.1,11,8,1,true),shaftMaterial,[point.x+(index%2?-3.5:3.5),5.5,point.z],[0,0,(index%2?-1:1)*.14]))
+    const tangent=route.getTangentAt(.2+index*.2).normalize()
+    const side=index%2?-1:1
+    const shaft=mesh(
+      new THREE.ConeGeometry(.72,10,10,1,true),
+      shaftMaterial,
+      [point.x-tangent.z*side*7.2,5,point.z+tangent.x*side*7.2],
+      [0,0,side*.1],
+    )
+    shaft.name=`jungle-sun-shaft-${index+1}`
+    shafts.add(shaft)
   }
   world.add(shafts)
 
@@ -366,11 +433,20 @@ export function createJungleWorld(m,quality='desktop'){
 
   world.updateMatrixWorld(true)
   const routeClearance=obstacles.reduce((minimum,obstacle)=>Math.min(minimum,obstacleClearance(route,obstacle)),Infinity)
+  const sightlineClearance=sightlineTrees.reduce((minimum,tree)=>{
+    const {center,radius}=obstacleFootprint(tree)
+    return Math.min(
+      minimum,
+      ...sightlines.map(({start,end})=>distanceToSegmentXZ(center.x,center.z,start,end)-radius),
+    )
+  },Infinity)
   world.userData={
     route,
     routeClearance,
     routeObstacles:obstacles,
+    sightlineClearance,
     counts:{trees:treeCount,undergrowth:undergrowthCount},
+    materialDetail:{leafVariants:forestMaterials.leaf.length,barkVariants:2},
     forestLanding,
     copyAnchor:new THREE.Vector3(-7,3,-128),
   }

@@ -13,6 +13,18 @@ export default function Hero3D({progress,reducedMotion,onFallback}) {
     try {
       sceneApi = createIndiaJourney(canvas,{reducedMotion,onContextLost:onFallback})
       apiRef.current = sceneApi
+      window.__journeyQA=()=>sceneApi.getQASnapshot({
+        consoleFailures:Array.isArray(window.__journeyConsoleFailures)
+          ?window.__journeyConsoleFailures
+          :[],
+        audioControls:document.querySelectorAll([
+          'audio',
+          '[data-audio-control]',
+          'button[aria-label*="sound" i]',
+          'button[aria-label*="audio" i]',
+        ].join(',')).length,
+      })
+      window.__resetJourneyQA=()=>sceneApi.resetQAMetrics()
     } catch (err) {
       // WebGL unavailable — fail silently, CSS hero background still works
       console.warn('India 3D journey failed to initialize:', err)
@@ -29,6 +41,8 @@ export default function Hero3D({progress,reducedMotion,onFallback}) {
 
     return () => {
       window.removeEventListener('mousemove', onMove)
+      delete window.__journeyQA
+      delete window.__resetJourneyQA
       sceneApi.dispose()
       apiRef.current = null
     }

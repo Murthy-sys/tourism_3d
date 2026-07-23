@@ -15,7 +15,7 @@ const smooth01=value=>{
 
 const waterHalfWidth=t=>{
   const inlet=smooth01((t-.58)/.42)
-  return 6.55+Math.sin(t*Math.PI*2.4)*.42+Math.sin(t*Math.PI*5.1)*.16-inlet*3.05
+  return 4.85+Math.sin(t*Math.PI*2.4)*.25+Math.sin(t*Math.PI*5.1)*.1-inlet*2
 }
 
 const sampleFrame=(curve,t)=>{
@@ -63,7 +63,7 @@ const createBankGeometry=(curve,segments,side)=>{
   for(let index=0;index<=segments;index+=1){
     const t=index/segments,{point,lateral}=sampleFrame(curve,t)
     const inner=waterHalfWidth(t)-.18
-    const outer=inner+5.4+Math.sin(index*1.73+side)*1.2+Math.sin(index*.43)*.65
+    const outer=inner+1.45+Math.sin(index*1.73+side)*.2+Math.sin(index*.43)*.12
     ;[inner,outer].forEach((distance,column)=>{
       positions.push(
         point.x+lateral.x*distance*side,
@@ -83,6 +83,53 @@ const createBankGeometry=(curve,segments,side)=>{
   geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3))
   geometry.setAttribute('color',new THREE.Float32BufferAttribute(colors,3))
   geometry.setIndex(indices)
+  geometry.computeVertexNormals()
+  return geometry
+}
+
+const createEdgeRibbonGeometry=(curve,segments,side)=>{
+  const positions=[],indices=[]
+  for(let index=0;index<=segments;index+=1){
+    const t=index/segments,{point,lateral}=sampleFrame(curve,t)
+    const distances=[waterHalfWidth(t)-1.02,waterHalfWidth(t)-.08]
+    distances.forEach(distance=>positions.push(
+      point.x+lateral.x*distance*side,
+      .075,
+      point.z+lateral.z*distance*side,
+    ))
+    if(index<segments){
+      const offset=index*2
+      if(side<0) indices.push(offset,offset+1,offset+2,offset+1,offset+3,offset+2)
+      else indices.push(offset,offset+2,offset+1,offset+1,offset+2,offset+3)
+    }
+  }
+  const geometry=new THREE.BufferGeometry()
+  geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3))
+  geometry.setIndex(indices)
+  geometry.userData.edgeRibbon=true
+  geometry.computeVertexNormals()
+  return geometry
+}
+
+const createBasinGeometry=()=>{
+  const geometry=new THREE.PlaneGeometry(58,76,36,48)
+  geometry.rotateX(-Math.PI/2)
+  const position=geometry.getAttribute('position')
+  const colors=[]
+  const dark=new THREE.Color('#283a31')
+  const moss=new THREE.Color('#4f5b3c')
+  const color=new THREE.Color()
+  for(let index=0;index<position.count;index+=1){
+    const x=position.getX(index)
+    const z=position.getZ(index)
+    const variation=Math.sin(x*.36+z*.19)*.5+Math.cos(z*.31-x*.14)*.5
+    position.setY(index,-.37+variation*.045)
+    color.copy(dark).lerp(moss,.36+variation*.16)
+    colors.push(color.r,color.g,color.b)
+  }
+  position.needsUpdate=true
+  geometry.setAttribute('color',new THREE.Float32BufferAttribute(colors,3))
+  geometry.userData.continuousBasin=true
   geometry.computeVertexNormals()
   return geometry
 }
@@ -128,8 +175,8 @@ const animateWaveVertices=(layer,elapsed,frequency,amplitude,phase)=>{
     const baseY=layer.userData.baseY[index]
     const across=(index%columns)/(columns-1)*2-1
     position.setY(index,baseY+
-      Math.sin(elapsed*frequency+position.getX(index)*.31+position.getZ(index)*.17+across*1.7+phase)*amplitude+
-      Math.cos(elapsed*frequency*.61-position.getZ(index)*.23-across*.9)*amplitude*.42)
+      Math.sin(elapsed*frequency+position.getX(index)*.31+position.getZ(index)*.17+across*4.1+phase)*amplitude+
+      Math.cos(elapsed*frequency*.61-position.getZ(index)*.23-across*2.4)*amplitude*.42)
   }
   position.needsUpdate=true
   layer.geometry.computeVertexNormals()
@@ -157,34 +204,60 @@ outgoingLight = mix(outgoingLight, scenicReflection, 0.12 + reflectionFresnel * 
 const createForestSightline=(m,route,quality)=>{
   const forest=named('distant-forest-silhouette')
   const count=quality==='mobile'?9:15
+  const forestLandingPoint=route.getPointAt(1)
+  const sightlineGround=mesh(
+    new THREE.PlaneGeometry(34,19,16,10),
+    new THREE.MeshStandardMaterial({color:'#314331',roughness:1}),
+    [forestLandingPoint.x,-.22,forestLandingPoint.z-10],
+    [-Math.PI/2,0,0],
+  )
+  sightlineGround.name='forest-sightline-ground'
+  sightlineGround.receiveShadow=true
+  forest.add(sightlineGround)
   ;[
-    {offset:-5,z:-4,color:'#173b32',scale:.78},
-    {offset:0,z:-6,color:'#204b3b',scale:1},
-    {offset:5,z:-8,color:'#2b5b43',scale:1.18},
+    {offset:-5,z:-8,color:'#173b32',scale:.82},
+    {offset:0,z:-11,color:'#204b3b',scale:1},
+    {offset:5,z:-14,color:'#2b5b43',scale:1.12},
   ].forEach((bandConfig,bandIndex)=>{
     const band=named(`forest-silhouette-band-${bandIndex+1}`)
     const material=new THREE.MeshStandardMaterial({color:bandConfig.color,roughness:.94})
     for(let index=0;index<count;index+=1){
       const t=index/(count-1),{point,lateral}=sampleFrame(route,1)
-      const spread=(t-.5)*22+bandConfig.offset
-      const height=(2.4+(index%4)*.55)*bandConfig.scale
-      const crown=mesh(
-        new THREE.IcosahedronGeometry(1.55+(index%3)*.28,1),
-        material,
-        [point.x+lateral.x*spread,height+bandIndex*.45,point.z+lateral.z*spread+bandConfig.z],
+      const spread=(t-.5)*22+bandConfig.offset+Math.sin(index*1.73+bandIndex)*.58
+      const height=(1.45+(index%4)*.28)*bandConfig.scale
+      const radius=.72+(index%3)*.12
+      const x=point.x+lateral.x*spread
+      const z=point.z+lateral.z*spread+bandConfig.z+Math.sin(index*.91+bandIndex)*.7
+      const trunkHeight=Math.max(.9,height-radius*.28)
+      const trunk=mesh(
+        new THREE.CylinderGeometry(.09*bandConfig.scale,.16*bandConfig.scale,trunkHeight,7),
+        m.wood,
+        [x,trunkHeight/2,z],
       )
-      crown.scale.set(1.15,height*.42,.72)
-      band.add(crown)
+      trunk.name='distant-forest-trunk'
+      const crown=mesh(
+        index%2
+          ?new THREE.IcosahedronGeometry(radius,2)
+          :new THREE.DodecahedronGeometry(radius,1),
+        material,
+        [x,height+bandIndex*.35,z],
+      )
+      crown.name='distant-forest-crown'
+      crown.scale.set(
+        (.88+(index%4)*.1)*bandConfig.scale,
+        (.82+(index%3)*.12)*bandConfig.scale,
+        (.72+((index+1)%4)*.08)*bandConfig.scale,
+      )
+      band.add(trunk,crown)
     }
     forest.add(band)
   })
-  const forestLandingPoint=route.getPointAt(1)
   for(let index=0;index<(quality==='mobile'?5:10);index+=1){
     forest.add(createTree(
       m,
-      forestLandingPoint.x-8+index*1.8,
-      forestLandingPoint.z-2-(index%3)*1.2,
-      .8+(index%4)*.14,
+      forestLandingPoint.x-7.5+index*1.65+Math.sin(index*1.4)*.35,
+      forestLandingPoint.z-5-(index%3)*1.5,
+      .48+(index%4)*.06,
     ))
   }
   return forest
@@ -200,6 +273,15 @@ export function createWaterWorld(m,quality='desktop'){
     new THREE.Vector3(...LANDMARKS.forestLanding),
   ],false,'catmullrom',.42)
   const segments=quality==='mobile'?40:76
+
+  const basin=mesh(
+    createBasinGeometry(),
+    new THREE.MeshStandardMaterial({vertexColors:true,roughness:1}),
+    [0,0,-60],
+  )
+  basin.name='water-basin-ground'
+  basin.receiveShadow=true
+  world.add(basin)
 
   const depthMaterial=new THREE.MeshStandardMaterial({
     color:'#063b4b',
@@ -259,12 +341,7 @@ export function createWaterWorld(m,quality='desktop'){
   })
   ;[-1,1].forEach(side=>{
     const shallow=mesh(
-      createRibbonGeometry(
-        offsetCurve(route,t=>side*(waterHalfWidth(t)-.72)),
-        Math.round(segments*.72),
-        ()=>.82,
-        .075,
-      ),
+      createEdgeRibbonGeometry(route,segments,side),
       shallowsMaterial,
     )
     shallow.name=side<0?'left-water-shallows':'right-water-shallows'
@@ -363,8 +440,8 @@ export function createWaterWorld(m,quality='desktop'){
 
 export function updateWaterWorld(world,elapsed,boat){
   const {water,reflection}=world.userData
-  animateWaveVertices(water,elapsed,1.43,.035,0)
-  animateWaveVertices(reflection,elapsed,2.17,.018,1.2)
+  animateWaveVertices(water,elapsed,1.43,.05,0)
+  animateWaveVertices(reflection,elapsed,2.17,.023,1.2)
   water.position.y=.012+Math.sin(elapsed*1.11)*.012
   reflection.position.y=.016+Math.sin(elapsed*1.83+.7)*.008
   const shallows=world.getObjectByName('water-shallows')

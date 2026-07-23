@@ -44,18 +44,18 @@ function createBoatWake(){
       `boat-wake-trail-${side<0?'left':'right'}`,
       new THREE.TubeGeometry(new THREE.CatmullRomCurve3([
         new THREE.Vector3(side*.48,0,1.72),
-        new THREE.Vector3(side*.9,0,2.8),
-        new THREE.Vector3(side*1.45,0,4.5),
+        new THREE.Vector3(side*.72,0,2.3),
+        new THREE.Vector3(side*1.02,0,3.05),
       ]),28,.027,5,false),
-      createWakeMaterial(.38),
+      createWakeMaterial(.18),
     )
-    trail.userData.baseOpacity=.38
+    trail.userData.baseOpacity=.18
     wake.add(trail)
   })
-  ;[2.05,2.8,3.65].forEach((z,index)=>{
-    const wash=namedMesh(`boat-wake-ripple-${index+1}`,new THREE.RingGeometry(.52+index*.28,.58+index*.3,28),createWakeMaterial(.2),[0,.01,z],[-Math.PI/2,0,0])
-    wash.scale.x=1.7
-    wash.userData.baseOpacity=.2
+  ;[2.05,2.5,2.95].forEach((z,index)=>{
+    const wash=namedMesh(`boat-wake-ripple-${index+1}`,new THREE.RingGeometry(.34+index*.1,.39+index*.11,28),createWakeMaterial(.08),[0,.01,z],[-Math.PI/2,0,0])
+    wash.scale.x=1.4
+    wash.userData.baseOpacity=.08
     wake.add(wash)
   })
   return wake

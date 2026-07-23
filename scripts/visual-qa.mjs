@@ -1,49 +1,249 @@
+import { mkdir } from 'node:fs/promises'
+import path from 'node:path'
 import { chromium } from '@playwright/test'
 
-const requested=process.argv[2]||'desktop'
-const baseUrl=process.env.QA_BASE_URL||'http://127.0.0.1:4173/'
-const viewport=requested==='mobile'?{width:390,height:844}:{width:1440,height:900}
-const browser=await chromium.launch({headless:true})
-const page=await browser.newPage({viewport})
-const messages=[]
-page.on('console',m=>{if(['error','warning'].includes(m.type())&&!m.text().includes('ReadPixels'))messages.push(`${m.type()}: ${m.text()}`)})
-page.on('pageerror',e=>messages.push(`pageerror: ${e.message}`))
-await page.goto(baseUrl,{waitUntil:'networkidle'})
-await page.getByRole('button',{name:'Start'}).waitFor({timeout:15000})
-await page.getByRole('button',{name:'Start'}).click()
-await page.waitForTimeout(1400)
-
-const track=page.locator('.experience__track')
-const height=await track.evaluate(el=>el.offsetHeight)
-const states=[['opening-drive',.08],['who-we-are',.25],['ambassador-to-jeep',.39],['jungle-jeep',.48],['jeep-to-boat',.60],['water-boat',.66],['boat-to-trek',.72],['ice-trek',.82],['contact',.96]]
-const seen=[]
-for(const [name,progress] of states){
-  await page.evaluate(({y})=>{document.documentElement.style.scrollBehavior='auto';scrollTo(0,y)},{y:(height-viewport.height)*progress})
-  await page.waitForTimeout(850)
-  const heading=await page.locator('.chapter h1').count()?await page.locator('.chapter h1').innerText():null
-  const activePlan=await page.locator('.monument-plan-actions button.active strong').count()?await page.locator('.monument-plan-actions button.active strong').innerText():null
-  seen.push({name,heading,activePlan})
-  await page.screenshot({path:`/tmp/ambassador-india-${requested}-${name}.png`})
+const args=process.argv.slice(2)
+const projectIndex=args.indexOf('--project')
+const requested=projectIndex>=0?args[projectIndex+1]:(args[0]||'desktop')
+if(!['desktop','mobile'].includes(requested)){
+  throw new Error(`Unknown visual QA project: ${requested||'(missing)'}`)
 }
 
-const soundControls=await page.getByRole('button',{name:/sound/i}).count()
+const baseUrl=process.env.QA_BASE_URL||'http://127.0.0.1:4173/'
+const outputRoot=path.resolve(
+  process.env.QA_OUTPUT_DIR||'/tmp/tourist-management-visual-qa',
+  requested,
+)
+const viewport=requested==='mobile'?{width:390,height:844}:{width:1440,height:900}
+const states=[
+  {name:'mountain-opening',progress:.08,phase:'mountain-trek'},
+  {
+    name:'distant-water-reveal',
+    progress:.26,
+    phase:'mountain-trek',
+    nextBiome:'water',
+  },
+  {
+    name:'mountain-water-handoff',
+    progress:.35,
+    phase:'trek-to-boat',
+    handoff:{biomes:['mountain','water'],transports:['trekker','boat']},
+  },
+  {name:'water-corridor',progress:.50,phase:'water-boat'},
+  {
+    name:'distant-forest-reveal',
+    progress:.59,
+    phase:'water-boat',
+    nextBiome:'forest',
+  },
+  {
+    name:'water-forest-handoff',
+    progress:.67,
+    phase:'boat-to-jeep',
+    handoff:{biomes:['water','forest'],transports:['boat','jeep']},
+  },
+  {name:'forest-finale',progress:.84,phase:'forest-jeep'},
+]
+const requestedState=process.env.QA_STATE
+const captureStates=requestedState
+  ?states.filter(state=>state.name===requestedState)
+  :states
+if(requestedState&&!captureStates.length){
+  throw new Error(`Unknown visual QA state: ${requestedState}`)
+}
 
-await page.getByRole('button',{name:'Open journey menu'}).click()
-const menuItems=await page.locator('.journey-menu__items button').count()
-await page.screenshot({path:`/tmp/ambassador-india-${requested}-menu.png`})
-await page.getByRole('button',{name:'Plans'}).click()
-await page.waitForTimeout(1500)
-const menuJump=await page.locator('.chapter h1').innerText()
-await page.getByRole('button',{name:'Open journey menu'}).click()
-await page.getByRole('button',{name:'Plan a Trip'}).click()
-const dialog=page.locator('.booking-overlay')
-await dialog.waitFor()
-await page.screenshot({path:`/tmp/ambassador-india-${requested}-booking.png`})
-await page.getByLabel('Full name').fill('QA Traveller')
-await page.getByLabel('Email').fill('qa@example.com')
-await page.getByLabel('Plan or destination').fill('Heritage India')
-await page.getByRole('button',{name:'Request itinerary'}).click()
-const bookingSubmitted=await page.getByText('Journey request received').isVisible()
-const result={requested,seen,soundControls,menuItems,menuJump,bookingSubmitted,horizontalOverflow:await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),fixedNavbar:await page.locator('.navbar').count(),conventionalSections:await page.locator('#services,#destinations,#testimonials,footer').count(),messages}
-console.log(JSON.stringify(result,null,2))
-await browser.close()
+const isIgnoredConsoleMessage=text=>text.includes('ReadPixels')
+const assertWeight=(weights,key,label)=>{
+  if(!(weights[key]>.05)){
+    throw new Error(`${label} ${key} does not overlap: ${weights[key]}`)
+  }
+}
+const assertSnapshot=(snapshot,state,externalFailures)=>{
+  if(!snapshot||typeof snapshot!=='object') throw new Error('Journey QA snapshot is unavailable')
+  if(snapshot.phase!==state.phase){
+    throw new Error(`${state.name} phase mismatch: expected ${state.phase}, received ${snapshot.phase}`)
+  }
+  if(snapshot.visibleMembers.guides!==1||snapshot.visibleMembers.tourists!==3){
+    throw new Error('Trekking party is incomplete')
+  }
+  if(snapshot.audioControls!==0) throw new Error('Audio controls returned')
+  const consoleFailures=[...new Set([
+    ...snapshot.consoleFailures,
+    ...externalFailures,
+  ].filter(message=>!isIgnoredConsoleMessage(message)))]
+  if(consoleFailures.length) throw new Error(consoleFailures.join('\n'))
+  if(snapshot.cameraJump>.8){
+    throw new Error(`Camera discontinuity: ${snapshot.cameraJump}`)
+  }
+  if(!snapshot.distantVisibility.nextBiome){
+    throw new Error('Upcoming biome is not visible early')
+  }
+  if(state.nextBiome&&!(snapshot.biomeWeights[state.nextBiome]>.01)){
+    throw new Error(
+      `${state.nextBiome} is not visually weighted during ${state.name}: `+
+      snapshot.biomeWeights[state.nextBiome],
+    )
+  }
+  if(state.handoff){
+    state.handoff.transports.forEach(name=>
+      assertWeight(snapshot.transportWeights,name,'Transport'),
+    )
+    state.handoff.biomes.forEach(name=>
+      assertWeight(snapshot.biomeWeights,name,'Biome'),
+    )
+  }
+}
+
+const browser=await chromium.launch({headless:true})
+try{
+  await mkdir(outputRoot,{recursive:true})
+  const context=await browser.newContext({viewport,deviceScaleFactor:1})
+  await context.addInitScript(()=>{
+    const failures=[]
+    window.__journeyConsoleFailures=failures
+    const stringify=value=>{
+      if(value instanceof Error) return value.stack||value.message
+      if(typeof value==='string') return value
+      try{return JSON.stringify(value)}catch{return String(value)}
+    }
+    const record=(type,values)=>{
+      const message=`${type}: ${values.map(stringify).join(' ')}`
+      if(!message.includes('ReadPixels')) failures.push(message)
+    }
+    const originalWarn=console.warn.bind(console)
+    const originalError=console.error.bind(console)
+    console.warn=(...values)=>{record('warning',values);originalWarn(...values)}
+    console.error=(...values)=>{record('error',values);originalError(...values)}
+    addEventListener('error',event=>record('pageerror',[event.error||event.message]))
+    addEventListener('unhandledrejection',event=>record('unhandledrejection',[event.reason]))
+  })
+  const page=await context.newPage()
+  const externalFailures=[]
+  page.on('console',message=>{
+    if(['error','warning'].includes(message.type())&&!isIgnoredConsoleMessage(message.text())){
+      externalFailures.push(`${message.type()}: ${message.text()}`)
+    }
+  })
+  page.on('pageerror',error=>externalFailures.push(`pageerror: ${error.message}`))
+
+  await page.goto(baseUrl,{waitUntil:'networkidle'})
+  await page.getByRole('button',{name:'Start'}).waitFor({timeout:20000})
+  await page.getByRole('button',{name:'Start'}).click()
+  await page.waitForFunction(()=>typeof window.__journeyQA==='function',{timeout:20000})
+  await page.locator('.journey__canvas').waitFor({state:'visible',timeout:20000})
+  await page.addStyleTag({content:`
+    body.visual-qa-webgl .experience__grade,
+    body.visual-qa-webgl .chapter,
+    body.visual-qa-webgl .chapter-counter,
+    body.visual-qa-webgl .scroll-signal,
+    body.visual-qa-webgl .edge-controls,
+    body.visual-qa-webgl .cursor-dot,
+    body.visual-qa-webgl .cursor-ring { visibility:hidden !important; }
+  `})
+  await page.waitForTimeout(900)
+
+  const results=[]
+  for(const state of captureStates){
+    await page.evaluate(()=>window.__resetJourneyQA?.())
+    await page.evaluate(async ({progress})=>{
+      const track=document.querySelector('.experience__track')
+      if(!track) throw new Error('Journey track is unavailable')
+      const travel=Math.max(1,track.offsetHeight-innerHeight)
+      const origin=scrollY
+      const destination=track.offsetTop+travel*progress
+      const distance=Math.abs(destination-origin)
+      const duration=Math.min(2600,Math.max(1200,900+distance*.08))
+      document.documentElement.style.scrollBehavior='auto'
+      await new Promise(resolve=>{
+        let startedAt
+        const advance=timestamp=>{
+          if(startedAt===undefined) startedAt=timestamp
+          const time=Math.min(1,(timestamp-startedAt)/duration)
+          const blend=time*time*time*(time*(time*6-15)+10)
+          scrollTo(0,origin+(destination-origin)*blend)
+          if(time<1) requestAnimationFrame(advance)
+          else resolve()
+        }
+        requestAnimationFrame(advance)
+      })
+    },{progress:state.progress})
+    await page.waitForFunction(({phase,nextBiome,handoff})=>{
+      const snapshot=window.__journeyQA?.()
+      if(!snapshot||snapshot.phase!==phase) return false
+      if(nextBiome&&!(snapshot.biomeWeights[nextBiome]>.01)) return false
+      if(handoff){
+        if(!handoff.transports.every(name=>snapshot.transportWeights[name]>.05)) return false
+        if(!handoff.biomes.every(name=>snapshot.biomeWeights[name]>.05)) return false
+      }
+      return true
+    },{
+      phase:state.phase,
+      nextBiome:state.nextBiome,
+      handoff:state.handoff,
+    },{timeout:5000})
+    await page.waitForFunction(()=>{
+      const debug=window.__journeyQA?.().visualDebug
+      if(!debug) return false
+      const distance=(a,b)=>Math.hypot(...a.map((value,index)=>value-b[index]))
+      return distance(debug.camera,debug.desiredCamera)<.35&&
+        distance(debug.cameraTarget,debug.desiredTarget)<.35
+    },null,{timeout:15000})
+    await page.waitForTimeout(180)
+
+    const snapshot=await page.evaluate(()=>window.__journeyQA())
+    const layout=await page.evaluate(()=>{
+      const chapter=document.querySelector('.chapter')
+      const rect=chapter?.getBoundingClientRect()
+      return{
+        horizontalOverflow:document.documentElement.scrollWidth>innerWidth,
+        overlay:rect?{
+          left:Math.round(rect.left),
+          top:Math.round(rect.top),
+          right:Math.round(rect.right),
+          bottom:Math.round(rect.bottom),
+          clipped:rect.left<0||rect.top<0||rect.right>innerWidth||rect.bottom>innerHeight,
+        }:null,
+      }
+    })
+    if(layout.horizontalOverflow){
+      throw new Error(`Horizontal overflow at ${state.name}`)
+    }
+    if(requested==='mobile'&&layout.overlay?.clipped){
+      throw new Error(`Mobile overlay is clipped at ${state.name}`)
+    }
+
+    const pagePath=path.join(outputRoot,`${state.name}-page.png`)
+    const webglPath=path.join(outputRoot,`${state.name}-webgl.png`)
+    await page.screenshot({path:pagePath})
+    await page.evaluate(()=>document.body.classList.add('visual-qa-webgl'))
+    await page.locator('.journey__canvas').screenshot({path:webglPath})
+    await page.evaluate(()=>document.body.classList.remove('visual-qa-webgl'))
+    assertSnapshot(snapshot,state,externalFailures)
+    results.push({
+      name:state.name,
+      progress:state.progress,
+      viewport,
+      phase:snapshot.phase,
+      biomeWeights:snapshot.biomeWeights,
+      transportWeights:snapshot.transportWeights,
+      visibleMembers:snapshot.visibleMembers,
+      distantVisibility:snapshot.distantVisibility,
+      cameraJump:snapshot.cameraJump,
+      consoleFailures:snapshot.consoleFailures,
+      audioControls:snapshot.audioControls,
+      visualDebug:snapshot.visualDebug,
+      layout,
+      screenshots:{page:pagePath,webgl:webglPath},
+    })
+  }
+
+  console.log(JSON.stringify({
+    project:requested,
+    viewport,
+    stateCount:results.length,
+    outputRoot,
+    states:results,
+  },null,2))
+}finally{
+  await browser.close()
+}

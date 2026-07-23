@@ -61,6 +61,8 @@ const createTerrain=(heightAt,quality)=>{
   const soil=new THREE.Color('#6b5841')
   const rock=new THREE.Color('#59615e')
   const color=new THREE.Color()
+  let minimumColorSum=Infinity
+  let maximumColorSum=-Infinity
   for(let index=0;index<position.count;index+=1){
     const x=position.getX(index)
     const z=position.getZ(index)
@@ -74,19 +76,28 @@ const createTerrain=(heightAt,quality)=>{
       1,
     )
     color.copy(grass).lerp(soil,soilWeight).lerp(rock,rockWeight)
+    const detail=
+      Math.sin(x*1.71+Math.sin(z*.63))*0.52+
+      Math.cos(z*1.19-x*.47)*.31+
+      Math.sin((x+z)*3.27)*.17
+    color.offsetHSL(detail*.012,detail*.024,detail*.042)
+    const colorSum=color.r+color.g+color.b
+    minimumColorSum=Math.min(minimumColorSum,colorSum)
+    maximumColorSum=Math.max(maximumColorSum,colorSum)
     colors[index*3]=color.r
     colors[index*3+1]=color.g
     colors[index*3+2]=color.b
   }
   geometry.setAttribute('color',new THREE.BufferAttribute(colors,3))
-  const terrain=mesh(
-    geometry,
-    new THREE.MeshStandardMaterial({
-      vertexColors:true,
-      roughness:.96,
-      metalness:0,
-    }),
-  )
+  geometry.userData.colorVariation=maximumColorSum-minimumColorSum
+  const terrainMaterial=new THREE.MeshStandardMaterial({
+    vertexColors:true,
+    roughness:.9,
+    metalness:0,
+    dithering:true,
+  })
+  terrainMaterial.userData.surfaceDetail='multiscale-color-noise'
+  const terrain=mesh(geometry,terrainMaterial)
   terrain.name='hill-terrain'
   return terrain
 }
@@ -225,15 +236,19 @@ const createRockFaces=(materials,heightAt,routePoints,quality)=>{
   const count=quality==='mobile'?14:28
   for(let index=0;index<count;index+=1){
     const position=landscapePosition(index,21,heightAt,routePoints)
-    const size=.38+deterministic(index,24)*1.05
+    const size=.25+deterministic(index,24)*.55
     const rock=mesh(
-      new THREE.DodecahedronGeometry(size,index%4===0?1:0),
+      new THREE.DodecahedronGeometry(size,1),
       index%3===0?materials.stone:material(index%2?'#59615e':'#67645b',.98),
       position.toArray(),
       [deterministic(index,26)*.7,deterministic(index,27)*Math.PI,deterministic(index,28)*.45],
     )
     rock.name='rock-outcrop'
-    rock.scale.set(1+.65*deterministic(index,29),.55+.7*deterministic(index,30),.8+.5*deterministic(index,31))
+    rock.scale.set(
+      .9+.45*deterministic(index,29),
+      .45+.3*deterministic(index,30),
+      .75+.45*deterministic(index,31),
+    )
     rocks.add(rock)
   }
   return rocks
@@ -360,22 +375,23 @@ const createMist=(quality)=>{
   const mist=namedGroup('hill-mist')
   const count=quality==='mobile'?4:7
   for(let index=0;index<count;index+=1){
+    const opacity=.018+index%3*.003
     const mistMaterial=new THREE.MeshBasicMaterial({
       color:index%2?'#d5ddd5':'#c6d4ca',
       transparent:true,
-      opacity:.055+index%3*.018,
+      opacity,
       depthWrite:false,
       side:THREE.DoubleSide,
     })
     const plane=mesh(
-      new THREE.PlaneGeometry(15+index%3*5,2.8+index%2*1.3),
+      new THREE.PlaneGeometry(10+index%3,2.1+index%2*.5),
       mistMaterial,
       [(index%3-1)*9,1.6+index%2*.8,-8-index*5.3],
       [0,(index%2-.5)*.12,0],
     )
     plane.name='hill-mist-pocket'
     plane.userData.baseX=plane.position.x
-    plane.userData.baseOpacity=mistMaterial.opacity
+    plane.userData.baseOpacity=opacity
     mist.add(plane)
   }
   return mist
@@ -433,7 +449,8 @@ export function updateHillWorld(world,elapsed){
   if(mist){
     mist.children.forEach((pocket,index)=>{
       pocket.position.x=pocket.userData.baseX+Math.sin(elapsed*.12+index*1.47)*.48
-      pocket.material.opacity=pocket.userData.baseOpacity*(.88+Math.sin(elapsed*.2+index)*.12)
+      const opacity=pocket.userData.baseOpacity*(.88+Math.sin(elapsed*.2+index)*.12)
+      pocket.material.opacity=opacity
     })
   }
   if(water?.material){

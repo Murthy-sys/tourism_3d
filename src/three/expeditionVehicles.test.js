@@ -76,6 +76,18 @@ describe('expedition transports',()=>{
     ripples.forEach(ripple=>expect(ripple.material.opacity).toBeLessThan(trails[0].material.opacity))
     disposeObject3D(boat)
   })
+  it('keeps the wake shorter and quieter than the boat silhouette',()=>{
+    const boat=createExpeditionBoat(createMaterials())
+    const wake=boat.getObjectByName('boat-wake')
+    const trails=wake.children.filter(child=>child.name.startsWith('boat-wake-trail'))
+    const ripples=wake.children.filter(child=>child.name.startsWith('boat-wake-ripple'))
+    const wakeSize=new THREE.Box3().setFromObject(wake).getSize(new THREE.Vector3())
+    const boatSize=new THREE.Box3().setFromObject(boat.getObjectByName('boat-hull')).getSize(new THREE.Vector3())
+    expect(wakeSize.z).toBeLessThan(boatSize.z*.75)
+    trails.forEach(trail=>expect(trail.material.opacity).toBeLessThanOrEqual(.22))
+    ripples.forEach(ripple=>expect(ripple.material.opacity).toBeLessThanOrEqual(.1))
+    disposeObject3D(boat)
+  })
   it('smoothly merges a staged dock offset onto the route without a starting snap',()=>{
     const boat=createExpeditionBoat(createMaterials())
     const curve=new THREE.CatmullRomCurve3([

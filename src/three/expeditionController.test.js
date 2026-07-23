@@ -96,6 +96,37 @@ describe('expedition controller integration',()=>{
     controller.dispose()
   })
 
+  it('renders fully weighted terrain and trekkers as opaque depth-writing geometry',()=>{
+    const scene=new THREE.Scene()
+    const controller=createExpeditionController(scene,createMaterials(),'mobile')
+    const terrain=controller.worlds.mountain.getObjectByName('hill-terrain')
+    const guide=controller.transports.trekker.getObjectByName('trekking-guide')
+    const jacket=guide.getObjectByName('layered-torso-shell')
+    controller.update(getExpeditionState(.08),0,true)
+    expect(terrain.material.transparent).toBe(false)
+    expect(terrain.material.depthWrite).toBe(true)
+    expect(jacket.material.transparent).toBe(false)
+    expect(jacket.material.depthWrite).toBe(true)
+    controller.update(getExpeditionState(.35),0,true)
+    expect(terrain.material.transparent).toBe(true)
+    expect(jacket.material.transparent).toBe(true)
+    controller.dispose()
+  })
+
+  it('invalidates material programs when a biome returns from transparent blending',()=>{
+    const scene=new THREE.Scene()
+    const controller=createExpeditionController(scene,createMaterials(),'desktop')
+    const forestTerrain=controller.worlds.forest.children.find(child=>child.isMesh)
+    controller.update(getExpeditionState(.08),0,true)
+    const blendedVersion=forestTerrain.material.version
+    expect(forestTerrain.material.transparent).toBe(true)
+    controller.update(getExpeditionState(.84),1,true)
+    expect(forestTerrain.material.transparent).toBe(false)
+    expect(forestTerrain.material.depthWrite).toBe(true)
+    expect(forestTerrain.material.version).toBeGreaterThan(blendedVersion)
+    controller.dispose()
+  })
+
   it('holds the separated party and stages the incoming boat beside the mountain landing',()=>{
     const scene=new THREE.Scene()
     const controller=createExpeditionController(scene,createMaterials(),'mobile')
@@ -146,6 +177,20 @@ describe('expedition controller integration',()=>{
     )
     expect(hullBounds.intersectsBox(new THREE.Box3().setFromObject(hillDeckObject))).toBe(false)
     expect(hullBounds.intersectsBox(new THREE.Box3().setFromObject(waterDeckObject))).toBe(false)
+    controller.dispose()
+  })
+
+  it('plants every visible boot on the mountain surface during the opening trek',()=>{
+    const scene=new THREE.Scene()
+    const controller=createExpeditionController(scene,createMaterials(),'desktop')
+    controller.update(getExpeditionState(.08),1,true)
+    scene.updateMatrixWorld(true)
+    const heightAt=controller.worlds.mountain.userData.heightAt
+    controller.transports.trekker.userData.members.forEach(member=>{
+      const root=member.getWorldPosition(new THREE.Vector3())
+      const bootBottom=getBootBounds(member).min.y
+      expect(bootBottom).toBeCloseTo(heightAt(root.x,root.z),2)
+    })
     controller.dispose()
   })
 
