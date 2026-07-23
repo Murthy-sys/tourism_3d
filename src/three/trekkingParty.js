@@ -171,7 +171,7 @@ const createBackpack=(palette)=>{
   return backpack
 }
 
-const createMember=(palette,index)=>{
+const createMember=(palette,index,materials)=>{
   const root=new THREE.Group()
   root.name=palette.role==='guide'?'trekking-guide':`trekking-tourist-${index}`
   const jacket=material(palette.jacket,.79)
@@ -179,7 +179,7 @@ const createMember=(palette,index)=>{
   const trousersMaterial=material(palette.trousers,.9)
   const skin=material(palette.skin,.74)
   const hairMaterial=material(palette.hair,.93)
-  const bootMaterial=material('#2b2926',.96)
+  const bootMaterial=materials.dark
 
   const torso=new THREE.Group()
   torso.name='torso'
@@ -274,14 +274,14 @@ const createMember=(palette,index)=>{
     namedMesh(
       'walking-pole-shaft',
       new THREE.CylinderGeometry(.012,.018,1.32,7),
-      material('#786347',.68),
+      materials.wood,
       [0,-.5,.12],
       [.14,0,-.08],
     ),
     namedMesh(
       'walking-pole-grip',
       new THREE.CapsuleGeometry(.025,.15,4,7),
-      material('#2f322f',.86),
+      materials.dark,
       [0,.16,0],
     ),
   )
@@ -317,15 +317,16 @@ export function updateTrekkingParty(party,curve,progress,elapsed,reducedMotion,h
   const terrainHeight=typeof heightAt==='function'
     ?heightAt
     :(x,z,point)=>point.y
+  const partySpan=Math.max(...party.userData.members.map(member=>member.routeOffset))
   party.userData.members.forEach(member=>{
-    const routeProgress=THREE.MathUtils.clamp(progress-member.routeOffset,0,1)
+    const routeProgress=THREE.MathUtils.clamp(progress+partySpan-member.routeOffset,0,1)
     const point=curve.getPointAt(routeProgress)
     const tangent=curve.getTangentAt(Math.min(.9999,routeProgress+.0005))
     member.position.set(point.x,terrainHeight(point.x,point.z,point),point.z)
     member.rotation.y=Math.atan2(tangent.x,tangent.z)
 
     const phase=elapsed*5.2+member.phase
-    const swing=reducedMotion?0:Math.sin(phase)*.58
+    const swing=Math.sin(phase)*.58
     const secondary=reducedMotion?0:Math.sin(phase*.5)
     const [leftArm,rightArm]=member.userData.arms
     const [leftLeg,rightLeg]=member.userData.legs
@@ -336,6 +337,6 @@ export function updateTrekkingParty(party,curve,progress,elapsed,reducedMotion,h
     member.userData.pole.rotation.x=-swing*.34
     member.userData.torso.rotation.z=secondary*.018
     member.userData.torso.rotation.x=reducedMotion?0:Math.abs(Math.sin(phase))*.018
-    member.userData.backpack.rotation.z=secondary*-.012
+    member.userData.backpack.rotation.z=reducedMotion?0:secondary*-.012
   })
 }
