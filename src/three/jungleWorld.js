@@ -4,6 +4,9 @@ import { LANDMARKS } from './terrain'
 
 const ROUTE_CLEARANCE=1.4
 const nameGroup=name=>{const group=new THREE.Group();group.name=name;return group}
+const cloneMaterialPalette=materials=>Object.fromEntries(
+  Object.entries(materials).map(([name,material])=>[name,material.clone()]),
+)
 const hashed=(index,salt=0)=>{
   const value=Math.sin((index+1)*127.1+(salt+1)*311.7)*43758.5453123
   return value-Math.floor(value)
@@ -11,11 +14,23 @@ const hashed=(index,salt=0)=>{
 
 const distanceToRoute=(route,x,z)=>{
   let closest=Infinity
-  for(let index=0;index<=240;index+=1){
-    const point=route.getPointAt(index/240)
+  for(let index=0;index<=1200;index+=1){
+    const point=route.getPointAt(index/1200)
     closest=Math.min(closest,Math.hypot(x-point.x,z-point.z))
   }
   return closest
+}
+
+const obstacleFootprint=object=>{
+  const bounds=new THREE.Box3().setFromObject(object)
+  const center=bounds.getCenter(new THREE.Vector3())
+  const size=bounds.getSize(new THREE.Vector3())
+  return {center,radius:Math.hypot(size.x,size.z)/2}
+}
+
+const obstacleClearance=(route,object)=>{
+  const {center,radius}=obstacleFootprint(object)
+  return distanceToRoute(route,center.x,center.z)-radius
 }
 
 const offsetFromRoute=(route,index,salt,minDistance,maxDistance,radius=0)=>{
@@ -170,21 +185,28 @@ const addInlet=(world,m,materials,route,obstacles)=>{
       const stone=mesh(new THREE.DodecahedronGeometry(radius,1),m.stone,[stoneX,landingY-.02,stoneZ],[index*.3,0,index*.16])
       stone.name='inlet-stone'
       inlet.add(stone)
-      obstacles.push({x:stoneX,z:stoneZ,radius})
+      obstacles.push(stone)
     }
   })
   const landing=nameGroup('forest-water-landing')
   landing.position.set(landingX,landingY,landingZ)
-  for(let index=0;index<7;index+=1){
-    const plank=mesh(new THREE.BoxGeometry(2.25,.16,.48),m.wood,[0,.04,1.35+index*.5],[0,(hashed(index,44)-.5)*.035,0])
+  const waterApproach=new THREE.Vector3(landingX-4.2,landingY-.2,landingZ+72).normalize()
+  landing.rotation.y=Math.atan2(waterApproach.x,waterApproach.z)
+  const deck=nameGroup('forest-landing-deck')
+  deck.position.y=.18
+  for(let index=-2;index<=2;index+=1){
+    const plank=mesh(new THREE.BoxGeometry(.7,.16,3.2),m.wood,[index*.72,0,0],[0,(index%2)*.018,0])
     plank.name='landing-plank'
-    landing.add(plank)
+    deck.add(plank)
   }
   ;[-1,1].forEach(side=>{
-    const post=mesh(new THREE.CylinderGeometry(.09,.13,1.2,7),materials.bark,[side*1.02,-.1,2.7])
-    post.name='landing-post'
-    landing.add(post)
+    ;[-1.35,1.35].forEach(z=>{
+      const post=mesh(new THREE.CylinderGeometry(.055,.075,1.25,8),materials.bark,[side*1.65,-.35,z])
+      post.name='landing-post'
+      deck.add(post)
+    })
   })
+  landing.add(deck)
   inlet.add(landing)
   const roots=nameGroup('jungle-roots')
   ;[-1,1].forEach(side=>{for(let index=0;index<5;index+=1){
@@ -202,7 +224,8 @@ const addInlet=(world,m,materials,route,obstacles)=>{
 
 export function createJungleWorld(m,quality='desktop'){
   const world=nameGroup('jungle-world')
-  const forestMaterials=createForestMaterials(m)
+  const materials=cloneMaterialPalette(m)
+  const forestMaterials=createForestMaterials(materials)
   const midpointZ=(LANDMARKS.forestLanding[2]+LANDMARKS.forestEnd[2])/2
   world.add(mesh(new THREE.PlaneGeometry(48,58,16,20),forestMaterials.damp,[0,-.18,midpointZ],[-Math.PI/2,0,0]))
 
@@ -224,7 +247,7 @@ export function createJungleWorld(m,quality='desktop'){
   world.add(track)
 
   const obstacles=[]
-  const forestLanding=addInlet(world,m,forestMaterials,route,obstacles)
+  const forestLanding=addInlet(world,materials,forestMaterials,route,obstacles)
   const layers=[
     {name:'forest-near-layer',legacy:'jungle-foreground',desktop:40,mobile:24,min:3.1,max:7.2,salt:20},
     {name:'forest-mid-layer',legacy:'jungle-midground',desktop:32,mobile:18,min:7,max:13.5,salt:40},
@@ -242,7 +265,7 @@ export function createJungleWorld(m,quality='desktop'){
       tree.position.copy(position)
       tree.rotation.y=hashed(index,layer.salt+9)*Math.PI*2
       group.add(tree)
-      obstacles.push({x:position.x,z:position.z,radius})
+      obstacles.push(tree.getObjectByName('tree-trunk'))
       treeCount+=1
     }
     world.add(group)
@@ -278,8 +301,10 @@ export function createJungleWorld(m,quality='desktop'){
   for(let index=0;index<rockCount;index+=1){
     const radius=.24+(index%4)*.11
     const position=offsetFromRoute(route,index,120,3.1,13,radius)
-    rocks.add(mesh(new THREE.DodecahedronGeometry(radius,1),m.stone,[position.x,.1,position.z],[index*.2,0,index*.1]))
-    obstacles.push({x:position.x,z:position.z,radius})
+    const rock=mesh(new THREE.DodecahedronGeometry(radius,1),materials.stone,[position.x,.1,position.z],[index*.2,0,index*.1])
+    rock.name='jungle-rock'
+    rocks.add(rock)
+    obstacles.push(rock)
   }
   world.add(rocks)
 
@@ -287,11 +312,11 @@ export function createJungleWorld(m,quality='desktop'){
   const logCount=quality==='mobile'?5:9
   for(let index=0;index<logCount;index+=1){
     const halfLength=1.1+(index%3)*.28
-    const position=offsetFromRoute(route,index,140,4.5,15,halfLength)
+    const position=offsetFromRoute(route,index,140,4.5,15,Math.hypot(halfLength,.23))
     const log=mesh(new THREE.CylinderGeometry(.16,.23,halfLength*2,7),forestMaterials.bark,[position.x,.22,position.z],[Math.PI/2,hashed(index,144)*Math.PI,0])
     log.name='fallen-log'
     fallenTimber.add(log)
-    obstacles.push({x:position.x,z:position.z,radius:halfLength})
+    obstacles.push(log)
   }
   world.add(fallenTimber)
 
@@ -301,7 +326,7 @@ export function createJungleWorld(m,quality='desktop'){
     const point=route.getPointAt(progress)
     const tangent=route.getTangentAt(progress).normalize()
     const side=index%2?-1:1
-    puddles.add(scaledMesh(new THREE.CircleGeometry(.55+(index%3)*.18,20),m.water,[point.x-tangent.z*side*.72,.235,point.z+tangent.x*side*.72],[1,.55,1],[-Math.PI/2,0,hashed(index,155)]))
+    puddles.add(scaledMesh(new THREE.CircleGeometry(.55+(index%3)*.18,20),materials.water,[point.x-tangent.z*side*.72,.235,point.z+tangent.x*side*.72],[1,.55,1],[-Math.PI/2,0,hashed(index,155)]))
   }
   world.add(puddles)
 
@@ -326,10 +351,10 @@ export function createJungleWorld(m,quality='desktop'){
   const outpost=nameGroup('ranger-outpost')
   outpost.position.set(-7,0,-128)
   outpost.add(
-    mesh(new THREE.BoxGeometry(5,.5,3.5),m.wood,[0,.25,0]),
-    mesh(new THREE.BoxGeometry(4,2.4,2.7),m.sand,[0,1.7,0]),
-    mesh(new THREE.ConeGeometry(3.5,1.5,4),m.leaf,[0,3.55,0],[0,Math.PI/4,0]),
-    mesh(new THREE.BoxGeometry(2.4,1.15,.08),m.dark,[0,1.9,1.39]),
+    mesh(new THREE.BoxGeometry(5,.5,3.5),materials.wood,[0,.25,0]),
+    mesh(new THREE.BoxGeometry(4,2.4,2.7),materials.sand,[0,1.7,0]),
+    mesh(new THREE.ConeGeometry(3.5,1.5,4),materials.leaf,[0,3.55,0],[0,Math.PI/4,0]),
+    mesh(new THREE.BoxGeometry(2.4,1.15,.08),materials.dark,[0,1.9,1.39]),
   )
   world.add(outpost)
 
@@ -338,13 +363,12 @@ export function createJungleWorld(m,quality='desktop'){
   light.target.position.set(0,0,-114)
   world.add(light,light.target)
 
-  const routeClearance=obstacles.reduce(
-    (minimum,obstacle)=>Math.min(minimum,distanceToRoute(route,obstacle.x,obstacle.z)-obstacle.radius),
-    Infinity,
-  )
+  world.updateMatrixWorld(true)
+  const routeClearance=obstacles.reduce((minimum,obstacle)=>Math.min(minimum,obstacleClearance(route,obstacle)),Infinity)
   world.userData={
     route,
     routeClearance,
+    routeObstacles:obstacles,
     counts:{trees:treeCount,undergrowth:undergrowthCount},
     forestLanding,
     copyAnchor:new THREE.Vector3(-7,3,-128),
