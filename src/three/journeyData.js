@@ -1,3 +1,5 @@
+import { smootherstep } from './terrain'
+
 const stop = (id, name, kicker, description, region, palette, camera, target) => ({
   id, name, kicker, description, region, href: '#destinations', palette, camera, target,
 })
@@ -19,33 +21,36 @@ export const clamp01 = (value) => Math.min(1, Math.max(0, Number.isFinite(value)
 const lerp = (a, b, t) => a + (b - a) * t
 const lerp3 = (a, b, t) => a.map((value, index) => lerp(value, b[index], t))
 const CINEMATIC_KEYFRAMES=[
-  {p:0,camera:[5,3.2,15],target:[0,1,4]},
-  {p:.08,camera:[4,2.8,1],target:[0,1,-8]},
-  {p:.18,camera:[-10,5,-10],target:[0,1.7,-24]},
-  {p:.25,camera:[-11,5.2,-12],target:[0,1.7,-24]},
-  {p:.38,camera:[8,6,-32],target:[0,2,-50]},
-  {p:.48,camera:[0,3.4,-41],target:[0,1.5,-53]},
-  {p:.57,camera:[7,4.5,-54],target:[0,1,-67]},
-  {p:.62,camera:[-10,5,-76],target:[0,1,-89]},
-  {p:.66,camera:[3,2.8,-84],target:[0,1,-94]},
-  {p:.70,camera:[-7,4.5,-92],target:[0,1,-106]},
-  {p:.75,camera:[9,7,-113],target:[-2,2,-126]},
-  {p:.82,camera:[-4,3.2,-122],target:[-2,2,-132]},
-  {p:.92,camera:[8,6,-137],target:[5,2,-150]},
-  {p:1,camera:[-6,6,-136],target:[5,2,-150]},
+  {p:0,camera:[5,7,20],target:[0,5.9,12]},
+  {p:.18,camera:[8,5.5,-14],target:[0,2,-24]},
+  {p:.28,camera:[9,4.8,-25],target:[2,1,-34]},
+  {p:.35,camera:[7,4.2,-27],target:[2,1,-34]},
+  {p:.42,camera:[-4,4,-27],target:[2,1,-34]},
+  {p:.52,camera:[8,3,-51],target:[0,1,-59]},
+  {p:.60,camera:[-8,4,-78],target:[-2,1,-86]},
+  {p:.67,camera:[5,3.5,-78],target:[-2,1,-86]},
+  {p:.74,camera:[7,4,-82],target:[-2,1,-86]},
+  {p:.84,camera:[8,4,-105],target:[0,1,-114]},
+  {p:.94,camera:[8,5,-124],target:[1,1,-132]},
+  {p:1,camera:[8,5,-124],target:[1,1,-132]},
 ]
-const cinematicState=value=>{const nextIndex=Math.max(1,CINEMATIC_KEYFRAMES.findIndex(k=>value<=k.p)),a=CINEMATIC_KEYFRAMES[nextIndex-1],b=CINEMATIC_KEYFRAMES[nextIndex],t=(value-a.p)/Math.max(.0001,b.p-a.p);return{cameraPosition:lerp3(a.camera,b.camera,t),cameraTarget:lerp3(a.target,b.target,t)}}
+const cinematicState=value=>{
+  const found=CINEMATIC_KEYFRAMES.findIndex(keyframe=>value<=keyframe.p)
+  const nextIndex=Math.max(1,found<0?CINEMATIC_KEYFRAMES.length-1:found)
+  const a=CINEMATIC_KEYFRAMES[nextIndex-1]
+  const b=CINEMATIC_KEYFRAMES[nextIndex]
+  const t=smootherstep(a.p,b.p,value)
+  return{cameraPosition:lerp3(a.camera,b.camera,t),cameraTarget:lerp3(a.target,b.target,t)}
+}
 
 export function getExpeditionState(progress){
   const p=clamp01(progress)
-  if(p<.38)return{phase:'ambassador',activeTransport:'ambassador',handoff:null,localProgress:p/.38}
-  if(p<.41)return{phase:'ambassador-to-jeep',activeTransport:'ambassador',handoff:'ambassador-to-jeep',localProgress:(p-.38)/.03}
-  if(p<.57)return{phase:'jungle-jeep',activeTransport:'jeep',handoff:null,localProgress:(p-.41)/.16}
-  if(p<.62)return{phase:'jeep-to-boat',activeTransport:'jeep',handoff:'jeep-to-boat',localProgress:(p-.57)/.05}
-  if(p<.70)return{phase:'water-boat',activeTransport:'boat',handoff:null,localProgress:(p-.62)/.08}
-  if(p<.75)return{phase:'boat-to-trek',activeTransport:'boat',handoff:'boat-to-trek',localProgress:(p-.70)/.05}
-  if(p<.92)return{phase:'ice-trek',activeTransport:'trekker',handoff:null,localProgress:(p-.75)/.17}
-  return{phase:'contact',activeTransport:'trekker',handoff:null,localProgress:(p-.92)/.08}
+  if(p<.28)return{phase:'mountain-trek',biome:'mountain',activeTransport:'trekker',localProgress:p/.28}
+  if(p<.42)return{phase:'trek-to-boat',biome:'mountain-water',activeTransport:'trekker',localProgress:(p-.28)/.14}
+  if(p<.60)return{phase:'water-boat',biome:'water',activeTransport:'boat',localProgress:(p-.42)/.18}
+  if(p<.74)return{phase:'boat-to-jeep',biome:'water-forest',activeTransport:'boat',localProgress:(p-.60)/.14}
+  if(p<.94)return{phase:'forest-jeep',biome:'forest',activeTransport:'jeep',localProgress:(p-.74)/.20}
+  return{phase:'contact',biome:'forest',activeTransport:'jeep',localProgress:(p-.94)/.06}
 }
 
 export function getJourneyState(progress) {
@@ -56,7 +61,12 @@ export function getJourneyState(progress) {
   const localProgress = nextIndex === activeIndex ? 1 : scaled - activeIndex
   const current = JOURNEY_STOPS[activeIndex]
   const next = JOURNEY_STOPS[nextIndex]
-  const expedition=getExpeditionState(value),phase=value<.18?'vehicle-intro':value<.38?'operations':value<.92?'plans':'contact'
-  const planFocus=value<.62?0:value<.75?1:2
-  return { activeIndex, activeStop: current, localProgress, phase, planFocus:phase==='plans'?planFocus:null, vehicleVisible:true, contentVisible:value>=.18, expedition, ...cinematicState(value), palette: current.palette }
+  const expedition=getExpeditionState(value)
+  const phase=expedition.phase==='contact'
+    ?'contact'
+    :expedition.biome.includes('-')
+      ?'handoff'
+      :expedition.biome
+  const planFocus=value<.42?0:value<.74?1:2
+  return { activeIndex, activeStop: current, localProgress, phase, planFocus, contentVisible:true, expedition, ...cinematicState(value), palette: current.palette }
 }

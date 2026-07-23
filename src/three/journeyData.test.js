@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { JOURNEY_STOPS, clamp01, getExpeditionState, getJourneyState } from './journeyData'
+import { LANDMARKS } from './terrain'
 
 describe('India journey data', () => {
   it('runs south to north through every approved tourism stop', () => {
@@ -23,31 +24,47 @@ describe('India journey data', () => {
     expect(state.localProgress).toBeLessThanOrEqual(1)
   })
 
-  it('keeps the opening camera focused on the moving Ambassador', () => {
+  it('opens on the mountain trek with the four-person party visible', () => {
     const opening=getJourneyState(.08)
-    expect(opening.phase).toBe('vehicle-intro')
-    expect(opening.vehicleVisible).toBe(true)
-    expect(opening.contentVisible).toBe(false)
+    expect(opening.phase).toBe('mountain')
+    expect(opening.expedition.activeTransport).toBe('trekker')
+    expect(opening.contentVisible).toBe(true)
   })
 
   it('exposes the three plan focus states in journey order', () => {
-    expect([.48,.66,.82].map(p=>getJourneyState(p).planFocus)).toEqual([0,1,2])
+    expect([.34,.5,.82].map(p=>getJourneyState(p).planFocus)).toEqual([0,1,2])
   })
 
-  it('frames the operations pavilion and each expedition world deliberately',()=>{
-    expect(getJourneyState(.25).cameraTarget[2]).toBeCloseTo(-24,0)
-    expect(getJourneyState(.48).cameraTarget[2]).toBeCloseTo(-53,0)
-    expect(getJourneyState(.66).cameraTarget[2]).toBeCloseTo(-94,0)
-    expect(getJourneyState(.82).cameraTarget[2]).toBeCloseTo(-132,0)
+  it('frames both physical landings before, during, and after each handoff',()=>{
+    const mountainLanding=new Set([.28,.35,.42].map(progress=>Math.round(getJourneyState(progress).cameraTarget[2])))
+    const forestLanding=new Set([.60,.67,.74].map(progress=>Math.round(getJourneyState(progress).cameraTarget[2])))
+    expect([...mountainLanding].every(z=>Math.abs(z-LANDMARKS.mountainLanding[2])<=8)).toBe(true)
+    expect([...forestLanding].every(z=>Math.abs(z-LANDMARKS.forestLanding[2])<=8)).toBe(true)
   })
-  it('moves through Ambassador, jeep, boat and trekking phases',()=>{
-    expect([.1,.34,.43,.55,.64,.78,.9].map(p=>getExpeditionState(p).activeTransport)).toEqual(['ambassador','ambassador','jeep','jeep','boat','trekker','trekker'])
-    expect(getExpeditionState(.39).handoff).toBe('ambassador-to-jeep')
-    expect(getExpeditionState(.60).handoff).toBe('jeep-to-boat')
-    expect(getExpeditionState(.72).handoff).toBe('boat-to-trek')
+
+  it('uses the required biome and transport order',()=>{
+    expect([.05,.5,.9].map(p=>getExpeditionState(p).activeTransport)).toEqual(['trekker','boat','jeep'])
+    expect([.05,.5,.9].map(p=>getExpeditionState(p).biome)).toEqual(['mountain','water','forest'])
+    expect(JSON.stringify(getExpeditionState(.5))).not.toMatch(/ambassador|monument|ice/i)
   })
+
+  it('uses the full landing ranges for both handoffs',()=>{
+    expect(getExpeditionState(.34)).toEqual({
+      phase:'trek-to-boat',
+      biome:'mountain-water',
+      activeTransport:'trekker',
+      localProgress:(.34-.28)/.14,
+    })
+    expect(getExpeditionState(.68)).toEqual({
+      phase:'boat-to-jeep',
+      biome:'water-forest',
+      activeTransport:'boat',
+      localProgress:(.68-.60)/.14,
+    })
+  })
+
   it('keeps each expedition transport close enough to read clearly',()=>{
-    ;[.48,.66,.82].forEach(progress=>{
+    ;[.16,.5,.82].forEach(progress=>{
       const {cameraPosition,cameraTarget}=getJourneyState(progress)
       const distance=Math.hypot(...cameraPosition.map((value,index)=>value-cameraTarget[index]))
       expect(distance).toBeLessThan(15)
