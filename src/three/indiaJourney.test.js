@@ -29,7 +29,7 @@ describe('renderer quality', () => {
   it('frames the mobile party, boat, and jeep at readable trailing distances',()=>{
     expect(getMobileTransportCamera('trekker',[2,1,-30])).toEqual({camera:[9,13,-15],target:[2,.8,-30]})
     expect(getMobileTransportCamera('boat',[-2,.25,-86])).toEqual({camera:[2,3.05,-77],target:[-2,1.05,-86]})
-    expect(getMobileTransportCamera('jeep',[1,.2,-120])).toEqual({camera:[5,3.4,-111],target:[1,1.2,-120]})
+    expect(getMobileTransportCamera('jeep',[1,.2,-120])).toEqual({camera:[5,2.8,-112.5],target:[1,-.25,-120]})
   })
   it('frames the party around its members instead of its origin',()=>{
     const party=new THREE.Group()
@@ -68,13 +68,41 @@ describe('renderer quality', () => {
       expect(getCameraRailJump(progress)).toBeLessThanOrEqual(.8)
     })
   })
-  it('reports rendered occupants from the active transport instead of hidden trekkers',()=>{
-    const member=role=>Object.assign(new THREE.Object3D(),{role})
+  it('reports only weighted, ancestor-visible, opaque occupants projected into the camera',()=>{
+    const camera=new THREE.PerspectiveCamera(60,1,.1,100)
+    camera.position.set(0,1,5)
+    camera.lookAt(0,1,0)
+    camera.updateMatrixWorld(true)
+    camera.updateProjectionMatrix()
+    const member=(role,{x=0,opacity=1}={})=>{
+      const root=Object.assign(new THREE.Group(),{role})
+      const body=new THREE.Mesh(
+        new THREE.BoxGeometry(.5,1,.5),
+        new THREE.MeshBasicMaterial({opacity,transparent:opacity<1}),
+      )
+      root.position.set(x,1,0)
+      root.add(body)
+      return root
+    }
     const hiddenTrekker=new THREE.Group()
-    hiddenTrekker.userData.members=[member('guide'),member('tourist'),member('tourist'),member('tourist')]
+    hiddenTrekker.userData.members=[
+      member('guide'),
+      member('tourist'),
+      member('tourist'),
+      member('tourist'),
+    ]
     hiddenTrekker.userData.members.forEach(candidate=>{candidate.visible=false})
     const boat=new THREE.Group()
-    boat.userData.members=[member('guide'),member('tourist'),member('tourist'),member('tourist')]
+    const guide=member('guide')
+    const hiddenByAncestor=member('tourist')
+    const hiddenParent=new THREE.Group()
+    hiddenParent.visible=false
+    hiddenParent.add(hiddenByAncestor)
+    const transparent=member('tourist',{opacity:0})
+    const outside=member('tourist',{x:100})
+    boat.add(guide,hiddenParent,transparent,outside)
+    boat.userData.members=[guide,hiddenByAncestor,transparent,outside]
+    boat.updateMatrixWorld(true)
     const state={expedition:{phase:'water-boat',activeTransport:'boat'}}
     const transition={
       worlds:{mountain:0,water:1,forest:0},
@@ -85,6 +113,7 @@ describe('renderer quality', () => {
       transition,
       renderedWorlds:{mountain:false,water:true,forest:false},
       transports:{trekker:hiddenTrekker,boat,jeep:new THREE.Group()},
+      camera,
       cameraJump:.125,
       consoleFailures:[],
       audioControls:0,
@@ -95,7 +124,7 @@ describe('renderer quality', () => {
       activeTransport:'boat',
       biomeWeights:{mountain:0,water:1,forest:0},
       transportWeights:{trekker:0,boat:1,jeep:0},
-      visibleMembers:{guides:1,tourists:3},
+      visibleMembers:{guides:1,tourists:0},
       distantVisibility:{
         nextBiome:false,
         nextBiomeName:'forest',
@@ -107,6 +136,18 @@ describe('renderer quality', () => {
       consoleFailures:[],
       audioControls:0,
     })
+    const negligible=getJourneyQASnapshot({
+      state,
+      transition:{
+        ...transition,
+        transports:{trekker:0,boat:.005,jeep:0},
+      },
+      renderedWorlds:{mountain:false,water:true,forest:false},
+      transports:{trekker:hiddenTrekker,boat,jeep:new THREE.Group()},
+      camera,
+      cameraJump:0,
+    })
+    expect(negligible.visibleMembers).toEqual({guides:0,tourists:0})
   })
 
   it('reports only materially weighted worlds projected into the camera frustum',()=>{

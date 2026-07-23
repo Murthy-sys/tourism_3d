@@ -32,13 +32,13 @@ const sampleFrame=(curve,t)=>{
 
 const createRibbonGeometry=(curve,segments,halfWidthAt,y=0,crossSectionSegments=6)=>{
   const positions=[],colors=[],indices=[]
-  const deep=new THREE.Color('#0a5868'),light=new THREE.Color('#43a7a9'),color=new THREE.Color()
+  const deep=new THREE.Color('#032f3c'),light=new THREE.Color('#5cc9c2'),color=new THREE.Color()
   for(let index=0;index<=segments;index+=1){
     const t=index/segments,{point,lateral}=sampleFrame(curve,t),halfWidth=halfWidthAt(t)
     for(let column=0;column<=crossSectionSegments;column+=1){
       const side=column/crossSectionSegments*2-1
       positions.push(point.x+lateral.x*halfWidth*side,y,point.z+lateral.z*halfWidth*side)
-      color.copy(deep).lerp(light,.08+Math.abs(side)*.82+.08*Math.sin(t*Math.PI))
+      color.copy(deep).lerp(light,.03+Math.abs(side)*.9+.06*Math.sin(t*Math.PI))
       colors.push(color.r,color.g,color.b)
     }
     if(index<segments){
@@ -117,7 +117,7 @@ const createEdgeRibbonGeometry=(curve,segments,side)=>{
 }
 
 const createBasinGeometry=()=>{
-  const geometry=new THREE.PlaneGeometry(92,118,46,60)
+  const geometry=new THREE.PlaneGeometry(58,61,36,44)
   geometry.rotateX(-Math.PI/2)
   const position=geometry.getAttribute('position')
   const colors=[]
@@ -282,16 +282,18 @@ export function createWaterWorld(m,quality='desktop'){
   const basin=mesh(
     createBasinGeometry(),
     new THREE.MeshStandardMaterial({vertexColors:true,roughness:1}),
-    [0,0,-60],
+    [0,0,-61.5],
   )
   basin.name='water-basin-ground'
   basin.receiveShadow=true
   world.add(basin)
 
-  const depthMaterial=new THREE.MeshStandardMaterial({
-    color:'#063b4b',
-    roughness:.52,
+  const depthMaterial=new THREE.MeshPhysicalMaterial({
+    color:'#022f3b',
+    roughness:.42,
     metalness:.04,
+    clearcoat:.22,
+    clearcoatRoughness:.18,
     vertexColors:true,
   })
   const depth=mesh(createRibbonGeometry(route,segments,t=>waterHalfWidth(t)+.28,-.28),depthMaterial)
@@ -305,7 +307,7 @@ export function createWaterWorld(m,quality='desktop'){
     metalness:.03,
     transmission:.3,
     thickness:.32,
-    ior:1.33,
+    reflectivity:.78,
     clearcoat:1,
     clearcoatRoughness:.06,
     transparent:true,
@@ -325,7 +327,7 @@ export function createWaterWorld(m,quality='desktop'){
     transmission:.04,
     clearcoat:1,
     transparent:true,
-    opacity:.12,
+    opacity:.16,
     vertexColors:true,
     depthWrite:false,
     blending:THREE.NormalBlending,

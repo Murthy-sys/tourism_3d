@@ -81,22 +81,24 @@ describe('expedition controller integration',()=>{
     controller.dispose()
   })
 
-  it('keeps zero-weight worlds visible without ghost shadow casters',()=>{
+  it('visibility-gates negligible worlds without alpha-fading live environments',()=>{
     const scene=new THREE.Scene()
     const controller=createExpeditionController(scene,createMaterials(),'mobile')
     const mountainMesh=controller.worlds.mountain.getObjectByProperty('isMesh',true)
     const forestMesh=controller.worlds.forest.getObjectByProperty('isMesh',true)
     controller.update(getExpeditionState(0),0,false)
-    expect(controller.worlds.forest.visible).toBe(true)
+    expect(controller.worlds.forest.visible).toBe(false)
     expect(mountainMesh.castShadow).toBe(true)
     expect(forestMesh.castShadow).toBe(false)
     controller.update(getExpeditionState(.9),1,false)
+    expect(controller.worlds.mountain.visible).toBe(false)
+    expect(controller.worlds.forest.visible).toBe(true)
     expect(mountainMesh.castShadow).toBe(false)
     expect(forestMesh.castShadow).toBe(true)
     controller.dispose()
   })
 
-  it('renders fully weighted terrain and trekkers as opaque depth-writing geometry',()=>{
+  it('keeps environment and transport geometry opaque throughout handoffs',()=>{
     const scene=new THREE.Scene()
     const controller=createExpeditionController(scene,createMaterials(),'mobile')
     const terrain=controller.worlds.mountain.getObjectByName('hill-terrain')
@@ -108,35 +110,66 @@ describe('expedition controller integration',()=>{
     expect(jacket.material.transparent).toBe(false)
     expect(jacket.material.depthWrite).toBe(true)
     controller.update(getExpeditionState(.35),0,true)
-    expect(terrain.material.transparent).toBe(true)
-    expect(jacket.material.transparent).toBe(true)
+    expect(terrain.material.opacity).toBe(1)
+    expect(terrain.material.transparent).toBe(false)
+    expect(terrain.material.depthWrite).toBe(true)
+    expect(jacket.material.opacity).toBe(1)
+    expect(jacket.material.transparent).toBe(false)
+    expect(jacket.material.depthWrite).toBe(true)
     controller.dispose()
   })
 
-  it('invalidates material programs when a biome returns from transparent blending',()=>{
+  it('preserves each environment material base state across biome transitions',()=>{
     const scene=new THREE.Scene()
     const controller=createExpeditionController(scene,createMaterials(),'desktop')
     const forestTerrain=controller.worlds.forest.children.find(child=>child.isMesh)
+    const base={
+      opacity:forestTerrain.material.opacity,
+      transparent:forestTerrain.material.transparent,
+      depthWrite:forestTerrain.material.depthWrite,
+    }
     controller.update(getExpeditionState(.08),0,true)
-    const blendedVersion=forestTerrain.material.version
-    expect(forestTerrain.material.transparent).toBe(true)
+    expect(forestTerrain.material).toMatchObject(base)
     controller.update(getExpeditionState(.84),1,true)
-    expect(forestTerrain.material.transparent).toBe(false)
-    expect(forestTerrain.material.depthWrite).toBe(true)
-    expect(forestTerrain.material.version).toBeGreaterThan(blendedVersion)
+    expect(forestTerrain.material).toMatchObject(base)
     controller.dispose()
   })
 
-  it('multiplies live animated opacity by biome weight without replacing it with the static base',()=>{
+  it('preserves live animated opacity without multiplying it by biome weight',()=>{
     const scene=new THREE.Scene()
     const controller=createExpeditionController(scene,createMaterials(),'desktop')
     const elapsed=2
     const state=getExpeditionState(.59)
-    const weight=getExpeditionTransition(state).worlds.water
     controller.update(state,elapsed,false)
     const foam=controller.worlds.water.getObjectByName('water-foam-accents').children[0]
     const animatedOpacity=.34+.16*Math.sin(elapsed*1.2)
-    expect(foam.material.opacity).toBeCloseTo(animatedOpacity*weight,5)
+    expect(foam.material.opacity).toBeCloseTo(animatedOpacity,5)
+    controller.dispose()
+  })
+
+  it('keeps both staged transports opaque until their weights become negligible',()=>{
+    const scene=new THREE.Scene()
+    const controller=createExpeditionController(scene,createMaterials(),'desktop')
+    controller.update(getExpeditionState(.67),1,true)
+    const boat=controller.transports.boat
+    const jeep=controller.transports.jeep
+    const passengerMaterial=transport=>
+      transport.userData.members[1].getObjectByProperty('isMesh',true).material
+    expect(boat.visible).toBe(true)
+    expect(jeep.visible).toBe(true)
+    expect(passengerMaterial(boat)).toMatchObject({
+      opacity:1,
+      transparent:false,
+      depthWrite:true,
+    })
+    expect(passengerMaterial(jeep)).toMatchObject({
+      opacity:1,
+      transparent:false,
+      depthWrite:true,
+    })
+    controller.update(getExpeditionState(.84),2,true)
+    expect(boat.visible).toBe(false)
+    expect(jeep.visible).toBe(true)
     controller.dispose()
   })
 

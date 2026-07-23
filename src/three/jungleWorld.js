@@ -258,8 +258,15 @@ export function createJungleWorld(m,quality='desktop'){
   const world=nameGroup('jungle-world')
   const materials=cloneMaterialPalette(m)
   const forestMaterials=createForestMaterials(materials)
-  const midpointZ=(LANDMARKS.forestLanding[2]+LANDMARKS.forestEnd[2])/2
-  world.add(mesh(new THREE.PlaneGeometry(80,90,20,24),forestMaterials.damp,[0,-.18,midpointZ],[-Math.PI/2,0,0]))
+  const forestGroundDepth=Math.abs(LANDMARKS.forestEnd[2]-LANDMARKS.forestLanding[2])+12
+  const forestGround=mesh(
+    new THREE.PlaneGeometry(80,forestGroundDepth,20,18),
+    forestMaterials.damp,
+    [0,-.18,LANDMARKS.forestLanding[2]-forestGroundDepth/2],
+    [-Math.PI/2,0,0],
+  )
+  forestGround.name='forest-ground'
+  world.add(forestGround)
 
   const routePoints=[
     new THREE.Vector3(...LANDMARKS.forestLanding),
@@ -281,7 +288,7 @@ export function createJungleWorld(m,quality='desktop'){
       cameraClearance:8.2,
     },
     {
-      start:jeepSightlineEnd.clone().add(new THREE.Vector3(4,3.2,9)),
+      start:jeepSightlineEnd.clone().add(new THREE.Vector3(4,2.6,7.5)),
       end:jeepSightlineEnd,
       clearance:1.1,
       cameraClearance:8.2,
@@ -298,8 +305,8 @@ export function createJungleWorld(m,quality='desktop'){
   const forestLanding=addInlet(world,materials,forestMaterials,route,obstacles)
   const layers=[
     {name:'forest-near-layer',legacy:'jungle-foreground',desktop:48,mobile:34,min:3.1,max:7.2,salt:20},
-    {name:'forest-mid-layer',legacy:'jungle-midground',desktop:38,mobile:26,min:7,max:13.5,salt:40},
-    {name:'forest-far-layer',legacy:'jungle-background',desktop:28,mobile:18,min:13,max:21,salt:60},
+    {name:'forest-mid-layer',legacy:'jungle-midground',desktop:38,mobile:36,min:7,max:13.5,salt:40},
+    {name:'forest-far-layer',legacy:'jungle-background',desktop:28,mobile:26,min:13,max:21,salt:60},
   ]
   let treeCount=0
   const sightlineTrees=[]
@@ -326,7 +333,7 @@ export function createJungleWorld(m,quality='desktop'){
   })
 
   const undergrowth=nameGroup('jungle-undergrowth')
-  const undergrowthCount=quality==='mobile'?144:224
+  const undergrowthCount=quality==='mobile'?176:224
   const undergrowthSightlines=sightlines.map(sightline=>({
     ...sightline,
     clearance:.78,

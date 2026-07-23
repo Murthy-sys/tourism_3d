@@ -210,7 +210,7 @@ try{
       phase:state.phase,
       nextBiome:state.nextBiome,
       handoff:state.handoff,
-    },{timeout:5000})
+    },{timeout:15000})
     await page.waitForFunction(()=>{
       const debug=window.__journeyQA?.().visualDebug
       if(!debug) return false

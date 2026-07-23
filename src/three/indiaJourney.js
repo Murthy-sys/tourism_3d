@@ -31,10 +31,10 @@ const hierarchyVisible=(object,root)=>{
   let current=object
   while(current){
     if(current.visible===false) return false
-    if(current===root) return true
+    if(root&&current===root) return true
     current=current.parent
   }
-  return false
+  return !root
 }
 const materialsVisible=object=>{
   const materials=Array.isArray(object.material)?object.material:[object.material]
@@ -43,12 +43,16 @@ const materialsVisible=object=>{
   )
 }
 
-export const getRenderedWorldVisibility=(worlds,weights,camera)=>{
+const getCameraFrustum=camera=>{
   camera.updateMatrixWorld(true)
   camera.updateProjectionMatrix()
-  const frustum=new THREE.Frustum().setFromProjectionMatrix(
+  return new THREE.Frustum().setFromProjectionMatrix(
     new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix,camera.matrixWorldInverse),
   )
+}
+
+export const getRenderedWorldVisibility=(worlds,weights,camera)=>{
+  const frustum=getCameraFrustum(camera)
   return Object.fromEntries(Object.entries(worlds).map(([name,world])=>{
     if(world.visible===false||!(weights[name]>.01)) return[name,false]
     world.updateMatrixWorld(true)
@@ -64,6 +68,26 @@ export const getRenderedWorldVisibility=(worlds,weights,camera)=>{
     })
     return[name,rendered]
   }))
+}
+
+export const getRenderedTransportMembers=(transport,weight,camera)=>{
+  if(!transport||!(weight>.01)||!camera||!hierarchyVisible(transport)) return[]
+  transport.updateWorldMatrix(true,true)
+  const frustum=getCameraFrustum(camera)
+  return(transport.userData?.members||[]).filter(member=>{
+    if(!hierarchyVisible(member)) return false
+    let rendered=false
+    member.traverse(object=>{
+      if(
+        rendered||
+        !object.isMesh||
+        !hierarchyVisible(object)||
+        !materialsVisible(object)
+      ) return
+      if(frustum.intersectsObject(object)) rendered=true
+    })
+    return rendered
+  })
 }
 
 export const createCameraJumpTracker=()=>{
@@ -97,7 +121,7 @@ export const createCameraJumpTracker=()=>{
 const MOBILE_FRAMING={
   trekker:{camera:[7,12,15],targetY:-.2},
   boat:{camera:[4,2.8,9],targetY:.8},
-  jeep:{camera:[4,3.2,9],targetY:1},
+  jeep:{camera:[4,2.6,7.5],targetY:-.45},
 }
 
 export const getMobileTransportCamera=(transport,[x,y,z])=>{
@@ -183,13 +207,17 @@ export const getJourneyQASnapshot=({
   transition,
   renderedWorlds,
   transports,
+  camera,
   cameraJump,
   consoleFailures=[],
   audioControls=0,
 })=>{
   const activeTransport=state?.expedition?.activeTransport
-  const members=transports?.[activeTransport]?.userData?.members
-    ?.filter(member=>member.visible!==false)||[]
+  const members=getRenderedTransportMembers(
+    transports?.[activeTransport],
+    transition.transports[activeTransport],
+    camera,
+  )
   const activeBiome=Object.entries(transition.worlds)
     .reduce((active,[name,weight])=>weight>active.weight?{name,weight}:active,{name:null,weight:-1})
     .name
@@ -416,6 +444,7 @@ export function createIndiaJourney(canvas,{reducedMotion=false,onContextLost=()=
           camera,
         ),
         transports:expedition.transports,
+        camera,
         cameraJump:cameraJumpTracker.value(),
         ...extras,
       }),

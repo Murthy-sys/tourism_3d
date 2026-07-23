@@ -5,6 +5,7 @@ import { createMaterials,disposeObject3D } from './primitives'
 import { LANDMARKS } from './terrain'
 import { createWaterWorld } from './waterWorld'
 import { getJourneyState } from './journeyData'
+import { getMobileTransportCamera } from './indiaJourney'
 
 const objectsNamed=(world,names)=>{
   const objects=[]
@@ -71,6 +72,15 @@ describe('jungle world',()=>{
     disposeObject3D(world)
   })
 
+  it('starts opaque forest ground at the shared landing instead of under the river',()=>{
+    const world=createJungleWorld(createMaterials(),'mobile')
+    world.updateMatrixWorld(true)
+    const bounds=new THREE.Box3().setFromObject(world.getObjectByName('forest-ground'))
+    expect(bounds.max.z).toBeLessThanOrEqual(LANDMARKS.forestLanding[2]+.01)
+    expect(bounds.min.z).toBeLessThan(LANDMARKS.forestEnd[2]-8)
+    disposeObject3D(world)
+  })
+
   it('centers the rendered landing deck on the shared water handoff surface',()=>{
     const jungle=createJungleWorld(createMaterials(),'desktop')
     const water=createWaterWorld(createMaterials(),'desktop')
@@ -107,8 +117,10 @@ describe('jungle world',()=>{
 
   it('preserves mobile canopy floors and the exact shared route end',()=>{
     const world=createJungleWorld(createMaterials(),'mobile')
-    expect(world.userData.counts.trees).toBeGreaterThanOrEqual(55)
-    expect(world.userData.counts.undergrowth).toBeGreaterThanOrEqual(110)
+    expect(world.userData.counts.trees).toBeGreaterThanOrEqual(90)
+    expect(world.userData.counts.undergrowth).toBeGreaterThanOrEqual(170)
+    expect(world.getObjectByName('forest-mid-layer').children.length).toBeGreaterThanOrEqual(36)
+    expect(world.getObjectByName('forest-far-layer').children.length).toBeGreaterThanOrEqual(26)
     expect(world.userData.route.getPointAt(1).distanceTo(new THREE.Vector3(...LANDMARKS.forestEnd))).toBeLessThan(1e-6)
     disposeObject3D(world)
   })
@@ -180,7 +192,8 @@ describe('jungle world',()=>{
     const world=createJungleWorld(createMaterials(),'mobile')
     world.updateMatrixWorld(true)
     const jeep=world.userData.route.getPointAt(.5)
-    const camera=jeep.clone().add(new THREE.Vector3(4,3.2,9))
+    const framing=getMobileTransportCamera('jeep',jeep.toArray())
+    const camera=new THREE.Vector3(...framing.camera)
     const clearances=[]
     world.getObjectByName('jungle-undergrowth').children.forEach(plant=>{
       const {center,radius}=obstacleFootprint(plant)

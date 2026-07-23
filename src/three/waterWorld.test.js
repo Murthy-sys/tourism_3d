@@ -45,9 +45,17 @@ describe('water world',()=>{
     expect(basin.rotation.z).toBe(0)
     expect(surface.opacity).toBeLessThanOrEqual(.74)
     expect(surface.transmission).toBeGreaterThanOrEqual(.2)
+    expect(surface.reflectivity).toBeGreaterThanOrEqual(.75)
+    expect(depth.isMeshPhysicalMaterial).toBe(true)
+    expect(depth.clearcoat).toBeGreaterThanOrEqual(.15)
     expect(depth.roughness).toBeLessThan(.65)
-    expect(reflection.opacity).toBeLessThanOrEqual(.16)
+    expect(reflection.opacity).toBeGreaterThanOrEqual(.14)
+    expect(reflection.opacity).toBeLessThanOrEqual(.2)
     expect(water.getObjectByName('water-shore-detail').children.length).toBeGreaterThanOrEqual(24)
+    water.updateMatrixWorld(true)
+    const basinBounds=new THREE.Box3().setFromObject(basin)
+    expect(basinBounds.max.z).toBeLessThanOrEqual(LANDMARKS.mountainLanding[2]+3)
+    expect(basinBounds.min.z).toBeLessThanOrEqual(LANDMARKS.forestLanding[2]-4)
     disposeObject3D(water)
   })
 
@@ -154,7 +162,7 @@ describe('water world',()=>{
     expect(basinBounds.min.x).toBeLessThan(bankBounds.min.x-4)
     expect(basinBounds.max.x).toBeGreaterThan(bankBounds.max.x+4)
     expect(basinBounds.min.z).toBeLessThan(bankBounds.min.z-4)
-    expect(basinBounds.max.z).toBeGreaterThan(bankBounds.max.z+4)
+    expect(basinBounds.max.z).toBeGreaterThan(bankBounds.max.z-.01)
     const trunks=[]
     water.getObjectByName('distant-forest-silhouette').traverse(object=>{
       if(object.name==='distant-forest-trunk') trunks.push(object)

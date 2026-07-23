@@ -66,7 +66,9 @@ const createTerrain=(heightAt,quality)=>{
   for(let index=0;index<position.count;index+=1){
     const x=position.getX(index)
     const z=position.getZ(index)
-    const height=position.getY(index)
+    const waterEdge=THREE.MathUtils.smoothstep(-z,32.5,38)
+    const height=position.getY(index)-waterEdge*1.45
+    position.setY(index,height)
     const slope=sampleMountainSlope(x,z)
     const soilWeight=THREE.MathUtils.smoothstep(slope,.12,.5)
     const rockWeight=THREE.MathUtils.clamp(
@@ -88,6 +90,8 @@ const createTerrain=(heightAt,quality)=>{
     colors[index*3+1]=color.g
     colors[index*3+2]=color.b
   }
+  position.needsUpdate=true
+  geometry.computeVertexNormals()
   geometry.setAttribute('color',new THREE.BufferAttribute(colors,3))
   geometry.userData.colorVariation=maximumColorSum-minimumColorSum
   const terrainMaterial=new THREE.MeshStandardMaterial({
@@ -104,48 +108,36 @@ const createTerrain=(heightAt,quality)=>{
 
 const createRidgeGeometry=layer=>{
   const columns=40
-  const rows=5
-  const positions=[]
-  const indices=[]
-  for(let index=0;index<=columns;index+=1){
-    const t=index/columns
-    const x=THREE.MathUtils.lerp(-47,47,t)
-    const z=-43-layer*11+
-      Math.sin(index*.61+layer*1.7)*1.3+
-      Math.sin(index*.19-layer)*1.8
-    const base=-.7+layer*.45
-    const ridgeHeight=7.2-layer*.55+
-      Math.sin(index*.72+layer)*1.25+
-      Math.sin(index*.23+layer*2.2)*1.8+
-      deterministic(index,layer)*.65
-    const opening=THREE.MathUtils.smoothstep(Math.abs(x),5+layer*1.5,20+layer*2)
-    const height=THREE.MathUtils.lerp(base+.12,ridgeHeight,opening)
-    for(let row=0;row<=rows;row+=1){
-      const verticalProgress=row/rows
-      const relief=Math.sin(verticalProgress*Math.PI)*(
-        .32+
-        .14*Math.sin(index*.47+layer*1.9)
-      )
-      positions.push(
-        x,
-        THREE.MathUtils.lerp(base,height,verticalProgress),
-        z-relief,
-      )
-    }
-    if(index<columns){
-      const stride=rows+1
-      for(let row=0;row<rows;row+=1){
-        const current=index*stride+row
-        indices.push(
-          current,current+1,current+stride,
-          current+1,current+stride+1,current+stride,
-        )
-      }
-    }
+  const rows=10
+  const depth=20
+  const centerZ=-49-layer*15
+  const geometry=new THREE.PlaneGeometry(94,depth,columns,rows)
+  geometry.rotateX(-Math.PI/2)
+  const position=geometry.getAttribute('position')
+  for(let index=0;index<position.count;index+=1){
+    const x=position.getX(index)
+    const localZ=position.getZ(index)
+    const opening=THREE.MathUtils.smoothstep(
+      Math.abs(x),
+      5+layer*1.4,
+      21+layer*2.2,
+    )
+    const longitudinal=.35+.65*Math.sin((localZ/depth+.5)*Math.PI)
+    const undulation=
+      Math.sin(x*.17+layer*1.9)*1.05+
+      Math.sin(x*.055-layer*.8)*1.2+
+      Math.cos(localZ*.28+x*.035)*.48
+    const height=(-.55+layer*.28)+
+      opening*longitudinal*(3.8-layer*.35+undulation)
+    position.setXYZ(
+      index,
+      x,
+      height,
+      centerZ+localZ+Math.sin(x*.09+layer)*.35,
+    )
   }
-  const geometry=new THREE.BufferGeometry()
-  geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3))
-  geometry.setIndex(indices)
+  position.needsUpdate=true
+  geometry.userData.surfaceKind='horizontal-heightfield'
   geometry.computeVertexNormals()
   return geometry
 }
@@ -156,7 +148,7 @@ const createRidges=()=>{
   colors.forEach((color,index)=>{
     const ridge=mesh(
       createRidgeGeometry(index),
-      material(color,.97,{side:THREE.DoubleSide}),
+      material(color,.97),
     )
     ridge.name=`hill-ridge-${index+1}`
     ridge.renderOrder=-3+index

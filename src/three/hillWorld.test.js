@@ -6,12 +6,17 @@ import { createMaterials, disposeObject3D } from './primitives'
 import { LANDMARKS } from './terrain'
 
 describe('hill world',()=>{
-  it('subdivides backdrop ridges so no viewport-sized triangle spans the mobile view',()=>{
+  it('uses horizontal heightfields instead of upright ridge-panel sheets',()=>{
     const world=createHillWorld(createMaterials(),'mobile')
     world.getObjectByName('hill-ridges').children.forEach(ridge=>{
       const position=ridge.geometry.getAttribute('position')
+      const normals=ridge.geometry.getAttribute('normal')
       const index=ridge.geometry.getIndex()
       let maximum=0
+      let averageUpwardNormal=0
+      for(let normal=0;normal<normals.count;normal+=1){
+        averageUpwardNormal+=Math.abs(normals.getY(normal))
+      }
       for(let offset=0;offset<index.count;offset+=3){
         const triangle=[0,1,2].map(point=>
           new THREE.Vector3().fromBufferAttribute(position,index.getX(offset+point)),
@@ -23,6 +28,8 @@ describe('hill world',()=>{
           triangle[2].distanceTo(triangle[0]),
         )
       }
+      expect(ridge.geometry.userData.surfaceKind).toBe('horizontal-heightfield')
+      expect(averageUpwardNormal/normals.count).toBeGreaterThan(.55)
       expect(maximum).toBeLessThan(5)
     })
     disposeObject3D(world)
@@ -83,6 +90,17 @@ describe('hill world',()=>{
       }
     })
     expect(Math.max(...sizes)).toBeLessThan(2.8)
+    disposeObject3D(world)
+  })
+
+  it('drops the mountain terrain below the water surface past the landing',()=>{
+    const world=createHillWorld(createMaterials(),'mobile')
+    const position=world.getObjectByName('hill-terrain').geometry.getAttribute('position')
+    const waterEdgeHeights=[]
+    for(let index=0;index<position.count;index+=1){
+      if(position.getZ(index)<-37) waterEdgeHeights.push(position.getY(index))
+    }
+    expect(Math.max(...waterEdgeHeights)).toBeLessThan(-.5)
     disposeObject3D(world)
   })
 })

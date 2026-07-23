@@ -107,21 +107,17 @@ const createBlendState=root=>{
 const resetBlendState=({materials,lights,shadows})=>{
   materials.forEach((base,material)=>{
     material.opacity=base.opacity
+    if(material.transparent!==base.transparent){
+      material.transparent=base.transparent
+      material.needsUpdate=true
+    }
+    material.depthWrite=base.depthWrite
   })
   lights.forEach((intensity,light)=>{light.intensity=intensity})
   shadows.forEach((castShadow,object)=>{object.castShadow=castShadow})
 }
 
-const applyBlendWeight=(blendState,weight)=>{
-  blendState.materials.forEach((base,material)=>{
-    const transparent=base.transparent||weight<.999
-    material.opacity*=weight
-    if(material.transparent!==transparent){
-      material.transparent=transparent
-      material.needsUpdate=true
-    }
-    material.depthWrite=base.depthWrite&&weight>.999
-  })
+const applyPresenceWeight=(blendState,weight)=>{
   blendState.lights.forEach((intensity,light)=>{light.intensity=intensity*weight})
   blendState.shadows.forEach((castShadow,object)=>{
     object.castShadow=castShadow&&weight>.01
@@ -246,12 +242,14 @@ export function createExpeditionController(scene,materials,quality){
 
     const transition=getExpeditionTransition(state)
     Object.entries(worlds).forEach(([name,world])=>{
-      world.visible=true
-      applyBlendWeight(blendStates.get(world),transition.worlds[name])
+      const weight=transition.worlds[name]
+      world.visible=weight>.01
+      applyPresenceWeight(blendStates.get(world),weight)
     })
     Object.entries(transports).forEach(([name,transport])=>{
-      transport.visible=true
-      applyBlendWeight(blendStates.get(transport),transition.transports[name])
+      const weight=transition.transports[name]
+      transport.visible=weight>.01
+      applyPresenceWeight(blendStates.get(transport),weight)
     })
     return transition
   }
