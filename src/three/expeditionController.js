@@ -139,6 +139,25 @@ const routeProgress=(state,transport,partySpan=0)=>{
   return 0
 }
 
+const getDeckSurfaceBounds=deck=>{
+  const bounds=new THREE.Box3()
+  deck.children
+    .filter(child=>child.geometry?.type==='BoxGeometry')
+    .forEach(plank=>bounds.expandByObject(plank))
+  return bounds
+}
+
+const clearanceAlongLateral=(hullBounds,deckBounds,lateral,gap=.24)=>{
+  const thresholds=['x','z'].map(axis=>{
+    const component=lateral[axis]
+    if(Math.abs(component)<1e-6) return Infinity
+    return component>0
+      ?(deckBounds.max[axis]+gap-hullBounds.min[axis])/component
+      :(hullBounds.max[axis]+gap-deckBounds.min[axis])/-component
+  })
+  return Math.max(0,Math.min(...thresholds))
+}
+
 export function createExpeditionController(scene,materials,quality){
   const mountain=createHillWorld(materials,quality)
   const water=createWaterWorld(materials,quality)
@@ -149,6 +168,27 @@ export function createExpeditionController(scene,materials,quality){
   const transportRoot=new THREE.Group()
   transportRoot.name='expedition-transports'
   transportRoot.add(trekker,boat,jeep)
+
+  mountain.updateMatrixWorld(true)
+  water.updateMatrixWorld(true)
+  const mountainDeck=mountain.getObjectByName('mountain-landing-deck')
+  const waterDeck=water.getObjectByName('boat-jetty')
+  const mountainDeckSurface=getDeckSurfaceBounds(mountainDeck)
+  const mountainSurfaceHeightAt=(x,z,point)=>
+    x>=mountainDeckSurface.min.x&&x<=mountainDeckSurface.max.x&&
+    z>=mountainDeckSurface.min.z&&z<=mountainDeckSurface.max.z
+      ?mountainDeckSurface.max.y
+      :point.y
+
+  updateBoat(boat,water.userData.route,0,0,true)
+  transportRoot.updateMatrixWorld(true)
+  const hullBounds=new THREE.Box3().setFromObject(boat.getObjectByName('boat-hull'))
+  const startTangent=water.userData.route.getTangentAt(.002).normalize()
+  const dockLateral=new THREE.Vector3(startTangent.z,0,-startTangent.x).normalize()
+  boat.userData.dockLateralOffset=Math.max(
+    clearanceAlongLateral(hullBounds,new THREE.Box3().setFromObject(mountainDeck),dockLateral),
+    clearanceAlongLateral(hullBounds,new THREE.Box3().setFromObject(waterDeck),dockLateral),
+  )
 
   const worlds={mountain,water,forest}
   const transports={trekker,boat,jeep}
@@ -168,6 +208,7 @@ export function createExpeditionController(scene,materials,quality){
       routeProgress(state,'trekker',partySpan),
       elapsed,
       reducedMotion,
+      mountainSurfaceHeightAt,
     )
     updateBoat(boat,water.userData.route,routeProgress(state,'boat'),elapsed,reducedMotion)
     updateJeep(jeep,forest.userData.route,routeProgress(state,'jeep'),elapsed,reducedMotion)

@@ -76,6 +76,34 @@ describe('expedition transports',()=>{
     ripples.forEach(ripple=>expect(ripple.material.opacity).toBeLessThan(trails[0].material.opacity))
     disposeObject3D(boat)
   })
+  it('smoothly merges a staged dock offset onto the route without a starting snap',()=>{
+    const boat=createExpeditionBoat(createMaterials())
+    const curve=new THREE.CatmullRomCurve3([
+      new THREE.Vector3(0,.35,0),
+      new THREE.Vector3(0,.2,-8),
+    ])
+    boat.userData.dockLateralOffset=3.1
+    const offsets=[]
+    const positions=[]
+    ;[0,.0001,.04,.08,.12,.16].forEach(progress=>{
+      updateBoat(boat,curve,progress,0,true)
+      const point=curve.getPointAt(progress)
+      const tangent=curve.getTangentAt(progress).normalize()
+      const lateral=new THREE.Vector3(tangent.z,0,-tangent.x).normalize()
+      offsets.push(boat.position.clone().sub(point).dot(lateral))
+      positions.push(boat.position.clone())
+    })
+    expect(Math.abs(offsets[0])).toBeCloseTo(3.1,5)
+    expect(Math.abs(offsets[1]-offsets[0])).toBeLessThan(.005)
+    expect(positions[1].distanceTo(positions[0])).toBeLessThan(.02)
+    const magnitudes=offsets.map(Math.abs)
+    magnitudes.slice(1).forEach((value,index)=>{
+      expect(value).toBeLessThanOrEqual(magnitudes[index]+1e-9)
+    })
+    expect(offsets[4]).toBeCloseTo(0,6)
+    expect(offsets[5]).toBeCloseTo(0,6)
+    disposeObject3D(boat)
+  })
   it('creates and animates an articulated trekker',()=>{
     const trekker=createTrekker(createMaterials())
     expect(trekker.userData.limbs).toHaveLength(4)

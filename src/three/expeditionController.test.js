@@ -5,6 +5,20 @@ import { createMaterials } from './primitives'
 import { LANDMARKS } from './terrain'
 import { createExpeditionController, getExpeditionTransition } from './expeditionController'
 
+const getBootBounds=member=>{
+  const bounds=new THREE.Box3()
+  member.getObjectByName('boots').userData.parts.forEach(boot=>bounds.expandByObject(boot))
+  return bounds
+}
+
+const getDeckSurfaceBounds=deck=>{
+  const bounds=new THREE.Box3()
+  deck.children
+    .filter(child=>child.geometry?.type==='BoxGeometry')
+    .forEach(plank=>bounds.expandByObject(plank))
+  return bounds
+}
+
 describe('expedition transition',()=>{
   it('keeps worlds active and adjacent transports overlapping',()=>{
     const mountainHandoff=getExpeditionTransition(getExpeditionState(.34))
@@ -82,7 +96,7 @@ describe('expedition controller integration',()=>{
     controller.dispose()
   })
 
-  it('holds the separated party and incoming boat at the mountain landing',()=>{
+  it('holds the separated party and stages the incoming boat beside the mountain landing',()=>{
     const scene=new THREE.Scene()
     const controller=createExpeditionController(scene,createMaterials(),'mobile')
     controller.update(getExpeditionState(.34),1,false)
@@ -92,14 +106,14 @@ describe('expedition controller integration',()=>{
     expect(Math.hypot(
       controller.transports.boat.position.x-landing.x,
       controller.transports.boat.position.z-landing.z,
-    )).toBeLessThan(.01)
+    )).toBeGreaterThan(1)
     for(let index=1;index<members.length;index+=1){
       expect(members[index].distanceTo(members[index-1])).toBeGreaterThan(.2)
     }
     controller.dispose()
   })
 
-  it('aligns both mountain worlds, party feet, and boat staging in full 3D',()=>{
+  it('keeps shared landmarks exact while planting boots and clearing the staged hull',()=>{
     const scene=new THREE.Scene()
     const controller=createExpeditionController(scene,createMaterials(),'mobile')
     controller.update(getExpeditionState(.34),1,true)
@@ -110,15 +124,54 @@ describe('expedition controller integration',()=>{
       controller.worlds.mountain.userData.landing.getWorldPosition(new THREE.Vector3()),
       controller.worlds.water.userData.route.getPointAt(0),
       controller.worlds.water.userData.mountainLanding.getWorldPosition(new THREE.Vector3()),
-      controller.transports.trekker.userData.members[0].getWorldPosition(new THREE.Vector3()),
-      controller.transports.boat.getWorldPosition(new THREE.Vector3()),
     ]
     aligned.forEach(position=>expect(position.distanceTo(landmark)).toBeLessThan(1e-6))
-    const hillDeck=new THREE.Box3().setFromObject(controller.worlds.mountain.userData.landing)
-    const waterDeck=new THREE.Box3().setFromObject(controller.worlds.water.userData.mountainLanding)
+    const hillDeckObject=controller.worlds.mountain.getObjectByName('mountain-landing-deck')
+    const waterDeckObject=controller.worlds.water.getObjectByName('boat-jetty')
+    const hillDeck=getDeckSurfaceBounds(hillDeckObject)
+    const waterDeck=getDeckSurfaceBounds(waterDeckObject)
     const hillCenter=hillDeck.getCenter(new THREE.Vector3())
     expect(Math.hypot(hillCenter.x-landmark.x,hillCenter.z-landmark.z)).toBeLessThan(.02)
     expect(hillDeck.max.y).toBeCloseTo(waterDeck.max.y,2)
+    const members=controller.transports.trekker.userData.members
+    const guideBoots=getBootBounds(members[0])
+    expect(guideBoots.min.y).toBeCloseTo(hillDeck.max.y,5)
+    members.forEach(member=>{
+      const bootBounds=getBootBounds(member)
+      const rootY=member.getWorldPosition(new THREE.Vector3()).y
+      expect(member.userData.bootBottomOffset).toBeCloseTo(bootBounds.min.y-rootY,5)
+    })
+    const hullBounds=new THREE.Box3().setFromObject(
+      controller.transports.boat.getObjectByName('boat-hull'),
+    )
+    expect(hullBounds.intersectsBox(new THREE.Box3().setFromObject(hillDeckObject))).toBe(false)
+    expect(hullBounds.intersectsBox(new THREE.Box3().setFromObject(waterDeckObject))).toBe(false)
+    controller.dispose()
+  })
+
+  it('continuously merges the docked boat offset onto the authoritative water route',()=>{
+    const scene=new THREE.Scene()
+    const controller=createExpeditionController(scene,createMaterials(),'mobile')
+    const route=controller.worlds.water.userData.route
+    const offsets=[]
+    const positions=[]
+    ;[0,.0001,.04,.08,.12,.16].forEach(localProgress=>{
+      controller.update(getExpeditionState(.42+localProgress*.18),1,true)
+      const point=route.getPointAt(localProgress)
+      const tangent=route.getTangentAt(localProgress).normalize()
+      const lateral=new THREE.Vector3(tangent.z,0,-tangent.x).normalize()
+      offsets.push(controller.transports.boat.position.clone().sub(point).dot(lateral))
+      positions.push(controller.transports.boat.position.clone())
+    })
+    expect(Math.abs(offsets[0])).toBeGreaterThan(1)
+    expect(Math.abs(offsets[1]-offsets[0])).toBeLessThan(.005)
+    expect(positions[1].distanceTo(positions[0])).toBeLessThan(.02)
+    const magnitudes=offsets.map(Math.abs)
+    magnitudes.slice(1).forEach((value,index)=>{
+      expect(value).toBeLessThanOrEqual(magnitudes[index]+1e-9)
+    })
+    expect(offsets[4]).toBeCloseTo(0,6)
+    expect(offsets[5]).toBeCloseTo(0,6)
     controller.dispose()
   })
 

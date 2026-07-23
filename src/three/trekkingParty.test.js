@@ -4,6 +4,12 @@ import { updateTrekkingParty } from './trekkingParty'
 import * as THREE from 'three'
 import { createMaterials, disposeObject3D } from './primitives'
 
+const getBootBounds=member=>{
+  const bounds=new THREE.Box3()
+  member.getObjectByName('boots').userData.parts.forEach(boot=>bounds.expandByObject(boot))
+  return bounds
+}
+
 describe('trekking party',()=>{
   it('creates one guide and three independently phased tourists',()=>{
     const materials=createMaterials()
@@ -17,7 +23,7 @@ describe('trekking party',()=>{
     disposeObject3D(party)
   })
 
-  it('plants articulated members on the route with exact spacing',()=>{
+  it('plants the actual articulated boot bottoms on the route surface',()=>{
     const party=createTrekkingParty(createMaterials())
     expect(party.userData.members.map(member=>member.phase)).toEqual([0,1.37,2.91,4.42])
     expect(party.userData.members.map(member=>member.routeOffset)).toEqual([0,.055,.11,.165])
@@ -30,8 +36,13 @@ describe('trekking party',()=>{
     ])
     const heightAt=(x,z)=>1+x*.1-z*.02
     updateTrekkingParty(party,curve,.6,1.25,true,heightAt)
+    party.updateMatrixWorld(true)
     party.userData.members.forEach(member=>{
-      expect(member.position.y).toBeCloseTo(heightAt(member.position.x,member.position.z))
+      const contactHeight=heightAt(member.position.x,member.position.z)
+      const rootY=member.getWorldPosition(new THREE.Vector3()).y
+      const bootBounds=getBootBounds(member)
+      expect(bootBounds.min.y).toBeCloseTo(contactHeight,5)
+      expect(member.userData.bootBottomOffset).toBeCloseTo(bootBounds.min.y-rootY,5)
       expect(member.userData.torso.rotation.z).toBe(0)
     })
     disposeObject3D(party)

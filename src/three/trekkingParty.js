@@ -52,6 +52,8 @@ const palettes=[
 
 const phases=[0,1.37,2.91,4.42]
 const routeOffsets=[0,.055,.11,.165]
+const bootBoundsScratch=new THREE.Box3()
+const rootPositionScratch=new THREE.Vector3()
 
 const namedMesh=(name,geometry,meshMaterial,position=[0,0,0],rotation=[0,0,0])=>{
   const object=mesh(geometry,meshMaterial,position,rotation)
@@ -297,6 +299,7 @@ const createMember=(palette,index,materials)=>{
     torso,
     arms:[leftArm,rightArm],
     legs:[left.leg,right.leg],
+    bootMeshes:[left.boot,right.boot],
     backpack,
     pole,
   }
@@ -312,17 +315,18 @@ export function createTrekkingParty(materials){
   return party
 }
 
-export function updateTrekkingParty(party,curve,progress,elapsed,reducedMotion,heightAt){
+export function updateTrekkingParty(party,curve,progress,elapsed,reducedMotion,surfaceHeightAt){
   if(!party?.userData?.members||!curve) return
-  const terrainHeight=typeof heightAt==='function'
-    ?heightAt
+  const contactHeight=typeof surfaceHeightAt==='function'
+    ?surfaceHeightAt
     :(x,z,point)=>point.y
   const partySpan=Math.max(...party.userData.members.map(member=>member.routeOffset))
   party.userData.members.forEach(member=>{
     const routeProgress=THREE.MathUtils.clamp(progress+partySpan-member.routeOffset,0,1)
     const point=curve.getPointAt(routeProgress)
     const tangent=curve.getTangentAt(Math.min(.9999,routeProgress+.0005))
-    member.position.set(point.x,terrainHeight(point.x,point.z,point),point.z)
+    const surfaceY=contactHeight(point.x,point.z,point)
+    member.position.set(point.x,surfaceY,point.z)
     member.rotation.y=Math.atan2(tangent.x,tangent.z)
 
     const phase=elapsed*5.2+member.phase
@@ -338,5 +342,13 @@ export function updateTrekkingParty(party,curve,progress,elapsed,reducedMotion,h
     member.userData.torso.rotation.z=secondary*.018
     member.userData.torso.rotation.x=reducedMotion?0:Math.abs(Math.sin(phase))*.018
     member.userData.backpack.rotation.z=reducedMotion?0:secondary*-.012
+
+    member.updateWorldMatrix(true,true)
+    const rootY=member.getWorldPosition(rootPositionScratch).y
+    bootBoundsScratch.makeEmpty()
+    member.userData.bootMeshes.forEach(boot=>bootBoundsScratch.expandByObject(boot))
+    const bootBottomOffset=bootBoundsScratch.min.y-rootY
+    member.userData.bootBottomOffset=bootBottomOffset
+    member.position.y=surfaceY-bootBottomOffset
   })
 }
