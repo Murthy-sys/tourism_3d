@@ -27,6 +27,14 @@ describe('expedition transports',()=>{
     expect(boat.getObjectByName('boat-rower').position.y).toBeLessThan(.5)
     disposeObject3D(boat)
   })
+  it('keeps the articulated boat and visible wake',()=>{
+    const boat=createExpeditionBoat(createMaterials())
+    expect(boat.getObjectByName('boat-rower')).toBeTruthy()
+    expect(boat.getObjectByName('boat-oar-left')).toBeTruthy()
+    expect(boat.getObjectByName('boat-oar-right')).toBeTruthy()
+    expect(boat.getObjectByName('boat-wake')).toBeTruthy()
+    disposeObject3D(boat)
+  })
   it('animates the rower and both oars as one rowing stroke',()=>{
     const boat=createExpeditionBoat(createMaterials())
     const curve=new THREE.CatmullRomCurve3([new THREE.Vector3(0,0,0),new THREE.Vector3(0,0,-8)])
