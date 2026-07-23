@@ -115,7 +115,7 @@ const resetBlendState=({materials,lights,shadows})=>{
 const applyBlendWeight=(blendState,weight)=>{
   blendState.materials.forEach((base,material)=>{
     const transparent=base.transparent||weight<.999
-    material.opacity=base.opacity*weight
+    material.opacity*=weight
     if(material.transparent!==transparent){
       material.transparent=transparent
       material.needsUpdate=true
@@ -128,7 +128,7 @@ const applyBlendWeight=(blendState,weight)=>{
   })
 }
 
-const routeProgress=(state,transport,partySpan=0)=>{
+const routeProgress=(state,transport,partySpan=0,jeepStage=0)=>{
   if(transport==='trekker'){
     const endpoint=1-partySpan
     return state.phase==='mountain-trek'?state.localProgress*endpoint:endpoint
@@ -138,8 +138,13 @@ const routeProgress=(state,transport,partySpan=0)=>{
     if(state.phase==='water-boat') return state.localProgress
     return 1
   }
-  if(state.phase==='forest-jeep') return state.localProgress
-  if(state.phase==='contact') return 1
+  if(transport==='jeep'){
+    if(state.phase==='forest-jeep'){
+      return THREE.MathUtils.lerp(jeepStage,1,state.localProgress)
+    }
+    if(state.phase==='contact') return 1
+    return jeepStage
+  }
   return 0
 }
 
@@ -194,6 +199,20 @@ export function createExpeditionController(scene,materials,quality){
     clearanceAlongLateral(hullBounds,new THREE.Box3().setFromObject(waterDeck),dockLateral),
   )
 
+  updateBoat(boat,water.userData.route,1,0,true)
+  const dockedBoatBounds=new THREE.Box3().setFromObject(boat)
+  let jeepStage=.04
+  for(;jeepStage<=.3;jeepStage+=.01){
+    updateJeep(jeep,forest.userData.route,jeepStage,0,true)
+    transportRoot.updateMatrixWorld(true)
+    const jeepBounds=new THREE.Box3().setFromObject(jeep)
+    if(
+      !dockedBoatBounds.intersectsBox(jeepBounds)&&
+      dockedBoatBounds.distanceToPoint(jeepBounds.getCenter(new THREE.Vector3()))>.5
+    ) break
+  }
+  jeep.userData.shoreStageProgress=Math.min(jeepStage,.3)
+
   const worlds={mountain,water,forest}
   const transports={trekker,boat,jeep}
   const partySpan=Math.max(...trekker.userData.routeOffsets)
@@ -215,7 +234,13 @@ export function createExpeditionController(scene,materials,quality){
       mountainSurfaceHeightAt,
     )
     updateBoat(boat,water.userData.route,routeProgress(state,'boat'),elapsed,reducedMotion)
-    updateJeep(jeep,forest.userData.route,routeProgress(state,'jeep'),elapsed,reducedMotion)
+    updateJeep(
+      jeep,
+      forest.userData.route,
+      routeProgress(state,'jeep',partySpan,jeep.userData.shoreStageProgress),
+      elapsed,
+      reducedMotion,
+    )
     updateHillWorld(mountain,elapsed)
     updateWaterWorld(water,elapsed,boat)
 

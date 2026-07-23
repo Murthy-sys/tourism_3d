@@ -7,6 +7,11 @@ const smooth01=value=>{const t=THREE.MathUtils.clamp(value,0,1);return t*t*t*(t*
 const BOAT_DOCK_MERGE_END=.12
 const boatLateralScratch=new THREE.Vector3()
 const traveller=(m)=>{const g=new THREE.Group();g.name='expedition-traveller';g.add(mesh(new THREE.CapsuleGeometry(.16,.36,4,8),m.gold,[0,.38,0]),mesh(new THREE.SphereGeometry(.16,12,9),m.sand,[0,.78,0]),mesh(new THREE.SphereGeometry(.17,12,7,0,Math.PI*2,0,Math.PI/2),m.dark,[0,.86,0]));return g}
+const setRole=(member,role)=>{
+  member.role=role
+  member.userData.role=role
+  return member
+}
 const wheel=()=>{const g=new THREE.Group();g.add(mesh(new THREE.CylinderGeometry(.38,.38,.22,20),material('#111318',.92),[0,0,0],[0,0,Math.PI/2]),mesh(new THREE.CylinderGeometry(.21,.21,.24,14),material('#9c9d92',.25,.65),[0,0,0],[0,0,Math.PI/2]));return g}
 
 export function createExpeditionJeep(m){
@@ -15,10 +20,29 @@ export function createExpeditionJeep(m){
   const cage=new THREE.Group();cage.name='jeep-roll-cage';[-.78,.78].forEach(x=>[-.45,.85].forEach(z=>cage.add(mesh(new THREE.CylinderGeometry(.035,.035,1.25,8),steel,[x,1.55,z]))));cage.add(mesh(new THREE.BoxGeometry(1.65,.06,1.45),steel,[0,2.15,.2]),mesh(new THREE.BoxGeometry(1.55,.04,1.3),canvas,[0,2.2,.2]));jeep.add(cage)
   const wheels=[];[-1.02,1.02].forEach(x=>[-1.12,1.08].forEach(z=>{const w=wheel();w.position.set(x,.55,z);jeep.add(w);wheels.push(w)}))
   jeep.add(mesh(new THREE.TorusGeometry(.42,.12,10,20),material('#151718',.9),[0,1.1,1.66],[0,Math.PI/2,0]),mesh(new THREE.BoxGeometry(1.4,.18,.45),material('#624b36',.75),[0,1.08,.48]))
-  const person=traveller(m);person.position.set(-.38,1.08,-.12);jeep.add(person)
+  const person=setRole(traveller(m),'guide');person.position.set(-.38,1.08,-.12);jeep.add(person)
+  const passengers=[
+    [.38,1.08,-.12],
+    [-.38,1.08,.66],
+    [.38,1.08,.66],
+  ].map((position,index)=>{
+    const passenger=setRole(traveller(m),'tourist')
+    passenger.name=`jeep-passenger-${index+1}`
+    passenger.position.set(...position)
+    passenger.scale.setScalar(.88)
+    jeep.add(passenger)
+    return passenger
+  })
   jeep.updateMatrixWorld(true)
   const tireBottom=Math.min(...wheels.map(candidate=>new THREE.Box3().setFromObject(candidate).min.y))
-  jeep.userData={wheels,lastProgress:0,traveller:person,groundOffset:-tireBottom};return jeep
+  jeep.userData={
+    wheels,
+    lastProgress:0,
+    traveller:person,
+    members:[person,...passengers],
+    groundOffset:-tireBottom,
+  }
+  return jeep
 }
 
 export function updateJeep(jeep,curve,progress,elapsed,reducedMotion){const {p}=routeUpdate(jeep,curve,progress,jeep.userData.groundOffset+(reducedMotion?0:Math.sin(elapsed*7)*.025));const distance=Math.abs(p-jeep.userData.lastProgress)*curve.getLength();jeep.userData.wheels.forEach(w=>w.rotation.x-=distance/.32);jeep.userData.lastProgress=p}
@@ -102,9 +126,30 @@ export function createExpeditionBoat(m){
   const port=createBoatOar(-1,shaft,blade,metal),starboard=createBoatOar(1,shaft,blade,metal)
   boat.add(port,starboard)
   const person=createBoatRower();boat.add(person)
+  setRole(person,'guide')
+  const passengers=[
+    [-.42,.55,-1.05],
+    [.42,.55,-1.05],
+    [0,.55,1.02],
+  ].map((position,index)=>{
+    const passenger=setRole(traveller(m),'tourist')
+    passenger.name=`boat-passenger-${index+1}`
+    passenger.position.set(...position)
+    passenger.scale.setScalar(.68)
+    passenger.rotation.y=Math.PI
+    boat.add(passenger)
+    return passenger
+  })
   const wakeAnchors=[new THREE.Object3D(),new THREE.Object3D()];wakeAnchors[0].position.set(-.65,.05,1.95);wakeAnchors[1].position.set(.65,.05,1.95);wakeAnchors.forEach(a=>boat.add(a))
   const wake=createBoatWake();boat.add(wake)
-  boat.userData={wakeAnchors,traveller:person,wake,oars:{port,starboard}};return boat
+  boat.userData={
+    wakeAnchors,
+    traveller:person,
+    members:[person,...passengers],
+    wake,
+    oars:{port,starboard},
+  }
+  return boat
 }
 
 export function updateBoat(boat,curve,progress,elapsed,reducedMotion){

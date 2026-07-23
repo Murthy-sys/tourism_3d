@@ -7,7 +7,8 @@ Final result: **passed**.
 - Desktop viewport: `1440×900`.
 - Mobile viewport: `390×844`.
 - Fail-closed states: mountain opening (`.08`), distant water reveal (`.26`), mountain/water handoff (`.35`), water corridor (`.50`), distant forest reveal (`.59`), water/forest handoff (`.67`), and forest finale (`.84`).
-- Every state asserted its phase, biome and transport weights, one guide plus three tourists, early next-biome visibility, camera jump `≤ .8`, no console failures, and zero audio controls.
+- Every state asserted its phase, active biome and transport weights, one guide plus three tourists on the active transport, observed camera movement `≤ .8`, no console failures, and zero audio controls.
+- The two early-reveal states additionally required the upcoming biome to be materially weighted and projected into the live camera frustum.
 - Both handoffs required both neighboring biome weights and both neighboring transport weights to exceed `.05`.
 - Mobile additionally asserted no horizontal overflow and no clipped chapter overlay.
 - All 28 final captures (full page and isolated WebGL for seven states at both viewports) were inspected for blocking visual defects.
@@ -23,13 +24,13 @@ Each row below has matching `<state>-page.png` and `<state>-webgl.png` captures 
 
 | State | Progress | Phase | Biomes M/W/F | Transports trekker/boat/jeep | Party | Next biome | Camera jump | Runtime |
 | --- | ---: | --- | --- | --- | --- | --- | ---: | --- |
-| `mountain-opening` | `.08` | `mountain-trek` | `1 / 0 / 0` | `1 / 0 / 0` | `1 + 3` | water visible | `.000` | clean |
-| `distant-water-reveal` | `.26` | `mountain-trek` | `.942 / .058 / 0` | `1 / 0 / 0` | `1 + 3` | water visible | `.088` | clean |
-| `mountain-water-handoff` | `.35` | `trek-to-boat` | `.235 / .765 / 0` | `.5 / .5 / 0` | `1 + 3` | water visible | `.000` | clean |
-| `water-corridor` | `.50` | `water-boat` | `0 / 1 / 0` | `0 / 1 / 0` | `1 + 3` | forest visible | `.198` | clean |
-| `distant-forest-reveal` | `.59` | `water-boat` | `0 / .973 / .027` | `0 / 1 / 0` | `1 + 3` | forest visible | `.129` | clean |
-| `water-forest-handoff` | `.67` | `boat-to-jeep` | `0 / .407 / .593` | `0 / .5 / .5` | `1 + 3` | forest visible | `.000` | clean |
-| `forest-finale` | `.84` | `forest-jeep` | `0 / 0 / 1` | `0 / 0 / 1` | `1 + 3` | complete | `.000` | clean |
+| `mountain-opening` | `.08` | `mountain-trek` | `1 / 0 / 0` | `1 / 0 / 0` | `1 + 3` | not required | `.780` | clean |
+| `distant-water-reveal` | `.26` | `mountain-trek` | `.942 / .058 / 0` | `1 / 0 / 0` | `1 + 3` | water visible | `.780` | clean |
+| `mountain-water-handoff` | `.35` | `trek-to-boat` | `.235 / .765 / 0` | `.5 / .5 / 0` | `1 + 3` | water visible | `.780` | clean |
+| `water-corridor` | `.50` | `water-boat` | `0 / 1 / 0` | `0 / 1 / 0` | `1 + 3` | not required | `.780` | clean |
+| `distant-forest-reveal` | `.59` | `water-boat` | `0 / .973 / .027` | `0 / 1 / 0` | `1 + 3` | forest visible | `.780` | clean |
+| `water-forest-handoff` | `.67` | `boat-to-jeep` | `0 / .407 / .593` | `0 / .5 / .5` | `1 + 3` | forest visible | `.780` | clean |
+| `forest-finale` | `.84` | `forest-jeep` | `0 / 0 / 1` | `0 / 0 / 1` | `1 + 3` | complete | `.780` | clean |
 
 Visual acceptance:
 
@@ -43,13 +44,13 @@ Visual acceptance:
 
 | State | Progress | Phase | Biomes M/W/F | Transports trekker/boat/jeep | Party | Next biome | Camera jump | Layout/runtime |
 | --- | ---: | --- | --- | --- | --- | --- | ---: | --- |
-| `mountain-opening` | `.08` | `mountain-trek` | `1 / 0 / 0` | `1 / 0 / 0` | `1 + 3` | water visible | `.000` | clean |
-| `distant-water-reveal` | `.26` | `mountain-trek` | `.942 / .058 / 0` | `1 / 0 / 0` | `1 + 3` | water visible | `.088` | clean |
-| `mountain-water-handoff` | `.35` | `trek-to-boat` | `.235 / .765 / 0` | `.5 / .5 / 0` | `1 + 3` | water visible | `.000` | clean |
-| `water-corridor` | `.50` | `water-boat` | `0 / 1 / 0` | `0 / 1 / 0` | `1 + 3` | forest visible | `.199` | clean |
-| `distant-forest-reveal` | `.59` | `water-boat` | `0 / .973 / .027` | `0 / 1 / 0` | `1 + 3` | forest visible | `.129` | clean |
-| `water-forest-handoff` | `.67` | `boat-to-jeep` | `0 / .407 / .593` | `0 / .5 / .5` | `1 + 3` | forest visible | `.000` | clean |
-| `forest-finale` | `.84` | `forest-jeep` | `0 / 0 / 1` | `0 / 0 / 1` | `1 + 3` | complete | `.000` | clean |
+| `mountain-opening` | `.08` | `mountain-trek` | `1 / 0 / 0` | `1 / 0 / 0` | `1 + 3` | not required | `.780` | clean |
+| `distant-water-reveal` | `.26` | `mountain-trek` | `.942 / .058 / 0` | `1 / 0 / 0` | `1 + 3` | water visible | `.780` | clean |
+| `mountain-water-handoff` | `.35` | `trek-to-boat` | `.235 / .765 / 0` | `.5 / .5 / 0` | `1 + 3` | water visible | `.780` | clean |
+| `water-corridor` | `.50` | `water-boat` | `0 / 1 / 0` | `0 / 1 / 0` | `1 + 3` | not required | `.780` | clean |
+| `distant-forest-reveal` | `.59` | `water-boat` | `0 / .973 / .027` | `0 / 1 / 0` | `1 + 3` | forest visible | `.780` | clean |
+| `water-forest-handoff` | `.67` | `boat-to-jeep` | `0 / .407 / .593` | `0 / .5 / .5` | `1 + 3` | forest visible | `.780` | clean |
+| `forest-finale` | `.84` | `forest-jeep` | `0 / 0 / 1` | `0 / 0 / 1` | `1 + 3` | complete | `.780` | clean |
 
 Visual acceptance:
 
@@ -61,15 +62,17 @@ Visual acceptance:
 
 ## Repairs verified during acceptance
 
-- Added live `window.__journeyQA()` evidence, camera-settlement checks, fail-closed console capture, exact viewport/state selection, and paired full-page/WebGL captures.
-- Reframed the mobile trekking party with a wider elevated camera and mobile field of view.
-- Protected desktop and mobile forest camera corridors from full tree crowns and undergrowth footprints.
-- Invalidated Three.js material programs whenever biome blending changes `transparent`, eliminating stale opaque geometry during later states.
-- Retained frame-rate-independent camera damping and verified the final rail stays below the `.8` discontinuity limit.
+- Made `window.__journeyQA()` report the active transport's rendered occupants, materially weighted/frustum-projected worlds, and observed camera movement; reset now clears the real runtime metrics.
+- Made capture fail closed on active weights, missing/clipped mobile overlays, stale screenshots, console failures, camera evidence, and early next-biome visibility.
+- Subdivided and lowered the distant ridge meshes so viewport-sized mountain triangles cannot recur.
+- Added visible guide-plus-three-tourist groups to the boat and jeep, preserved animated opacity during biome blending, and derived a physically separated jeep shore pose from live bounds.
+- Increased water depth, transmission and reflection separation; enlarged its backing basin and added varied shore detail.
+- Increased layered forest density while using a smaller protected bubble only for undergrowth; replaced repeated loop silhouettes with grounded roots and short canopy vines.
+- Capped observed camera corrections below the `.8` discontinuity limit on both render qualities.
+- Excluded `.worktrees/**` in Vitest configuration so the exact repository command tests only this worktree.
 
 ## Automated verification
 
-- `npm test -- --run --exclude '.worktrees/**'`: passed, 20 files and 103 main-worktree tests.
+- `npm test -- --run`: passed, 21 files and 115 tests.
 - `npm run build`: passed, 51 modules transformed. The existing chunk-size advisory remains non-blocking.
 - `git diff --check`: passed.
-- The unexcluded `npm test -- --run` also discovers `.worktrees/continuous-landscape` and fails five of that worktree's React tests because its React copy is mixed with the root renderer. All 103 tests belonging to this main worktree pass.

@@ -1,6 +1,8 @@
 import * as THREE from 'three'
 import { describe, expect, it } from 'vitest'
 import {
+  createCameraJumpTracker,
+  dampCameraVector,
   getAtmosphere,
   getCameraDampingFactor,
   getCameraRailJump,
@@ -8,6 +10,7 @@ import {
   getJourneyQASnapshot,
   getMobileTransportCamera,
   getRenderQuality,
+  getRenderedWorldVisibility,
   getTransportWorldPosition,
   getWorldVisibility,
 } from './indiaJourney'
@@ -50,56 +53,99 @@ describe('renderer quality', () => {
   it('keeps camera convergence tied to wall time when rendering stalls',()=>{
     expect(getCameraDampingFactor(1)).toBeGreaterThan(.85)
     expect(getCameraDampingFactor(1/60)).toBeCloseTo(getDampingFactor(1/60),8)
+    expect(getCameraDampingFactor(1/15,'mobile'))
+      .toBeLessThan(getCameraDampingFactor(1/15,'desktop'))
+  })
+  it('caps a mobile camera correction without changing its destination',()=>{
+    const current=new THREE.Vector3(0,0,0)
+    const destination=new THREE.Vector3(10,0,0)
+    dampCameraVector(current,destination,.5,.68)
+    expect(current.x).toBeCloseTo(.68)
+    expect(destination.toArray()).toEqual([10,0,0])
   })
   it('measures local camera-rail continuity independently of render speed',()=>{
     ;[.08,.26,.35,.5,.59,.67,.84].forEach(progress=>{
       expect(getCameraRailJump(progress)).toBeLessThanOrEqual(.8)
     })
   })
-  it('reports the live journey evidence required by visual QA',()=>{
-    const state={expedition:{phase:'trek-to-boat'}}
+  it('reports rendered occupants from the active transport instead of hidden trekkers',()=>{
+    const member=role=>Object.assign(new THREE.Object3D(),{role})
+    const hiddenTrekker=new THREE.Group()
+    hiddenTrekker.userData.members=[member('guide'),member('tourist'),member('tourist'),member('tourist')]
+    hiddenTrekker.userData.members.forEach(candidate=>{candidate.visible=false})
+    const boat=new THREE.Group()
+    boat.userData.members=[member('guide'),member('tourist'),member('tourist'),member('tourist')]
+    const state={expedition:{phase:'water-boat',activeTransport:'boat'}}
     const transition={
-      worlds:{mountain:.5,water:.5,forest:0},
-      transports:{trekker:.5,boat:.5,jeep:0},
+      worlds:{mountain:0,water:1,forest:0},
+      transports:{trekker:0,boat:1,jeep:0},
     }
-    const worlds={
-      mountain:{visible:true},
-      water:{visible:true},
-      forest:{visible:true},
-    }
-    const trekker={
-      userData:{
-        members:[
-          {role:'guide',visible:true},
-          {role:'tourist',visible:true},
-          {role:'tourist',visible:true},
-          {role:'tourist',visible:true},
-        ],
-      },
-    }
-    expect(getJourneyQASnapshot({
+    const snapshot=getJourneyQASnapshot({
       state,
       transition,
-      worlds,
-      trekker,
+      renderedWorlds:{mountain:false,water:true,forest:false},
+      transports:{trekker:hiddenTrekker,boat,jeep:new THREE.Group()},
       cameraJump:.125,
       consoleFailures:[],
       audioControls:0,
-    })).toEqual({
-      phase:'trek-to-boat',
-      biomeWeights:{mountain:.5,water:.5,forest:0},
-      transportWeights:{trekker:.5,boat:.5,jeep:0},
+    })
+    expect(snapshot).toMatchObject({
+      phase:'water-boat',
+      activeBiome:'water',
+      activeTransport:'boat',
+      biomeWeights:{mountain:0,water:1,forest:0},
+      transportWeights:{trekker:0,boat:1,jeep:0},
       visibleMembers:{guides:1,tourists:3},
       distantVisibility:{
-        nextBiome:true,
-        nextBiomeName:'water',
-        mountain:true,
+        nextBiome:false,
+        nextBiomeName:'forest',
+        mountain:false,
         water:true,
-        forest:true,
+        forest:false,
       },
       cameraJump:.125,
       consoleFailures:[],
       audioControls:0,
     })
+  })
+
+  it('reports only materially weighted worlds projected into the camera frustum',()=>{
+    const camera=new THREE.PerspectiveCamera(60,1,.1,100)
+    camera.position.set(0,2,5)
+    camera.lookAt(0,0,0)
+    camera.updateMatrixWorld(true)
+    camera.updateProjectionMatrix()
+    const rootAt=(x,opacity=1)=>{
+      const root=new THREE.Group()
+      root.add(new THREE.Mesh(
+        new THREE.BoxGeometry(2,2,2),
+        new THREE.MeshBasicMaterial({opacity,transparent:opacity<1}),
+      ))
+      root.position.x=x
+      root.updateMatrixWorld(true)
+      return root
+    }
+    const visibility=getRenderedWorldVisibility({
+      mountain:rootAt(100),
+      water:rootAt(0),
+      forest:rootAt(0),
+    },{mountain:1,water:1,forest:0},camera)
+    expect(visibility).toEqual({mountain:false,water:true,forest:false})
+  })
+
+  it('measures observed runtime camera movement and resets between QA states',()=>{
+    const tracker=createCameraJumpTracker()
+    const camera=new THREE.Vector3(0,0,0)
+    const target=new THREE.Vector3(0,0,-1)
+    tracker.reset(camera,target)
+    camera.x=.42
+    target.y=.18
+    tracker.observe(camera,target)
+    expect(tracker.value()).toBeCloseTo(.42)
+    tracker.reset(camera,target)
+    expect(tracker.value()).toBe(0)
+    camera.x+=.09
+    tracker.observe(camera,target)
+    expect(tracker.value()).toBeCloseTo(.09)
   })
 })

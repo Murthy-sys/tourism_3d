@@ -104,25 +104,43 @@ const createTerrain=(heightAt,quality)=>{
 
 const createRidgeGeometry=layer=>{
   const columns=40
+  const rows=5
   const positions=[]
   const indices=[]
   for(let index=0;index<=columns;index+=1){
     const t=index/columns
     const x=THREE.MathUtils.lerp(-47,47,t)
-    const z=-39-layer*10+
+    const z=-43-layer*11+
       Math.sin(index*.61+layer*1.7)*1.3+
       Math.sin(index*.19-layer)*1.8
     const base=-.7+layer*.45
-    const ridgeHeight=10.5-layer*.7+
-      Math.sin(index*.72+layer)*2.1+
-      Math.sin(index*.23+layer*2.2)*3.4+
-      deterministic(index,layer)*1.1
+    const ridgeHeight=7.2-layer*.55+
+      Math.sin(index*.72+layer)*1.25+
+      Math.sin(index*.23+layer*2.2)*1.8+
+      deterministic(index,layer)*.65
     const opening=THREE.MathUtils.smoothstep(Math.abs(x),5+layer*1.5,20+layer*2)
     const height=THREE.MathUtils.lerp(base+.12,ridgeHeight,opening)
-    positions.push(x,base,z,x,height,z)
+    for(let row=0;row<=rows;row+=1){
+      const verticalProgress=row/rows
+      const relief=Math.sin(verticalProgress*Math.PI)*(
+        .32+
+        .14*Math.sin(index*.47+layer*1.9)
+      )
+      positions.push(
+        x,
+        THREE.MathUtils.lerp(base,height,verticalProgress),
+        z-relief,
+      )
+    }
     if(index<columns){
-      const current=index*2
-      indices.push(current,current+1,current+2,current+1,current+3,current+2)
+      const stride=rows+1
+      for(let row=0;row<rows;row+=1){
+        const current=index*stride+row
+        indices.push(
+          current,current+1,current+stride,
+          current+1,current+stride+1,current+stride,
+        )
+      }
     }
   }
   const geometry=new THREE.BufferGeometry()

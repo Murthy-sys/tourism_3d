@@ -240,14 +240,16 @@ const addInlet=(world,m,materials,route,obstacles)=>{
   inlet.add(landing)
   const roots=nameGroup('jungle-roots')
   ;[-1,1].forEach(side=>{for(let index=0;index<5;index+=1){
-    const root=mesh(new THREE.TorusGeometry(.65+index*.08,.045,5,12,Math.PI*1.2),materials.bark,[landingX+side*(3.8+index*.32),landingY+.02,landingZ-1+index*1.55],[-Math.PI/2,index*.37,side*.18])
+    const root=mesh(
+      new THREE.CylinderGeometry(.035,.065,.9+index*.18,6),
+      materials.bark,
+      [landingX+side*(3.8+index*.32),landingY+.02,landingZ-1+index*1.55],
+      [Math.PI/2,0,side*(.55+index*.16)],
+    )
     root.name='exposed-root'
     roots.add(root)
   }})
   inlet.add(roots)
-  const overhang=mesh(new THREE.CylinderGeometry(.12,.2,5.5,7),materials.bark,[landingX-4.9,4.1,landingZ+1.3],[0,0,-1.08])
-  overhang.name='overhanging-branch'
-  inlet.add(overhang)
   world.add(inlet)
   return landing
 }
@@ -257,7 +259,7 @@ export function createJungleWorld(m,quality='desktop'){
   const materials=cloneMaterialPalette(m)
   const forestMaterials=createForestMaterials(materials)
   const midpointZ=(LANDMARKS.forestLanding[2]+LANDMARKS.forestEnd[2])/2
-  world.add(mesh(new THREE.PlaneGeometry(48,58,16,20),forestMaterials.damp,[0,-.18,midpointZ],[-Math.PI/2,0,0]))
+  world.add(mesh(new THREE.PlaneGeometry(80,90,20,24),forestMaterials.damp,[0,-.18,midpointZ],[-Math.PI/2,0,0]))
 
   const routePoints=[
     new THREE.Vector3(...LANDMARKS.forestLanding),
@@ -295,9 +297,9 @@ export function createJungleWorld(m,quality='desktop'){
   const obstacles=[]
   const forestLanding=addInlet(world,materials,forestMaterials,route,obstacles)
   const layers=[
-    {name:'forest-near-layer',legacy:'jungle-foreground',desktop:40,mobile:24,min:3.1,max:7.2,salt:20},
-    {name:'forest-mid-layer',legacy:'jungle-midground',desktop:32,mobile:18,min:7,max:13.5,salt:40},
-    {name:'forest-far-layer',legacy:'jungle-background',desktop:24,mobile:14,min:13,max:21,salt:60},
+    {name:'forest-near-layer',legacy:'jungle-foreground',desktop:48,mobile:34,min:3.1,max:7.2,salt:20},
+    {name:'forest-mid-layer',legacy:'jungle-midground',desktop:38,mobile:26,min:7,max:13.5,salt:40},
+    {name:'forest-far-layer',legacy:'jungle-background',desktop:28,mobile:18,min:13,max:21,salt:60},
   ]
   let treeCount=0
   const sightlineTrees=[]
@@ -324,13 +326,18 @@ export function createJungleWorld(m,quality='desktop'){
   })
 
   const undergrowth=nameGroup('jungle-undergrowth')
-  const undergrowthCount=quality==='mobile'?116:192
+  const undergrowthCount=quality==='mobile'?144:224
+  const undergrowthSightlines=sightlines.map(sightline=>({
+    ...sightline,
+    clearance:.78,
+    cameraClearance:4.15,
+  }))
   for(let index=0;index<undergrowthCount;index+=1){
     const scale=.45+hashed(index,82)*.65
     const plant=createUndergrowth(forestMaterials,index,scale)
     plant.updateMatrixWorld(true)
     const radius=obstacleFootprint(plant).radius
-    const position=offsetFromRoute(route,index,80,1.8,20,radius+.25,sightlines)
+    const position=offsetFromRoute(route,index,80,1.8,20,radius+.25,undergrowthSightlines)
     plant.position.copy(position)
     plant.rotation.y=hashed(index,84)*Math.PI*2
     undergrowth.add(plant)
@@ -341,7 +348,13 @@ export function createJungleWorld(m,quality='desktop'){
   const vineCount=quality==='mobile'?16:30
   for(let index=0;index<vineCount;index+=1){
     const position=offsetFromRoute(route,index,100,3.2,15,.06)
-    const vine=mesh(new THREE.TorusGeometry(.48+(index%4)*.12,.025,5,16,Math.PI*1.45),forestMaterials.leaf[(index+2)%forestMaterials.leaf.length],[position.x,3.1+hashed(index,105)*2.8,position.z],[0,hashed(index,108)*Math.PI,0])
+    const length=.72+hashed(index,105)*.68
+    const vine=mesh(
+      new THREE.CylinderGeometry(.018,.026,length,5),
+      forestMaterials.leaf[(index+2)%forestMaterials.leaf.length],
+      [position.x,2.45+hashed(index,106)*1.05,position.z],
+      [0,hashed(index,108)*Math.PI,(hashed(index,109)-.5)*.18],
+    )
     vine.name=`jungle-vine-${index}`
     vines.add(vine)
   }

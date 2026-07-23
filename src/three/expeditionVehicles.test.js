@@ -10,6 +10,16 @@ const meshCount=object=>{
 }
 
 describe('expedition transports',()=>{
+  it.each([
+    ['boat',createExpeditionBoat],
+    ['jeep',createExpeditionJeep],
+  ])('carries one visible guide and three visible tourists in the %s',(_,create)=>{
+    const transport=create(createMaterials())
+    expect(transport.userData.members.filter(member=>member.visible!==false&&member.role==='guide')).toHaveLength(1)
+    expect(transport.userData.members.filter(member=>member.visible!==false&&member.role==='tourist')).toHaveLength(3)
+    disposeObject3D(transport)
+  })
+
   it('creates a detailed jungle jeep with traveller and four wheels',()=>{
     const jeep=createExpeditionJeep(createMaterials())
     expect(jeep.name).toBe('jungle-jeep')

@@ -6,7 +6,15 @@ import { createMaterials,disposeObject3D } from './primitives'
 export const getRenderQuality=width=>width<768?'mobile':'desktop'
 export const getWorldVisibility=()=>[]
 export const getDampingFactor=delta=>1-Math.exp(-Math.max(0,delta)*4.5)
-export const getCameraDampingFactor=delta=>getDampingFactor(Math.min(Math.max(delta,0),.5))
+export const getCameraDampingFactor=(delta,quality='desktop')=>{
+  const base=getDampingFactor(Math.min(Math.max(delta,0),.5))
+  return base*(quality==='mobile'?.72:1)
+}
+export const dampCameraVector=(current,desired,damping,maxStep=Infinity)=>{
+  const distance=current.distanceTo(desired)
+  if(distance===0) return current
+  return current.lerp(desired,Math.min(damping,maxStep/distance))
+}
 const distance3=(a,b)=>Math.hypot(...a.map((value,index)=>value-b[index]))
 export const getCameraRailJump=(progress,step=.001)=>{
   const from=getJourneyState(clamp01(progress))
@@ -19,6 +27,73 @@ export const getCameraRailJump=(progress,step=.001)=>{
 }
 
 const rounded=value=>Number(value.toFixed(6))
+const hierarchyVisible=(object,root)=>{
+  let current=object
+  while(current){
+    if(current.visible===false) return false
+    if(current===root) return true
+    current=current.parent
+  }
+  return false
+}
+const materialsVisible=object=>{
+  const materials=Array.isArray(object.material)?object.material:[object.material]
+  return materials.filter(Boolean).some(material=>
+    (material.opacity??1)>.01
+  )
+}
+
+export const getRenderedWorldVisibility=(worlds,weights,camera)=>{
+  camera.updateMatrixWorld(true)
+  camera.updateProjectionMatrix()
+  const frustum=new THREE.Frustum().setFromProjectionMatrix(
+    new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix,camera.matrixWorldInverse),
+  )
+  return Object.fromEntries(Object.entries(worlds).map(([name,world])=>{
+    if(world.visible===false||!(weights[name]>.01)) return[name,false]
+    world.updateMatrixWorld(true)
+    let rendered=false
+    world.traverse(object=>{
+      if(
+        rendered||
+        !object.isMesh||
+        !hierarchyVisible(object,world)||
+        !materialsVisible(object)
+      ) return
+      if(frustum.intersectsObject(object)) rendered=true
+    })
+    return[name,rendered]
+  }))
+}
+
+export const createCameraJumpTracker=()=>{
+  const previousCamera=new THREE.Vector3()
+  const previousTarget=new THREE.Vector3()
+  let initialized=false
+  let maximum=0
+  return{
+    observe(camera,target){
+      if(initialized){
+        maximum=Math.max(
+          maximum,
+          previousCamera.distanceTo(camera),
+          previousTarget.distanceTo(target),
+        )
+      }
+      previousCamera.copy(camera)
+      previousTarget.copy(target)
+      initialized=true
+    },
+    reset(camera,target){
+      previousCamera.copy(camera)
+      previousTarget.copy(target)
+      initialized=true
+      maximum=0
+    },
+    value:()=>rounded(maximum),
+  }
+}
+
 const MOBILE_FRAMING={
   trekker:{camera:[7,12,15],targetY:-.2},
   boat:{camera:[4,2.8,9],targetY:.8},
@@ -106,19 +181,23 @@ const nextBiomeForPhase=phase=>{
 export const getJourneyQASnapshot=({
   state,
   transition,
-  worlds,
-  trekker,
+  renderedWorlds,
+  transports,
   cameraJump,
   consoleFailures=[],
   audioControls=0,
 })=>{
-  const members=trekker?.userData?.members?.filter(member=>member.visible!==false)||[]
+  const activeTransport=state?.expedition?.activeTransport
+  const members=transports?.[activeTransport]?.userData?.members
+    ?.filter(member=>member.visible!==false)||[]
+  const activeBiome=Object.entries(transition.worlds)
+    .reduce((active,[name,weight])=>weight>active.weight?{name,weight}:active,{name:null,weight:-1})
+    .name
   const nextBiomeName=nextBiomeForPhase(state?.expedition?.phase)
-  const visibility=Object.fromEntries(
-    Object.entries(worlds).map(([name,world])=>[name,world.visible!==false]),
-  )
   return{
     phase:state.expedition.phase,
+    activeBiome,
+    activeTransport,
     biomeWeights:{...transition.worlds},
     transportWeights:{...transition.transports},
     visibleMembers:{
@@ -126,9 +205,9 @@ export const getJourneyQASnapshot=({
       tourists:members.filter(member=>(member.role||member.userData?.role)==='tourist').length,
     },
     distantVisibility:{
-      nextBiome:nextBiomeName?visibility[nextBiomeName]===true:true,
+      nextBiome:nextBiomeName?renderedWorlds[nextBiomeName]===true:null,
       nextBiomeName,
-      ...visibility,
+      ...renderedWorlds,
     },
     cameraJump:rounded(cameraJump),
     consoleFailures:[...consoleFailures],
@@ -226,6 +305,8 @@ export function createIndiaJourney(canvas,{reducedMotion=false,onContextLost=()=
   const cameraTarget=new THREE.Vector3(...initialState.cameraTarget)
   camera.position.set(...initialState.cameraPosition)
   camera.lookAt(cameraTarget)
+  const cameraJumpTracker=createCameraJumpTracker()
+  cameraJumpTracker.reset(camera.position,cameraTarget)
 
   const resize=()=>{
     const parent=canvas.parentElement
@@ -259,7 +340,7 @@ export function createIndiaJourney(canvas,{reducedMotion=false,onContextLost=()=
     const elapsed=clock.elapsedTime
     const state=getJourneyState(progress)
     const transition=expedition.update(state.expedition,elapsed,reducedMotion)
-    const damping=getCameraDampingFactor(delta)
+    const damping=getCameraDampingFactor(delta,quality)
     desiredCamera.set(...state.cameraPosition)
     desiredTarget.set(...state.cameraTarget)
 
@@ -281,9 +362,11 @@ export function createIndiaJourney(canvas,{reducedMotion=false,onContextLost=()=
       desiredCamera.y-=pointer.y*.25
     }
 
-    camera.position.lerp(desiredCamera,damping)
-    cameraTarget.lerp(desiredTarget,damping)
+    const maximumCameraStep=.78
+    dampCameraVector(camera.position,desiredCamera,damping,maximumCameraStep)
+    dampCameraVector(cameraTarget,desiredTarget,damping,maximumCameraStep)
     camera.lookAt(cameraTarget)
+    cameraJumpTracker.observe(camera.position,cameraTarget)
     latestState=state
     latestTransition=transition
 
@@ -327,9 +410,13 @@ export function createIndiaJourney(canvas,{reducedMotion=false,onContextLost=()=
       ...getJourneyQASnapshot({
         state:latestState,
         transition:latestTransition,
-        worlds:expedition.worlds,
-        trekker:expedition.transports.trekker,
-        cameraJump:getCameraRailJump(progress),
+        renderedWorlds:getRenderedWorldVisibility(
+          expedition.worlds,
+          latestTransition.worlds,
+          camera,
+        ),
+        transports:expedition.transports,
+        cameraJump:cameraJumpTracker.value(),
         ...extras,
       }),
       visualDebug:getProjectedVisualDebug(
@@ -340,7 +427,7 @@ export function createIndiaJourney(canvas,{reducedMotion=false,onContextLost=()=
         desiredTarget,
       ),
     }),
-    resetQAMetrics:()=>{},
+    resetQAMetrics:()=>cameraJumpTracker.reset(camera.position,cameraTarget),
     pause:()=>{
       paused=true
       cancelAnimationFrame(frame)

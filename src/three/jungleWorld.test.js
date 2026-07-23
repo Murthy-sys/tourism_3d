@@ -176,7 +176,7 @@ describe('jungle world',()=>{
     disposeObject3D(world)
   })
 
-  it('keeps mobile undergrowth outside the protected camera approach bubble',()=>{
+  it('keeps mobile undergrowth clear of the lens without emptying the visible forest corridor',()=>{
     const world=createJungleWorld(createMaterials(),'mobile')
     world.updateMatrixWorld(true)
     const jeep=world.userData.route.getPointAt(.5)
@@ -186,7 +186,23 @@ describe('jungle world',()=>{
       const {center,radius}=obstacleFootprint(plant)
       clearances.push(Math.hypot(center.x-camera.x,center.z-camera.z)-radius)
     })
-    expect(Math.min(...clearances)).toBeGreaterThanOrEqual(8.2)
+    expect(Math.min(...clearances)).toBeGreaterThanOrEqual(3.5)
+    expect(Math.min(...clearances)).toBeLessThan(6)
+    const view=new THREE.PerspectiveCamera(60,390/844,.1,420)
+    view.position.copy(camera)
+    view.lookAt(jeep.clone().add(new THREE.Vector3(0,1,0)))
+    view.updateMatrixWorld(true)
+    view.updateProjectionMatrix()
+    const projected=[]
+    ;[
+      ...world.getObjectByName('forest-near-layer').children,
+      ...world.getObjectByName('forest-mid-layer').children,
+      ...world.getObjectByName('jungle-undergrowth').children,
+    ].forEach(object=>{
+      const point=new THREE.Box3().setFromObject(object).getCenter(new THREE.Vector3()).project(view)
+      if(Math.abs(point.x)<=1&&Math.abs(point.y)<=1&&point.z>=-1&&point.z<=1) projected.push(object)
+    })
+    expect(projected.length).toBeGreaterThanOrEqual(32)
     disposeObject3D(world)
   })
 

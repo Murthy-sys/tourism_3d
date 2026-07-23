@@ -34,6 +34,23 @@ const maximumBankWidth=bank=>{
 }
 
 describe('water world',()=>{
+  it('keeps the basin level and layers transparent depth, reflection, and shoreline detail',()=>{
+    const water=createWaterWorld(createMaterials(),'mobile')
+    const basin=water.getObjectByName('water-basin-ground')
+    const surface=water.getObjectByName('reflective-water').material
+    const depth=water.getObjectByName('water-depth-layer').material
+    const reflection=water.getObjectByName('water-reflection-layer').material
+    expect(basin.rotation.x).toBe(0)
+    expect(basin.rotation.y).toBe(0)
+    expect(basin.rotation.z).toBe(0)
+    expect(surface.opacity).toBeLessThanOrEqual(.74)
+    expect(surface.transmission).toBeGreaterThanOrEqual(.2)
+    expect(depth.roughness).toBeLessThan(.65)
+    expect(reflection.opacity).toBeLessThanOrEqual(.16)
+    expect(water.getObjectByName('water-shore-detail').children.length).toBeGreaterThanOrEqual(24)
+    disposeObject3D(water)
+  })
+
   it('contains water, shoreline, jetty, rocks and reeds',()=>{
     const world=createWaterWorld(createMaterials(),'desktop')
     ;['reflective-water','water-shoreline','boat-jetty','water-rocks','water-reeds'].forEach(name=>expect(world.getObjectByName(name)).toBeTruthy())

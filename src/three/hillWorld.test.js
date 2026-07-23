@@ -6,6 +6,28 @@ import { createMaterials, disposeObject3D } from './primitives'
 import { LANDMARKS } from './terrain'
 
 describe('hill world',()=>{
+  it('subdivides backdrop ridges so no viewport-sized triangle spans the mobile view',()=>{
+    const world=createHillWorld(createMaterials(),'mobile')
+    world.getObjectByName('hill-ridges').children.forEach(ridge=>{
+      const position=ridge.geometry.getAttribute('position')
+      const index=ridge.geometry.getIndex()
+      let maximum=0
+      for(let offset=0;offset<index.count;offset+=3){
+        const triangle=[0,1,2].map(point=>
+          new THREE.Vector3().fromBufferAttribute(position,index.getX(offset+point)),
+        )
+        maximum=Math.max(
+          maximum,
+          triangle[0].distanceTo(triangle[1]),
+          triangle[1].distanceTo(triangle[2]),
+          triangle[2].distanceTo(triangle[0]),
+        )
+      }
+      expect(maximum).toBeLessThan(5)
+    })
+    disposeObject3D(world)
+  })
+
   it('builds a natural mountain opening with a visible water destination',()=>{
     const world=createHillWorld(createMaterials(),'desktop')
     ;['hill-terrain','hill-ridges','hill-rock-faces','hill-vegetation','hill-mist','hill-trail','mountain-water-landing','distant-water-glint']

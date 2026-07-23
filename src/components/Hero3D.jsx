@@ -24,7 +24,12 @@ export default function Hero3D({progress,reducedMotion,onFallback}) {
           'button[aria-label*="audio" i]',
         ].join(',')).length,
       })
-      window.__resetJourneyQA=()=>sceneApi.resetQAMetrics()
+      window.__resetJourneyQA=()=>{
+        sceneApi.resetQAMetrics()
+        if(Array.isArray(window.__journeyConsoleFailures)){
+          window.__journeyConsoleFailures.length=0
+        }
+      }
     } catch (err) {
       // WebGL unavailable — fail silently, CSS hero background still works
       console.warn('India 3D journey failed to initialize:', err)

@@ -127,6 +127,19 @@ describe('expedition controller integration',()=>{
     controller.dispose()
   })
 
+  it('multiplies live animated opacity by biome weight without replacing it with the static base',()=>{
+    const scene=new THREE.Scene()
+    const controller=createExpeditionController(scene,createMaterials(),'desktop')
+    const elapsed=2
+    const state=getExpeditionState(.59)
+    const weight=getExpeditionTransition(state).worlds.water
+    controller.update(state,elapsed,false)
+    const foam=controller.worlds.water.getObjectByName('water-foam-accents').children[0]
+    const animatedOpacity=.34+.16*Math.sin(elapsed*1.2)
+    expect(foam.material.opacity).toBeCloseTo(animatedOpacity*weight,5)
+    controller.dispose()
+  })
+
   it('holds the separated party and stages the incoming boat beside the mountain landing',()=>{
     const scene=new THREE.Scene()
     const controller=createExpeditionController(scene,createMaterials(),'mobile')
@@ -217,6 +230,21 @@ describe('expedition controller integration',()=>{
     })
     expect(offsets[4]).toBeCloseTo(0,6)
     expect(offsets[5]).toBeCloseTo(0,6)
+    controller.dispose()
+  })
+
+  it('keeps the docked boat and staged jeep physically separated throughout their handoff',()=>{
+    const scene=new THREE.Scene()
+    const controller=createExpeditionController(scene,createMaterials(),'desktop')
+    ;[.61,.67,.73].forEach(progress=>{
+      controller.update(getExpeditionState(progress),1,true)
+      scene.updateMatrixWorld(true)
+      const boatBounds=new THREE.Box3().setFromObject(controller.transports.boat)
+      const jeepBounds=new THREE.Box3().setFromObject(controller.transports.jeep)
+      expect(boatBounds.intersectsBox(jeepBounds)).toBe(false)
+      expect(boatBounds.distanceToPoint(jeepBounds.getCenter(new THREE.Vector3())))
+        .toBeGreaterThan(.5)
+    })
     controller.dispose()
   })
 

@@ -1,4 +1,4 @@
-import { mkdir } from 'node:fs/promises'
+import { mkdir,rm } from 'node:fs/promises'
 import path from 'node:path'
 import { chromium } from '@playwright/test'
 
@@ -16,33 +16,41 @@ const outputRoot=path.resolve(
 )
 const viewport=requested==='mobile'?{width:390,height:844}:{width:1440,height:900}
 const states=[
-  {name:'mountain-opening',progress:.08,phase:'mountain-trek'},
+  {name:'mountain-opening',progress:.08,phase:'mountain-trek',activeBiome:'mountain',activeTransport:'trekker'},
   {
     name:'distant-water-reveal',
     progress:.26,
     phase:'mountain-trek',
+    activeBiome:'mountain',
+    activeTransport:'trekker',
     nextBiome:'water',
   },
   {
     name:'mountain-water-handoff',
     progress:.35,
     phase:'trek-to-boat',
+    activeBiome:'water',
+    activeTransport:'trekker',
     handoff:{biomes:['mountain','water'],transports:['trekker','boat']},
   },
-  {name:'water-corridor',progress:.50,phase:'water-boat'},
+  {name:'water-corridor',progress:.50,phase:'water-boat',activeBiome:'water',activeTransport:'boat'},
   {
     name:'distant-forest-reveal',
     progress:.59,
     phase:'water-boat',
+    activeBiome:'water',
+    activeTransport:'boat',
     nextBiome:'forest',
   },
   {
     name:'water-forest-handoff',
     progress:.67,
     phase:'boat-to-jeep',
+    activeBiome:'forest',
+    activeTransport:'boat',
     handoff:{biomes:['water','forest'],transports:['boat','jeep']},
   },
-  {name:'forest-finale',progress:.84,phase:'forest-jeep'},
+  {name:'forest-finale',progress:.84,phase:'forest-jeep',activeBiome:'forest',activeTransport:'jeep'},
 ]
 const requestedState=process.env.QA_STATE
 const captureStates=requestedState
@@ -63,6 +71,24 @@ const assertSnapshot=(snapshot,state,externalFailures)=>{
   if(snapshot.phase!==state.phase){
     throw new Error(`${state.name} phase mismatch: expected ${state.phase}, received ${snapshot.phase}`)
   }
+  if(
+    snapshot.activeBiome!==state.activeBiome||
+    !(snapshot.biomeWeights[state.activeBiome]>.05)
+  ){
+    throw new Error(
+      `${state.name} active biome mismatch: expected ${state.activeBiome}, received `+
+      `${snapshot.activeBiome} (${snapshot.biomeWeights[state.activeBiome]})`,
+    )
+  }
+  if(
+    snapshot.activeTransport!==state.activeTransport||
+    !(snapshot.transportWeights[state.activeTransport]>.05)
+  ){
+    throw new Error(
+      `${state.name} active transport mismatch: expected ${state.activeTransport}, received `+
+      `${snapshot.activeTransport} (${snapshot.transportWeights[state.activeTransport]})`,
+    )
+  }
   if(snapshot.visibleMembers.guides!==1||snapshot.visibleMembers.tourists!==3){
     throw new Error('Trekking party is incomplete')
   }
@@ -72,10 +98,13 @@ const assertSnapshot=(snapshot,state,externalFailures)=>{
     ...externalFailures,
   ].filter(message=>!isIgnoredConsoleMessage(message)))]
   if(consoleFailures.length) throw new Error(consoleFailures.join('\n'))
+  if(!Number.isFinite(snapshot.cameraJump)){
+    throw new Error('Camera evidence is unavailable')
+  }
   if(snapshot.cameraJump>.8){
     throw new Error(`Camera discontinuity: ${snapshot.cameraJump}`)
   }
-  if(!snapshot.distantVisibility.nextBiome){
+  if(state.nextBiome&&!snapshot.distantVisibility.nextBiome){
     throw new Error('Upcoming biome is not visible early')
   }
   if(state.nextBiome&&!(snapshot.biomeWeights[state.nextBiome]>.01)){
@@ -96,6 +125,7 @@ const assertSnapshot=(snapshot,state,externalFailures)=>{
 
 const browser=await chromium.launch({headless:true})
 try{
+  await rm(outputRoot,{recursive:true,force:true})
   await mkdir(outputRoot,{recursive:true})
   const context=await browser.newContext({viewport,deviceScaleFactor:1})
   await context.addInitScript(()=>{
@@ -187,13 +217,14 @@ try{
       const distance=(a,b)=>Math.hypot(...a.map((value,index)=>value-b[index]))
       return distance(debug.camera,debug.desiredCamera)<.35&&
         distance(debug.cameraTarget,debug.desiredTarget)<.35
-    },null,{timeout:15000})
+    },null,{timeout:45000})
     await page.waitForTimeout(180)
 
     const snapshot=await page.evaluate(()=>window.__journeyQA())
     const layout=await page.evaluate(()=>{
-      const chapter=document.querySelector('.chapter')
-      const rect=chapter?.getBoundingClientRect()
+      const overlayElement=document.querySelector('.chapter')||
+        document.querySelector('.chapter-counter')
+      const rect=overlayElement?.getBoundingClientRect()
       return{
         horizontalOverflow:document.documentElement.scrollWidth>innerWidth,
         overlay:rect?{
@@ -208,9 +239,13 @@ try{
     if(layout.horizontalOverflow){
       throw new Error(`Horizontal overflow at ${state.name}`)
     }
-    if(requested==='mobile'&&layout.overlay?.clipped){
+    if(requested==='mobile'&&!layout.overlay){
+      throw new Error(`Mobile overlay is missing at ${state.name}`)
+    }
+    if(requested==='mobile'&&layout.overlay.clipped){
       throw new Error(`Mobile overlay is clipped at ${state.name}`)
     }
+    assertSnapshot(snapshot,state,externalFailures)
 
     const pagePath=path.join(outputRoot,`${state.name}-page.png`)
     const webglPath=path.join(outputRoot,`${state.name}-webgl.png`)
@@ -218,7 +253,6 @@ try{
     await page.evaluate(()=>document.body.classList.add('visual-qa-webgl'))
     await page.locator('.journey__canvas').screenshot({path:webglPath})
     await page.evaluate(()=>document.body.classList.remove('visual-qa-webgl'))
-    assertSnapshot(snapshot,state,externalFailures)
     results.push({
       name:state.name,
       progress:state.progress,

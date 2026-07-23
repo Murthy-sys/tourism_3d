@@ -13,6 +13,11 @@ const smooth01=value=>{
   return t*t*(3-2*t)
 }
 
+const deterministic=(index,salt=0)=>{
+  const value=Math.sin((index+1)*91.733+(salt+1)*37.119)*43758.5453
+  return value-Math.floor(value)
+}
+
 const waterHalfWidth=t=>{
   const inlet=smooth01((t-.58)/.42)
   return 4.85+Math.sin(t*Math.PI*2.4)*.25+Math.sin(t*Math.PI*5.1)*.1-inlet*2
@@ -112,7 +117,7 @@ const createEdgeRibbonGeometry=(curve,segments,side)=>{
 }
 
 const createBasinGeometry=()=>{
-  const geometry=new THREE.PlaneGeometry(58,76,36,48)
+  const geometry=new THREE.PlaneGeometry(92,118,46,60)
   geometry.rotateX(-Math.PI/2)
   const position=geometry.getAttribute('position')
   const colors=[]
@@ -285,7 +290,7 @@ export function createWaterWorld(m,quality='desktop'){
 
   const depthMaterial=new THREE.MeshStandardMaterial({
     color:'#063b4b',
-    roughness:.78,
+    roughness:.52,
     metalness:.04,
     vertexColors:true,
   })
@@ -296,13 +301,15 @@ export function createWaterWorld(m,quality='desktop'){
 
   const surfaceMaterial=addScenicReflection(new THREE.MeshPhysicalMaterial({
     color:'#ffffff',
-    roughness:.18,
-    metalness:.05,
-    transmission:.12,
+    roughness:.14,
+    metalness:.03,
+    transmission:.3,
+    thickness:.32,
+    ior:1.33,
     clearcoat:1,
-    clearcoatRoughness:.1,
+    clearcoatRoughness:.06,
     transparent:true,
-    opacity:.88,
+    opacity:.68,
     vertexColors:true,
     side:THREE.DoubleSide,
   }))
@@ -318,7 +325,7 @@ export function createWaterWorld(m,quality='desktop'){
     transmission:.04,
     clearcoat:1,
     transparent:true,
-    opacity:.2,
+    opacity:.12,
     vertexColors:true,
     depthWrite:false,
     blending:THREE.NormalBlending,
@@ -359,6 +366,45 @@ export function createWaterWorld(m,quality='desktop'){
   const shoreline=named('water-shoreline')
   shoreline.add(banks)
   world.add(shoreline)
+
+  const shoreDetail=named('water-shore-detail')
+  const shoreMaterials=[
+    new THREE.MeshStandardMaterial({color:'#45504a',roughness:.98}),
+    new THREE.MeshStandardMaterial({color:'#6f715d',roughness:.94}),
+    new THREE.MeshStandardMaterial({color:'#335643',roughness:.91}),
+  ]
+  const shoreDetailCount=quality==='mobile'?28:52
+  for(let index=0;index<shoreDetailCount;index+=1){
+    const t=.025+(index+.5)/shoreDetailCount*.95
+    const {point,lateral}=sampleFrame(route,t)
+    const side=index%2?-1:1
+    const distance=waterHalfWidth(t)+.12+deterministic(index,41)*1.15
+    const radius=.08+deterministic(index,42)*.16
+    const detail=mesh(
+      index%4===0
+        ?new THREE.IcosahedronGeometry(radius,1)
+        :new THREE.DodecahedronGeometry(radius,0),
+      shoreMaterials[index%shoreMaterials.length],
+      [
+        point.x+lateral.x*distance*side,
+        .11+radius*.28,
+        point.z+lateral.z*distance*side,
+      ],
+      [
+        deterministic(index,43)*.45,
+        deterministic(index,44)*Math.PI,
+        deterministic(index,45)*.35,
+      ],
+    )
+    detail.name=index%4===0?'shore-moss-clump':'shore-pebble'
+    detail.scale.set(
+      .72+deterministic(index,46)*.7,
+      .38+deterministic(index,47)*.38,
+      .7+deterministic(index,48)*.75,
+    )
+    shoreDetail.add(detail)
+  }
+  world.add(shoreDetail)
 
   const bankShadows=named('water-bank-shadows')
   const shadowMaterial=new THREE.MeshBasicMaterial({color:'#092f35',transparent:true,opacity:.42,depthWrite:false})
