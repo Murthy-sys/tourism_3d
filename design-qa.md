@@ -17,6 +17,7 @@ Screenshot roots:
 
 - Desktop: `/tmp/tourist-management-visual-qa/desktop`
 - Mobile: `/tmp/tourist-management-visual-qa/mobile`
+- Final targeted composition reruns: `/tmp/tourist-management-visual-qa-r5` through `/tmp/tourist-management-visual-qa-r8`.
 
 Each row below has matching `<state>-page.png` and `<state>-webgl.png` captures in its screenshot root.
 
@@ -68,12 +69,13 @@ Visual acceptance:
 - Kept world and vehicle geometry at its base rendered opacity during handoffs; only negligible presences are visibility-gated while atmosphere, local lights, and shadows carry the transition.
 - Counted party members only when their full ancestor chain, active transport weight, renderable material opacity, and camera-frustum projection all make them genuinely visible.
 - Strengthened water depth/specular/reflection separation, trimmed its physical basin to the river corridor, varied the shoreline, and lowered mountain terrain beneath the handoff water edge.
-- Started forest ground at the shared forest landing, increased mobile near/mid/far trees and undergrowth, and lowered the mobile forest framing to prioritize the jeep and canopy.
+- Lowered and tightened the desktop and mobile boat-tracking cameras around the measured hull center, increased animated surface relief to `.11`, lowered physical-surface roughness to `.06`, and raised the reflection layer to `.24`.
+- Started forest ground at the shared forest landing, increased mobile near/mid/far trees and undergrowth, and changed the mobile finale to a close rear three-quarter jeep view that fills the frame without adding foreground crowns.
 - Capped observed camera corrections below the `.8` discontinuity limit on both render qualities.
 - Excluded `.worktrees/**` in Vitest configuration so the exact repository command tests only this worktree.
 
 ## Automated verification
 
-- `npm test -- --run`: passed, 21 files and 118 tests.
+- `npm test -- --run`: passed, 21 files and 119 tests.
 - `npm run build`: passed, 51 modules transformed. The existing chunk-size advisory remains non-blocking.
 - `git diff --check`: passed.

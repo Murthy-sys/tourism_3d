@@ -303,13 +303,13 @@ export function createWaterWorld(m,quality='desktop'){
 
   const surfaceMaterial=addScenicReflection(new THREE.MeshPhysicalMaterial({
     color:'#ffffff',
-    roughness:.14,
+    roughness:.06,
     metalness:.03,
     transmission:.3,
     thickness:.32,
     reflectivity:.78,
     clearcoat:1,
-    clearcoatRoughness:.06,
+    clearcoatRoughness:.015,
     transparent:true,
     opacity:.68,
     vertexColors:true,
@@ -322,12 +322,13 @@ export function createWaterWorld(m,quality='desktop'){
 
   const reflectionMaterial=new THREE.MeshPhysicalMaterial({
     color:'#a8e7df',
-    roughness:.12,
-    metalness:.16,
+    roughness:.07,
+    metalness:.2,
     transmission:.04,
     clearcoat:1,
+    clearcoatRoughness:.025,
     transparent:true,
-    opacity:.16,
+    opacity:.24,
     vertexColors:true,
     depthWrite:false,
     blending:THREE.NormalBlending,
@@ -488,8 +489,8 @@ export function createWaterWorld(m,quality='desktop'){
 
 export function updateWaterWorld(world,elapsed,boat){
   const {water,reflection}=world.userData
-  animateWaveVertices(water,elapsed,1.43,.05,0)
-  animateWaveVertices(reflection,elapsed,2.17,.023,1.2)
+  animateWaveVertices(water,elapsed,1.43,.11,0)
+  animateWaveVertices(reflection,elapsed,2.17,.052,1.2)
   water.position.y=.012+Math.sin(elapsed*1.11)*.012
   reflection.position.y=.016+Math.sin(elapsed*1.83+.7)*.008
   const shallows=world.getObjectByName('water-shallows')

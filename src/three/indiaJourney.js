@@ -120,8 +120,8 @@ export const createCameraJumpTracker=()=>{
 
 const MOBILE_FRAMING={
   trekker:{camera:[7,12,15],targetY:-.2},
-  boat:{camera:[4,2.8,9],targetY:.8},
-  jeep:{camera:[4,2.6,7.5],targetY:-.45},
+  boat:{camera:[2.4,1.5,5.5],targetY:.5},
+  jeep:{camera:[.4,1.7,5.2],targetY:.9},
 }
 
 export const getMobileTransportCamera=(transport,[x,y,z])=>{

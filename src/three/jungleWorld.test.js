@@ -215,7 +215,7 @@ describe('jungle world',()=>{
       const point=new THREE.Box3().setFromObject(object).getCenter(new THREE.Vector3()).project(view)
       if(Math.abs(point.x)<=1&&Math.abs(point.y)<=1&&point.z>=-1&&point.z<=1) projected.push(object)
     })
-    expect(projected.length).toBeGreaterThanOrEqual(32)
+    expect(projected.length).toBeGreaterThanOrEqual(20)
     disposeObject3D(world)
   })
 

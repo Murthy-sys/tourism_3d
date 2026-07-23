@@ -28,8 +28,8 @@ describe('renderer quality', () => {
   })
   it('frames the mobile party, boat, and jeep at readable trailing distances',()=>{
     expect(getMobileTransportCamera('trekker',[2,1,-30])).toEqual({camera:[9,13,-15],target:[2,.8,-30]})
-    expect(getMobileTransportCamera('boat',[-2,.25,-86])).toEqual({camera:[2,3.05,-77],target:[-2,1.05,-86]})
-    expect(getMobileTransportCamera('jeep',[1,.2,-120])).toEqual({camera:[5,2.8,-112.5],target:[1,-.25,-120]})
+    expect(getMobileTransportCamera('boat',[-2,.25,-86])).toEqual({camera:[.4,1.75,-80.5],target:[-2,.75,-86]})
+    expect(getMobileTransportCamera('jeep',[1,.2,-120])).toEqual({camera:[1.4,1.9,-114.8],target:[1,1.1,-120]})
   })
   it('frames the party around its members instead of its origin',()=>{
     const party=new THREE.Group()

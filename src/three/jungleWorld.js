@@ -288,7 +288,7 @@ export function createJungleWorld(m,quality='desktop'){
       cameraClearance:8.2,
     },
     {
-      start:jeepSightlineEnd.clone().add(new THREE.Vector3(4,2.6,7.5)),
+      start:jeepSightlineEnd.clone().add(new THREE.Vector3(.4,1.7,5.2)),
       end:jeepSightlineEnd,
       clearance:1.1,
       cameraClearance:8.2,

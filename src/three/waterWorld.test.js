@@ -46,11 +46,13 @@ describe('water world',()=>{
     expect(surface.opacity).toBeLessThanOrEqual(.74)
     expect(surface.transmission).toBeGreaterThanOrEqual(.2)
     expect(surface.reflectivity).toBeGreaterThanOrEqual(.75)
+    expect(surface.roughness).toBeLessThanOrEqual(.07)
+    expect(surface.clearcoatRoughness).toBeLessThanOrEqual(.02)
     expect(depth.isMeshPhysicalMaterial).toBe(true)
     expect(depth.clearcoat).toBeGreaterThanOrEqual(.15)
     expect(depth.roughness).toBeLessThan(.65)
-    expect(reflection.opacity).toBeGreaterThanOrEqual(.14)
-    expect(reflection.opacity).toBeLessThanOrEqual(.2)
+    expect(reflection.opacity).toBeGreaterThanOrEqual(.23)
+    expect(reflection.opacity).toBeLessThanOrEqual(.26)
     expect(water.getObjectByName('water-shore-detail').children.length).toBeGreaterThanOrEqual(24)
     water.updateMatrixWorld(true)
     const basinBounds=new THREE.Box3().setFromObject(basin)
@@ -117,6 +119,11 @@ describe('water world',()=>{
     const edgeNormal=new THREE.Vector3().fromBufferAttribute(normals,edge)
     const centerNormal=new THREE.Vector3().fromBufferAttribute(normals,center)
     expect(edgeNormal.distanceTo(centerNormal)).toBeGreaterThan(.005)
+    const heights=[]
+    for(let index=0;index<geometry.getAttribute('position').count;index+=1){
+      heights.push(geometry.getAttribute('position').getY(index))
+    }
+    expect(Math.max(...heights)-Math.min(...heights)).toBeGreaterThan(.25)
     disposeObject3D(water)
   })
 

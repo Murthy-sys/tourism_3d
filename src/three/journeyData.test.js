@@ -76,6 +76,23 @@ describe('India journey data', () => {
     })
   })
 
+  it('keeps the desktop water tracking cameras low and close to the boat corridor',()=>{
+    const corridor=getJourneyState(.52)
+    const forestApproach=getJourneyState(.60)
+    const rounded=values=>values.map(value=>Number(value.toFixed(3)))
+    expect(rounded(corridor.cameraPosition)).toEqual([.8,1.55,-55])
+    expect(rounded(corridor.cameraTarget)).toEqual([-4.3,.42,-57.9])
+    expect(rounded(forestApproach.cameraPosition)).toEqual([-3,1.65,-82])
+    expect(rounded(forestApproach.cameraTarget)).toEqual([-2,.3,-86])
+    ;[corridor,forestApproach].forEach(({cameraPosition,cameraTarget})=>{
+      const distance=Math.hypot(...cameraPosition.map(
+        (value,index)=>value-cameraTarget[index],
+      ))
+      expect(distance).toBeLessThan(6.2)
+      expect(cameraPosition[1]-cameraTarget[1]).toBeLessThan(1.5)
+    })
+  })
+
   it('keeps the mountain opening far enough back to frame the whole party',()=>{
     const {cameraPosition,cameraTarget}=getJourneyState(.08)
     const distance=Math.hypot(...cameraPosition.map((value,index)=>value-cameraTarget[index]))
