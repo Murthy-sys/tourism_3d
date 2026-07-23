@@ -44,14 +44,15 @@ function createBoatWake(){
       ]),28,.027,5,false),
       createWakeMaterial(.38),
     )
+    trail.userData.baseOpacity=.38
     wake.add(trail)
   })
   ;[2.05,2.8,3.65].forEach((z,index)=>{
     const wash=namedMesh(`boat-wake-ripple-${index+1}`,new THREE.RingGeometry(.52+index*.28,.58+index*.3,28),createWakeMaterial(.2),[0,.01,z],[-Math.PI/2,0,0])
     wash.scale.x=1.7
+    wash.userData.baseOpacity=.2
     wake.add(wash)
   })
-  wake.userData.materials=wake.children.map(child=>child.material)
   return wake
 }
 
@@ -113,7 +114,8 @@ export function updateBoat(boat,curve,progress,elapsed,reducedMotion){
   const wake=boat.userData.wake
   if(wake&&!reducedMotion){
     wake.scale.x=1+Math.sin(elapsed*2.1)*.06
-    wake.userData.materials.forEach((wakeMaterial,index)=>{wakeMaterial.opacity=(index?.2:.38)+Math.sin(elapsed*2.6+index)*.05})
+    const wakePulse=Math.sin(elapsed*2.6)*.05
+    wake.children.forEach(child=>{child.material.opacity=child.userData.baseOpacity+wakePulse})
   }
 }
 

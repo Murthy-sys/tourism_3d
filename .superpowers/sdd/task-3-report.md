@@ -110,8 +110,32 @@ Exit code: `0`
 - Both river-bank meshes now compute upward-facing normals.
 - Water uses seven vertices across each station, depth-colored from deep center to shallow edges, with cross-width wave phase and recomputed 2D normals.
 - The physical surface injects explicit Fresnel terrain/sky reflection into the Three.js physical shader.
-- The corridor narrows by more than three units per side into the forest inlet.
+- The corridor narrows by approximately 2.70 units per side into the forest inlet.
 - Visible mountain and forest deck bounds are centered on their shared landmarks.
 - The boat-owned wake is the only wake in the combined water scene.
 - Left/right animated oar groups and port/starboard compatibility groups all contain visible oar geometry.
 - Every animated foam and boat-wake child owns its material, preventing opacity coupling.
+
+## Wake-symmetry follow-up verification
+
+Command: `npm test -- src/three/waterWorld.test.js src/three/expeditionVehicles.test.js`
+
+```text
+> wanderlux-tourism@1.0.0 test
+> vitest run src/three/waterWorld.test.js src/three/expeditionVehicles.test.js
+
+
+ RUN  v2.1.9 /Users/apple/Desktop/tourist-management
+
+ ✓ .worktrees/continuous-landscape/src/three/expeditionVehicles.test.js (5 tests) 58ms
+ ✓ src/three/expeditionVehicles.test.js (8 tests) 98ms
+ ✓ src/three/waterWorld.test.js (8 tests) 156ms
+ ✓ .worktrees/continuous-landscape/src/three/waterWorld.test.js (6 tests) 173ms
+
+ Test Files  4 passed (4)
+      Tests  27 passed (27)
+   Start at  11:05:28
+   Duration  652ms (transform 81ms, setup 269ms, collect 190ms, tests 485ms, environment 836ms, prepare 140ms)
+```
+
+Exit code: `0`

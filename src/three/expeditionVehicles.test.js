@@ -65,6 +65,17 @@ describe('expedition transports',()=>{
     expect(new Set(wake.children.map(child=>child.material)).size).toBe(wake.children.length)
     disposeObject3D(boat)
   })
+  it('keeps the two wake trails symmetric and subtler ripples behind them',()=>{
+    const boat=createExpeditionBoat(createMaterials())
+    const curve=new THREE.CatmullRomCurve3([new THREE.Vector3(0,0,0),new THREE.Vector3(0,0,-8)])
+    updateBoat(boat,curve,.5,.6,false)
+    const wake=boat.getObjectByName('boat-wake')
+    const trails=wake.children.filter(child=>child.name.startsWith('boat-wake-trail'))
+    const ripples=wake.children.filter(child=>child.name.startsWith('boat-wake-ripple'))
+    expect(trails[0].material.opacity).toBeCloseTo(trails[1].material.opacity)
+    ripples.forEach(ripple=>expect(ripple.material.opacity).toBeLessThan(trails[0].material.opacity))
+    disposeObject3D(boat)
+  })
   it('creates and animates an articulated trekker',()=>{
     const trekker=createTrekker(createMaterials())
     expect(trekker.userData.limbs).toHaveLength(4)
