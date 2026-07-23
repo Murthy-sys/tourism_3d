@@ -21,4 +21,12 @@ describe('cinematic chapter content',()=>{
     render(<ChapterContent chapter={chapter} progress={.5} onPlan={vi.fn()}/>)
     expect(screen.getAllByRole('button',{name:/plan .* journey/i})).toHaveLength(3)
   })
+
+  it('activates plan overlays at the expedition transport boundaries',()=>{
+    const chapter=CHAPTERS.find(({id})=>id==='plans')
+    const {rerender}=render(<ChapterContent chapter={chapter} progress={.45} onPlan={vi.fn()}/>)
+    expect(screen.getByRole('button',{name:'Plan Heritage India journey'})).toHaveClass('active')
+    rerender(<ChapterContent chapter={chapter} progress={.75} onPlan={vi.fn()}/>)
+    expect(screen.getByRole('button',{name:'Plan Southern Discovery journey'})).toHaveClass('active')
+  })
 })

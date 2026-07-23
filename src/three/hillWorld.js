@@ -30,7 +30,7 @@ const routeDistance=(x,z,points)=>points.reduce((distance,point)=>{
 
 const createRoute=heightAt=>{
   const [startX,,startZ]=LANDMARKS.mountainStart
-  const [endX,,endZ]=LANDMARKS.mountainLanding
+  const [endX,endY,endZ]=LANDMARKS.mountainLanding
   const points=Array.from({length:32},(_,index)=>{
     const t=index/31
     const meander=Math.sin(t*Math.PI)*(
@@ -39,7 +39,8 @@ const createRoute=heightAt=>{
     )
     const x=THREE.MathUtils.lerp(startX,endX,t)+meander
     const z=THREE.MathUtils.lerp(startZ,endZ,t)
-    return new THREE.Vector3(x,heightAt(x,z)+.08,z)
+    const y=index===31?endY:heightAt(x,z)+.08
+    return new THREE.Vector3(x,y,z)
   })
   return new THREE.CatmullRomCurve3(points,false,'centripetal')
 }
@@ -327,28 +328,31 @@ const createTrail=(materials,route,heightAt,quality)=>{
   return trail
 }
 
-const createLanding=(materials,heightAt)=>{
+const createLanding=materials=>{
   const landing=namedGroup('mountain-water-landing')
-  const [x,,z]=LANDMARKS.mountainLanding
-  landing.position.set(x,heightAt(x,z),z-1)
-  for(let index=0;index<7;index+=1){
+  landing.position.set(...LANDMARKS.mountainLanding)
+  const deck=namedGroup('mountain-landing-deck')
+  deck.position.y=.18
+  for(let index=-2;index<=2;index+=1){
     const plank=mesh(
-      new THREE.BoxGeometry(3.2,.12,.48),
+      new THREE.BoxGeometry(.7,.16,3.2),
       index%2?materials.wood:material('#5a3d2c',.96),
-      [0,.18,-index*.46],
+      [index*.72,0,0],
     )
     plank.rotation.y=(deterministic(index,81)-.5)*.025
-    landing.add(plank)
+    plank.name='landing-plank'
+    deck.add(plank)
   }
-  ;[-1.36,1.36].forEach(side=>{
-    ;[0,-2.7].forEach(depth=>{
-      landing.add(mesh(
-        new THREE.CylinderGeometry(.065,.09,1.35,8),
+  ;[-1.65,1.65].forEach(side=>{
+    ;[-1.35,1.35].forEach(depth=>{
+      deck.add(mesh(
+        new THREE.CylinderGeometry(.055,.075,1.25,8),
         materials.wood,
-        [side,-.38,depth],
+        [side,-.35,depth],
       ))
     })
   })
+  landing.add(deck)
   return landing
 }
 
@@ -405,7 +409,7 @@ export function createHillWorld(materials,quality='desktop'){
   const vegetation=createVegetation(materials,heightAt,route.points,quality)
   const mist=createMist(quality)
   const trail=createTrail(materials,route,heightAt,quality)
-  const landing=createLanding(materials,heightAt)
+  const landing=createLanding(materials)
   const water=createWaterGlint()
   world.add(terrain,ridges,rocks,vegetation,mist,trail,landing,water)
 

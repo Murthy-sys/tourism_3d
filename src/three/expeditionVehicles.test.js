@@ -94,4 +94,19 @@ describe('expedition transports',()=>{
     expect(boat.position.z).toBeCloseTo(-4,1)
     disposeObject3D(jeep);disposeObject3D(boat)
   })
+  it('grounds all four jeep tires on the forest route',()=>{
+    const routeY=.25
+    const curve=new THREE.CatmullRomCurve3([
+      new THREE.Vector3(0,routeY,0),
+      new THREE.Vector3(0,routeY,-8),
+    ])
+    const jeep=createExpeditionJeep(createMaterials())
+    updateJeep(jeep,curve,.5,1,true)
+    jeep.updateMatrixWorld(true)
+    jeep.userData.wheels.forEach(wheel=>{
+      const tireBottom=new THREE.Box3().setFromObject(wheel).min.y
+      expect(Math.abs(tireBottom-routeY)).toBeLessThan(.035)
+    })
+    disposeObject3D(jeep)
+  })
 })

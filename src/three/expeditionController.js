@@ -168,7 +168,6 @@ export function createExpeditionController(scene,materials,quality){
       routeProgress(state,'trekker',partySpan),
       elapsed,
       reducedMotion,
-      mountain.userData.heightAt,
     )
     updateBoat(boat,water.userData.route,routeProgress(state,'boat'),elapsed,reducedMotion)
     updateJeep(jeep,forest.userData.route,routeProgress(state,'jeep'),elapsed,reducedMotion)

@@ -2,7 +2,7 @@ export const SERVICES=[
   ['Curated Tours','Hand-built journeys across iconic and lesser-known India.'],['Stay & Transport','Vetted stays and seamless local movement.'],['Travel Documents','Guidance for permits, insurance and documentation.'],['Local Concierge','Certified guides and round-the-clock assistance.'],['Custom Itineraries','Trips shaped around your pace, budget and interests.'],['Groups & Corporate','Retreats and group logistics managed end to end.']
 ]
 export const TRAVEL_PLANS=[
-  {id:'himalayan-adventure',name:'Himalayan Adventure',days:'8 days',route:'Rishikesh · Manali · Dharamshala',style:'Mountains on foot'},
+  {id:'mountain-trail',name:'Mountain Trail Expedition',days:'8 days',route:'Munnar · Coorg · Nilgiris',style:'Mountains on foot'},
   {id:'heritage-india',name:'Heritage India',days:'9 days',route:'Backwaters · Lakes · River country',style:'Water by boat'},
   {id:'southern-discovery',name:'Southern Discovery',days:'10 days',route:'Kerala · Tamil Nadu · Hampi · Goa',style:'Forest by jeep'},
 ]

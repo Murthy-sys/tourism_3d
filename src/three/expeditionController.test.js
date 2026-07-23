@@ -99,6 +99,53 @@ describe('expedition controller integration',()=>{
     controller.dispose()
   })
 
+  it('aligns both mountain worlds, party feet, and boat staging in full 3D',()=>{
+    const scene=new THREE.Scene()
+    const controller=createExpeditionController(scene,createMaterials(),'mobile')
+    controller.update(getExpeditionState(.34),1,true)
+    scene.updateMatrixWorld(true)
+    const landmark=new THREE.Vector3(...LANDMARKS.mountainLanding)
+    const aligned=[
+      controller.worlds.mountain.userData.route.getPointAt(1),
+      controller.worlds.mountain.userData.landing.getWorldPosition(new THREE.Vector3()),
+      controller.worlds.water.userData.route.getPointAt(0),
+      controller.worlds.water.userData.mountainLanding.getWorldPosition(new THREE.Vector3()),
+      controller.transports.trekker.userData.members[0].getWorldPosition(new THREE.Vector3()),
+      controller.transports.boat.getWorldPosition(new THREE.Vector3()),
+    ]
+    aligned.forEach(position=>expect(position.distanceTo(landmark)).toBeLessThan(1e-6))
+    const hillDeck=new THREE.Box3().setFromObject(controller.worlds.mountain.userData.landing)
+    const waterDeck=new THREE.Box3().setFromObject(controller.worlds.water.userData.mountainLanding)
+    const hillCenter=hillDeck.getCenter(new THREE.Vector3())
+    expect(Math.hypot(hillCenter.x-landmark.x,hillCenter.z-landmark.z)).toBeLessThan(.02)
+    expect(hillDeck.max.y).toBeCloseTo(waterDeck.max.y,2)
+    controller.dispose()
+  })
+
+  it('does not create unattached clones from the caller material palette',()=>{
+    const scene=new THREE.Scene()
+    const materials=createMaterials()
+    const clones=[]
+    Object.values(materials).forEach(material=>{
+      const clone=material.clone.bind(material)
+      vi.spyOn(material,'clone').mockImplementation(()=>{
+        const result=clone()
+        clones.push(result)
+        return result
+      })
+    })
+    const controller=createExpeditionController(scene,materials,'mobile')
+    const attached=new Set()
+    scene.traverse(object=>{
+      const objectMaterials=Array.isArray(object.material)?object.material:[object.material]
+      objectMaterials.filter(Boolean).forEach(material=>attached.add(material))
+    })
+    expect(clones.length).toBeGreaterThan(0)
+    expect(clones.every(material=>attached.has(material))).toBe(true)
+    controller.dispose()
+    Object.values(materials).forEach(material=>material.dispose())
+  })
+
   it('removes and disposes every constructed root',()=>{
     const scene=new THREE.Scene()
     const controller=createExpeditionController(scene,createMaterials(),'mobile')

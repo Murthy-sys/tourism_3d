@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
+import * as THREE from 'three'
 import { createHillWorld } from './hillWorld'
 import { updateHillWorld } from './hillWorld'
 import { createMaterials, disposeObject3D } from './primitives'
+import { LANDMARKS } from './terrain'
 
 describe('hill world',()=>{
   it('builds a natural mountain opening with a visible water destination',()=>{
@@ -10,7 +12,7 @@ describe('hill world',()=>{
       .forEach(name=>expect(world.getObjectByName(name)).toBeTruthy())
     ;['glacier','drifting-snow','ice-foreground','monument']
       .forEach(name=>expect(world.getObjectByName(name)).toBeFalsy())
-    expect(world.userData.route.getPoints(24).every(point=>Math.abs(point.y-world.userData.heightAt(point.x,point.z))<.3)).toBe(true)
+    expect(world.userData.route.getPoints(24).slice(0,-1).every(point=>Math.abs(point.y-world.userData.heightAt(point.x,point.z))<.3)).toBe(true)
     disposeObject3D(world)
   })
 
@@ -29,5 +31,14 @@ describe('hill world',()=>{
     expect(mist.children[0].position.x).not.toBe(before)
     disposeObject3D(desktop)
     disposeObject3D(mobile)
+  })
+
+  it('aligns the route and landing root to the full 3D mountain landmark',()=>{
+    const world=createHillWorld(createMaterials(),'mobile')
+    world.updateMatrixWorld(true)
+    const landmark=new THREE.Vector3(...LANDMARKS.mountainLanding)
+    expect(world.userData.route.getPointAt(1).distanceTo(landmark)).toBeLessThan(1e-6)
+    expect(world.userData.landing.getWorldPosition(new THREE.Vector3()).distanceTo(landmark)).toBeLessThan(1e-6)
+    disposeObject3D(world)
   })
 })

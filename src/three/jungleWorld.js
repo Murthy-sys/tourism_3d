@@ -4,8 +4,9 @@ import { LANDMARKS } from './terrain'
 
 const ROUTE_CLEARANCE=1.4
 const nameGroup=name=>{const group=new THREE.Group();group.name=name;return group}
+const JUNGLE_PALETTE_KEYS=['leaf','leaf2','stone','water','wood','sand','dark']
 const cloneMaterialPalette=materials=>Object.fromEntries(
-  Object.entries(materials).map(([name,material])=>[name,material.clone()]),
+  JUNGLE_PALETTE_KEYS.map(name=>[name,materials[name].clone()]),
 )
 const hashed=(index,salt=0)=>{
   const value=Math.sin((index+1)*127.1+(salt+1)*311.7)*43758.5453123

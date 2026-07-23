@@ -6,7 +6,7 @@ describe('India journey data', () => {
   it('runs south to north through every approved tourism stop', () => {
     expect(JOURNEY_STOPS.map((stop) => stop.id)).toEqual([
       'kerala', 'tamil-nadu', 'hampi', 'goa', 'mumbai',
-      'rajasthan', 'agra', 'varanasi', 'himalayas',
+      'rajasthan', 'agra', 'varanasi', 'hill-country',
     ])
   })
 
@@ -14,7 +14,7 @@ describe('India journey data', () => {
     expect(clamp01(-2)).toBe(0)
     expect(clamp01(3)).toBe(1)
     expect(getJourneyState(-1).activeStop.id).toBe('kerala')
-    expect(getJourneyState(2).activeStop.id).toBe('himalayas')
+    expect(getJourneyState(2).activeStop.id).toBe('hill-country')
   })
 
   it('interpolates finite camera coordinates', () => {
@@ -46,6 +46,11 @@ describe('India journey data', () => {
     expect([.05,.5,.9].map(p=>getExpeditionState(p).activeTransport)).toEqual(['trekker','boat','jeep'])
     expect([.05,.5,.9].map(p=>getExpeditionState(p).biome)).toEqual(['mountain','water','forest'])
     expect(JSON.stringify(getExpeditionState(.5))).not.toMatch(/ambassador|monument|ice/i)
+  })
+
+  it('contains no active Himalaya, snow, or ice semantics',()=>{
+    expect(JSON.stringify(JOURNEY_STOPS)).not.toMatch(/himalaya|snow|ice/i)
+    expect(JSON.stringify(getJourneyState(1))).not.toMatch(/himalaya|snow|ice/i)
   })
 
   it('uses the full landing ranges for both handoffs',()=>{

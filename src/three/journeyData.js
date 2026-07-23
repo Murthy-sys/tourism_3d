@@ -13,7 +13,7 @@ export const JOURNEY_STOPS = [
   stop('rajasthan', 'Rajasthan', 'Fortresses of the desert', 'Travel through ochre dunes, palace walls and desert light.', 'west-north', { sky: '#887993', horizon: '#df7759', ground: '#9e663b', accent: '#ffd078' }, [8, 6, -70], [7, 2, -84]),
   stop('agra', 'Agra', 'An icon in marble', 'Pause before the symmetry and calm of the Taj Mahal.', 'west-north', { sky: '#8098ad', horizon: '#efa082', ground: '#767b77', accent: '#fff0c8' }, [-5, 5, -88], [-3, 2, -102]),
   stop('varanasi', 'Varanasi', 'Light along the Ganges', 'Move past river steps, boats and the glow of evening rituals.', 'ganges', { sky: '#5d6684', horizon: '#df704f', ground: '#59454d', accent: '#ffbf59' }, [7, 5, -106], [7, 1, -120]),
-  stop('himalayas', 'The Himalayas', 'The journey rises', 'Finish above cedar forests beneath snow-lit peaks.', 'himalayas', { sky: '#4f6682', horizon: '#cc8e7c', ground: '#34464a', accent: '#eef8ff' }, [0, 8, -126], [0, 3, -140]),
+  stop('hill-country', 'Forested Hill Country', 'The journey enters the canopy', 'Finish among forested ridges, mist-filled valleys and winding green trails.', 'hill-country', { sky: '#4f6682', horizon: '#cc8e7c', ground: '#34464a', accent: '#eef8ff' }, [0, 8, -126], [0, 3, -140]),
 ]
 
 export const CAMERA_KEYFRAMES = JOURNEY_STOPS.map(({ camera, target }) => ({ camera, target }))

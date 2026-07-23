@@ -13,10 +13,12 @@ export function createExpeditionJeep(m){
   const wheels=[];[-1.02,1.02].forEach(x=>[-1.12,1.08].forEach(z=>{const w=wheel();w.position.set(x,.55,z);jeep.add(w);wheels.push(w)}))
   jeep.add(mesh(new THREE.TorusGeometry(.42,.12,10,20),material('#151718',.9),[0,1.1,1.66],[0,Math.PI/2,0]),mesh(new THREE.BoxGeometry(1.4,.18,.45),material('#624b36',.75),[0,1.08,.48]))
   const person=traveller(m);person.position.set(-.38,1.08,-.12);jeep.add(person)
-  jeep.userData={wheels,lastProgress:0,traveller:person};return jeep
+  jeep.updateMatrixWorld(true)
+  const tireBottom=Math.min(...wheels.map(candidate=>new THREE.Box3().setFromObject(candidate).min.y))
+  jeep.userData={wheels,lastProgress:0,traveller:person,groundOffset:-tireBottom};return jeep
 }
 
-export function updateJeep(jeep,curve,progress,elapsed,reducedMotion){const {p}=routeUpdate(jeep,curve,progress,.25+(reducedMotion?0:Math.sin(elapsed*7)*.025));const distance=Math.abs(p-jeep.userData.lastProgress)*curve.getLength();jeep.userData.wheels.forEach(w=>w.rotation.x-=distance/.32);jeep.userData.lastProgress=p}
+export function updateJeep(jeep,curve,progress,elapsed,reducedMotion){const {p}=routeUpdate(jeep,curve,progress,jeep.userData.groundOffset+(reducedMotion?0:Math.sin(elapsed*7)*.025));const distance=Math.abs(p-jeep.userData.lastProgress)*curve.getLength();jeep.userData.wheels.forEach(w=>w.rotation.x-=distance/.32);jeep.userData.lastProgress=p}
 
 const namedMesh=(name,geometry,mat,position=[0,0,0],rotation=[0,0,0])=>{const object=mesh(geometry,mat,position,rotation);object.name=name;return object}
 
@@ -103,7 +105,7 @@ export function createExpeditionBoat(m){
 }
 
 export function updateBoat(boat,curve,progress,elapsed,reducedMotion){
-  const {tangent}=routeUpdate(boat,curve,progress,.12+(reducedMotion?0:Math.sin(elapsed*1.8)*.035));boat.rotation.y+=Math.PI;boat.rotation.z=reducedMotion?0:Math.sin(elapsed*1.3)*.025;boat.rotation.x=reducedMotion?0:Math.sin(elapsed*1.7)*.018
+  const {tangent}=routeUpdate(boat,curve,progress,reducedMotion?0:Math.sin(elapsed*1.8)*.035);boat.rotation.y+=Math.PI;boat.rotation.z=reducedMotion?0:Math.sin(elapsed*1.3)*.025;boat.rotation.x=reducedMotion?0:Math.sin(elapsed*1.7)*.018
   boat.userData.routeTangent=tangent.clone()
   const stroke=reducedMotion?0:Math.sin(elapsed*2.8),recovery=reducedMotion?0:Math.cos(elapsed*2.8)
   const port=boat.getObjectByName('boat-oar-left'),starboard=boat.getObjectByName('boat-oar-right'),rower=boat.getObjectByName('boat-rower')

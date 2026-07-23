@@ -4,7 +4,7 @@ import { CHAPTERS, OPENING_DRIVE_END, OPENING_TREK_END, TRAVEL_PLANS, getChapter
 describe('journey chapters', () => {
   it('contains the complete approved experience in order', () => {
     expect(CHAPTERS.map((chapter) => chapter.id)).toEqual(['home','who-we-are','plans','contact'])
-    expect(TRAVEL_PLANS.map((plan) => plan.id)).toEqual(['himalayan-adventure','heritage-india','southern-discovery'])
+    expect(TRAVEL_PLANS.map((plan) => plan.id)).toEqual(['mountain-trail','heritage-india','southern-discovery'])
     expect(TRAVEL_PLANS.map((plan) => plan.style)).toEqual(['Mountains on foot','Water by boat','Forest by jeep'])
   })
   it('maps progress and menu targets to stable chapters', () => {
@@ -22,5 +22,8 @@ describe('journey chapters', () => {
     const about = CHAPTERS.find(({ id }) => id === 'who-we-are')
     expect(about.body).toMatch(/design, coordinate and manage journeys across India/i)
     expect(about.body).not.toMatch(/South Indian/i)
+  })
+  it('contains no customer-facing Himalaya, snow, or ice semantics',()=>{
+    expect(JSON.stringify({chapters:CHAPTERS,plans:TRAVEL_PLANS})).not.toMatch(/himalaya|snow|ice/i)
   })
 })
