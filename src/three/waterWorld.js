@@ -8,7 +8,15 @@ const named=name=>{
   return group
 }
 
-const waterHalfWidth=t=>6.5+Math.sin(t*Math.PI*2.4)*.55+Math.sin(t*Math.PI*5.1)*.22
+const smooth01=value=>{
+  const t=THREE.MathUtils.clamp(value,0,1)
+  return t*t*(3-2*t)
+}
+
+const waterHalfWidth=t=>{
+  const inlet=smooth01((t-.58)/.42)
+  return 6.55+Math.sin(t*Math.PI*2.4)*.42+Math.sin(t*Math.PI*5.1)*.16-inlet*3.05
+}
 
 const sampleFrame=(curve,t)=>{
   const point=curve.getPointAt(t)
@@ -17,25 +25,34 @@ const sampleFrame=(curve,t)=>{
   return{point,tangent,lateral}
 }
 
-const createRibbonGeometry=(curve,segments,halfWidthAt,y=0)=>{
+const createRibbonGeometry=(curve,segments,halfWidthAt,y=0,crossSectionSegments=6)=>{
   const positions=[],colors=[],indices=[]
   const deep=new THREE.Color('#0a5868'),light=new THREE.Color('#43a7a9'),color=new THREE.Color()
   for(let index=0;index<=segments;index+=1){
     const t=index/segments,{point,lateral}=sampleFrame(curve,t),halfWidth=halfWidthAt(t)
-    for(const side of [-1,1]){
-      positions.push(point.x+lateral.x*halfWidth,y,point.z+lateral.z*halfWidth)
-      color.copy(deep).lerp(light,.24+(1-Math.abs(side))*.28+.12*Math.sin(t*Math.PI))
+    for(let column=0;column<=crossSectionSegments;column+=1){
+      const side=column/crossSectionSegments*2-1
+      positions.push(point.x+lateral.x*halfWidth*side,y,point.z+lateral.z*halfWidth*side)
+      color.copy(deep).lerp(light,.08+Math.abs(side)*.82+.08*Math.sin(t*Math.PI))
       colors.push(color.r,color.g,color.b)
     }
     if(index<segments){
-      const offset=index*2
-      indices.push(offset,offset+2,offset+1,offset+1,offset+2,offset+3)
+      const columns=crossSectionSegments+1
+      for(let column=0;column<crossSectionSegments;column+=1){
+        const offset=index*columns+column,next=offset+columns
+        indices.push(offset,next,offset+1,offset+1,next,next+1)
+      }
     }
   }
   const geometry=new THREE.BufferGeometry()
   geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3))
   geometry.setAttribute('color',new THREE.Float32BufferAttribute(colors,3))
   geometry.setIndex(indices)
+  geometry.userData={
+    routeSegments:segments,
+    crossSectionSegments,
+    crossSectionColumns:crossSectionSegments+1,
+  }
   geometry.computeVertexNormals()
   return geometry
 }
@@ -58,7 +75,8 @@ const createBankGeometry=(curve,segments,side)=>{
     })
     if(index<segments){
       const offset=index*2
-      indices.push(offset,offset+2,offset+1,offset+1,offset+2,offset+3)
+      if(side<0) indices.push(offset,offset+1,offset+2,offset+1,offset+3,offset+2)
+      else indices.push(offset,offset+2,offset+1,offset+1,offset+2,offset+3)
     }
   }
   const geometry=new THREE.BufferGeometry()
@@ -77,13 +95,13 @@ const offsetCurve=(route,offset,start=0,end=1,points=28)=>new THREE.CatmullRomCu
   }),
 )
 
-const createLanding=(name,route,t,m,side)=>{
+const createLanding=(name,route,t,m)=>{
   const {point,tangent}=sampleFrame(route,t)
   const landing=named(name)
   landing.position.copy(point)
   landing.rotation.y=Math.atan2(tangent.x,tangent.z)
   const deck=named(name==='mountain-water-landing'?'boat-jetty':'forest-jetty')
-  deck.position.set(side*4.45,.18,0)
+  deck.position.set(0,.18,0)
   for(let index=-2;index<=2;index+=1){
     const plank=mesh(new THREE.BoxGeometry(.7,.16,3.2),m.wood,[index*.72,0,0])
     plank.rotation.y=(index%2)*.018
@@ -97,20 +115,43 @@ const createLanding=(name,route,t,m,side)=>{
 }
 
 const rememberWaveBase=layer=>{
-  layer.userData.baseY=Float32Array.from(layer.geometry.attributes.position.array.filter((_,index)=>index%3===1))
+  const position=layer.geometry.attributes.position
+  layer.userData.baseY=new Float32Array(position.count)
+  for(let index=0;index<position.count;index+=1) layer.userData.baseY[index]=position.getY(index)
   return layer
 }
 
 const animateWaveVertices=(layer,elapsed,frequency,amplitude,phase)=>{
   const position=layer.geometry.attributes.position
+  const columns=layer.geometry.userData.crossSectionColumns||2
   for(let index=0;index<position.count;index+=1){
     const baseY=layer.userData.baseY[index]
+    const across=(index%columns)/(columns-1)*2-1
     position.setY(index,baseY+
-      Math.sin(elapsed*frequency+position.getX(index)*.31+position.getZ(index)*.17+phase)*amplitude+
-      Math.cos(elapsed*frequency*.61-position.getZ(index)*.23)*amplitude*.42)
+      Math.sin(elapsed*frequency+position.getX(index)*.31+position.getZ(index)*.17+across*1.7+phase)*amplitude+
+      Math.cos(elapsed*frequency*.61-position.getZ(index)*.23-across*.9)*amplitude*.42)
   }
   position.needsUpdate=true
   layer.geometry.computeVertexNormals()
+}
+
+const addScenicReflection=material=>{
+  material.userData.reflectionMode='fresnel-sky-terrain'
+  material.onBeforeCompile=shader=>{
+    shader.uniforms.reflectedSkyColor={value:new THREE.Color('#b9e6e0')}
+    shader.uniforms.reflectedTerrainColor={value:new THREE.Color('#244f42')}
+    shader.fragmentShader=shader.fragmentShader
+      .replace('#include <common>',`#include <common>
+uniform vec3 reflectedSkyColor;
+uniform vec3 reflectedTerrainColor;`)
+      .replace('#include <opaque_fragment>',`
+float reflectionFresnel = pow(1.0 - clamp(dot(normalize(normal), normalize(vViewPosition)), 0.0, 1.0), 3.0);
+vec3 scenicReflection = mix(reflectedTerrainColor, reflectedSkyColor, clamp(normal.y * 0.5 + 0.5, 0.0, 1.0));
+outgoingLight = mix(outgoingLight, scenicReflection, 0.12 + reflectionFresnel * 0.38);
+#include <opaque_fragment>`)
+  }
+  material.customProgramCacheKey=()=>material.userData.reflectionMode
+  return material
 }
 
 const createForestSightline=(m,route,quality)=>{
@@ -171,7 +212,7 @@ export function createWaterWorld(m,quality='desktop'){
   depth.receiveShadow=true
   world.add(depth)
 
-  const surfaceMaterial=new THREE.MeshPhysicalMaterial({
+  const surfaceMaterial=addScenicReflection(new THREE.MeshPhysicalMaterial({
     color:'#ffffff',
     roughness:.18,
     metalness:.05,
@@ -182,7 +223,7 @@ export function createWaterWorld(m,quality='desktop'){
     opacity:.88,
     vertexColors:true,
     side:THREE.DoubleSide,
-  })
+  }))
   const water=rememberWaveBase(mesh(createRibbonGeometry(route,segments,waterHalfWidth,.01),surfaceMaterial))
   water.name='reflective-water'
   water.receiveShadow=true
@@ -198,7 +239,7 @@ export function createWaterWorld(m,quality='desktop'){
     opacity:.2,
     vertexColors:true,
     depthWrite:false,
-    blending:THREE.AdditiveBlending,
+    blending:THREE.NormalBlending,
   })
   const reflection=rememberWaveBase(mesh(createRibbonGeometry(route,segments,t=>waterHalfWidth(t)*.84,.055),reflectionMaterial))
   reflection.name='water-reflection-layer'
@@ -251,14 +292,14 @@ export function createWaterWorld(m,quality='desktop'){
   world.add(bankShadows)
 
   const foam=named('water-foam-accents')
-  const foamMaterial=new THREE.MeshBasicMaterial({color:'#d9f4e8',transparent:true,opacity:.5,depthWrite:false})
+  const createFoamMaterial=()=>new THREE.MeshBasicMaterial({color:'#d9f4e8',transparent:true,opacity:.5,depthWrite:false})
   ;[-1,1].forEach(side=>{
     const foamCurve=offsetCurve(route,t=>side*(waterHalfWidth(t)-.42),.03,.97,24)
-    foam.add(mesh(new THREE.TubeGeometry(foamCurve,segments,.025,5,false),foamMaterial))
+    foam.add(mesh(new THREE.TubeGeometry(foamCurve,segments,.025,5,false),createFoamMaterial()))
   })
   for(let index=0;index<(quality==='mobile'?5:11);index+=1){
     const t=.08+index/(quality==='mobile'?6:12)*.84,{point,lateral}=sampleFrame(route,t)
-    const ripple=mesh(new THREE.RingGeometry(.2,.26,18),foamMaterial,[
+    const ripple=mesh(new THREE.RingGeometry(.2,.26,18),createFoamMaterial(),[
       point.x+lateral.x*(index%2?2.5:-2.8),
       .11,
       point.z+lateral.z*(index%2?2.5:-2.8),
@@ -296,23 +337,12 @@ export function createWaterWorld(m,quality='desktop'){
   }
   world.add(reeds)
 
-  const mountainLanding=createLanding('mountain-water-landing',route,0,m,-1)
-  const forestLanding=createLanding('forest-water-landing',route,1,m,1)
+  const mountainLanding=createLanding('mountain-water-landing',route,0,m)
+  const forestLanding=createLanding('forest-water-landing',route,1,m)
   world.add(mountainLanding,forestLanding)
 
   const forestSightline=createForestSightline(m,route,quality)
   world.add(forestSightline)
-
-  const wake=named('boat-wake')
-  const wakeMaterial=new THREE.MeshBasicMaterial({color:'#d8f4ed',transparent:true,opacity:.42,depthWrite:false})
-  ;[-1,1].forEach(side=>{
-    wake.add(mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3([
-      new THREE.Vector3(side*.48,.02,1.65),
-      new THREE.Vector3(side*1.05,.02,3.25),
-      new THREE.Vector3(side*1.75,.02,5.7),
-    ]),30,.035,5,false),wakeMaterial))
-  })
-  world.add(wake)
 
   const sun=new THREE.DirectionalLight('#ffd399',3.2)
   sun.position.set(-8,12,6)
@@ -321,7 +351,7 @@ export function createWaterWorld(m,quality='desktop'){
     route,
     water,
     reflection,
-    wake,
+    wake:null,
     mountainLanding,
     forestLanding,
     surfaceMaterials:[surfaceMaterial,reflectionMaterial,shallowsMaterial],
@@ -332,7 +362,7 @@ export function createWaterWorld(m,quality='desktop'){
 }
 
 export function updateWaterWorld(world,elapsed,boat){
-  const {water,reflection,wake}=world.userData
+  const {water,reflection}=world.userData
   animateWaveVertices(water,elapsed,1.43,.035,0)
   animateWaveVertices(reflection,elapsed,2.17,.018,1.2)
   water.position.y=.012+Math.sin(elapsed*1.11)*.012
@@ -343,12 +373,8 @@ export function updateWaterWorld(world,elapsed,boat){
   if(foam) foam.children.forEach((accent,index)=>{
     accent.material.opacity=.34+.16*Math.sin(elapsed*(1.2+(index%3)*.17)+index*.8)
   })
-  if(boat&&wake){
-    wake.position.copy(boat.position)
-    const tangent=boat.userData.routeTangent
-    wake.rotation.y=tangent?Math.atan2(-tangent.x,-tangent.z):boat.rotation.y
-    wake.children.forEach((trail,index)=>{
-      trail.material.opacity=.32+.1*Math.sin(elapsed*2.4+index*Math.PI)
-    })
+  if(boat){
+    const boatWake=boat.getObjectByName('boat-wake')
+    if(boatWake) world.userData.wake=boatWake
   }
 }

@@ -23,16 +23,17 @@ const namedMesh=(name,geometry,mat,position=[0,0,0],rotation=[0,0,0])=>{const ob
 function createBoatOar(side,shaftMat,bladeMat,metalMat){
   const legacyName=side<0?'boat-oar-port':'boat-oar-starboard'
   const pivot=new THREE.Group();pivot.name=side<0?'boat-oar-left':'boat-oar-right';pivot.position.set(side*.72,.78,.05);pivot.rotation.order='YXZ';pivot.rotation.z=side<0?-.18:.18
+  const visibleAssembly=new THREE.Group();visibleAssembly.name=legacyName
   const shaft=namedMesh(`${legacyName}-shaft`,new THREE.CylinderGeometry(.035,.045,2.65,16),shaftMat,[side*1.2,0,0],[0,0,Math.PI/2])
   const bladeShape=new THREE.Shape();bladeShape.moveTo(-.08,-.42);bladeShape.bezierCurveTo(-.18,-.3,-.19,.22,-.11,.42);bladeShape.bezierCurveTo(-.04,.53,.04,.53,.11,.42);bladeShape.bezierCurveTo(.19,.22,.18,-.3,.08,-.42);bladeShape.closePath()
   const blade=namedMesh(`${legacyName}-blade`,new THREE.ExtrudeGeometry(bladeShape,{depth:.055,bevelEnabled:true,bevelSize:.025,bevelThickness:.025,bevelSegments:4}),bladeMat,[side*2.55,0,-.03],[Math.PI/2,0,side<0?-Math.PI/2:Math.PI/2])
   const collar=namedMesh(`${legacyName}-collar`,new THREE.CylinderGeometry(.07,.07,.16,16),metalMat,[0,0,0],[Math.PI/2,0,0])
-  pivot.add(shaft,blade,collar);return pivot
+  visibleAssembly.add(shaft,blade,collar);pivot.add(visibleAssembly);return pivot
 }
 
 function createBoatWake(){
   const wake=new THREE.Group();wake.name='boat-wake';wake.position.y=.08
-  const wakeMat=new THREE.MeshBasicMaterial({color:'#d7f3ec',transparent:true,opacity:.38,depthWrite:false,side:THREE.DoubleSide})
+  const createWakeMaterial=opacity=>new THREE.MeshBasicMaterial({color:'#d7f3ec',transparent:true,opacity,depthWrite:false,side:THREE.DoubleSide})
   ;[-1,1].forEach(side=>{
     const trail=namedMesh(
       `boat-wake-trail-${side<0?'left':'right'}`,
@@ -41,17 +42,16 @@ function createBoatWake(){
         new THREE.Vector3(side*.9,0,2.8),
         new THREE.Vector3(side*1.45,0,4.5),
       ]),28,.027,5,false),
-      wakeMat,
+      createWakeMaterial(.38),
     )
     wake.add(trail)
   })
-  const washMat=wakeMat.clone();washMat.opacity=.2
   ;[2.05,2.8,3.65].forEach((z,index)=>{
-    const wash=namedMesh(`boat-wake-ripple-${index+1}`,new THREE.RingGeometry(.52+index*.28,.58+index*.3,28),washMat,[0,.01,z],[-Math.PI/2,0,0])
+    const wash=namedMesh(`boat-wake-ripple-${index+1}`,new THREE.RingGeometry(.52+index*.28,.58+index*.3,28),createWakeMaterial(.2),[0,.01,z],[-Math.PI/2,0,0])
     wash.scale.x=1.7
     wake.add(wash)
   })
-  wake.userData.materials=[wakeMat,washMat]
+  wake.userData.materials=wake.children.map(child=>child.material)
   return wake
 }
 
@@ -94,13 +94,11 @@ export function createExpeditionBoat(m){
   ;[-.72,.18,.98].forEach((z,i)=>boat.add(namedMesh(`boat-bench-${i+1}`,new THREE.BoxGeometry(1.58,.1,.4),wood,[0,.58,z])))
   boat.add(namedMesh('boat-bow-cap',new THREE.SphereGeometry(.13,20,12),trim,[0,.55,-2.18]),namedMesh('boat-stern-cap',new THREE.SphereGeometry(.11,20,12),trim,[0,.53,2.18]))
   const port=createBoatOar(-1,shaft,blade,metal),starboard=createBoatOar(1,shaft,blade,metal)
-  const legacyPort=new THREE.Group(),legacyStarboard=new THREE.Group()
-  legacyPort.name='boat-oar-port';legacyStarboard.name='boat-oar-starboard'
-  boat.add(port,starboard,legacyPort,legacyStarboard)
+  boat.add(port,starboard)
   const person=createBoatRower();boat.add(person)
   const wakeAnchors=[new THREE.Object3D(),new THREE.Object3D()];wakeAnchors[0].position.set(-.65,.05,1.95);wakeAnchors[1].position.set(.65,.05,1.95);wakeAnchors.forEach(a=>boat.add(a))
   const wake=createBoatWake();boat.add(wake)
-  boat.userData={wakeAnchors,traveller:person,wake,oars:{port,starboard},legacyOars:{port:legacyPort,starboard:legacyStarboard}};return boat
+  boat.userData={wakeAnchors,traveller:person,wake,oars:{port,starboard}};return boat
 }
 
 export function updateBoat(boat,curve,progress,elapsed,reducedMotion){
@@ -110,8 +108,6 @@ export function updateBoat(boat,curve,progress,elapsed,reducedMotion){
   const port=boat.getObjectByName('boat-oar-left'),starboard=boat.getObjectByName('boat-oar-right'),rower=boat.getObjectByName('boat-rower')
   if(port&&starboard){
     port.rotation.x=-.18+stroke*.42;starboard.rotation.x=port.rotation.x;port.rotation.y=.12+recovery*.08;starboard.rotation.y=-port.rotation.y
-    const legacyPort=boat.getObjectByName('boat-oar-port'),legacyStarboard=boat.getObjectByName('boat-oar-starboard')
-    if(legacyPort&&legacyStarboard){legacyPort.rotation.x=port.rotation.x;legacyStarboard.rotation.x=starboard.rotation.x;legacyPort.rotation.y=port.rotation.y;legacyStarboard.rotation.y=starboard.rotation.y}
   }
   if(rower){const torso=rower.userData.torsoPivot,left=rower.userData.leftElbow,right=rower.userData.rightElbow;torso.rotation.x=-.04-stroke*.18;left.rotation.x=.32+recovery*.38;right.rotation.x=left.rotation.x}
   const wake=boat.userData.wake

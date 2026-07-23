@@ -3,6 +3,12 @@ import * as THREE from 'three'
 import { createMaterials, disposeObject3D } from './primitives'
 import { createExpeditionBoat, createExpeditionJeep, createTrekker, updateBoat, updateJeep, updateTrekker } from './expeditionVehicles'
 
+const meshCount=object=>{
+  let count=0
+  object.traverse(child=>{if(child.isMesh) count+=1})
+  return count
+}
+
 describe('expedition transports',()=>{
   it('creates a detailed jungle jeep with traveller and four wheels',()=>{
     const jeep=createExpeditionJeep(createMaterials())
@@ -40,15 +46,23 @@ describe('expedition transports',()=>{
     const curve=new THREE.CatmullRomCurve3([new THREE.Vector3(0,0,0),new THREE.Vector3(0,0,-8)])
     updateBoat(boat,curve,.4,0,false)
     const first={
-      port:boat.getObjectByName('boat-oar-port').rotation.x,
+      left:boat.getObjectByName('boat-oar-left').rotation.x,
       torso:boat.getObjectByName('boat-rower-torso-pivot').rotation.x,
       elbow:boat.getObjectByName('boat-rower-left-elbow').rotation.x,
     }
     updateBoat(boat,curve,.5,.72,false)
-    expect(boat.getObjectByName('boat-oar-port').rotation.x).not.toBe(first.port)
-    expect(boat.getObjectByName('boat-oar-starboard').rotation.x).toBeCloseTo(boat.getObjectByName('boat-oar-port').rotation.x)
+    expect(boat.getObjectByName('boat-oar-left').rotation.x).not.toBe(first.left)
+    expect(boat.getObjectByName('boat-oar-right').rotation.x).toBeCloseTo(boat.getObjectByName('boat-oar-left').rotation.x)
     expect(boat.getObjectByName('boat-rower-torso-pivot').rotation.x).not.toBe(first.torso)
     expect(boat.getObjectByName('boat-rower-left-elbow').rotation.x).not.toBe(first.elbow)
+    disposeObject3D(boat)
+  })
+  it('keeps both modern and compatibility oar groups attached to visible geometry',()=>{
+    const boat=createExpeditionBoat(createMaterials())
+    ;['boat-oar-left','boat-oar-right','boat-oar-port','boat-oar-starboard']
+      .forEach(name=>expect(meshCount(boat.getObjectByName(name))).toBeGreaterThan(0))
+    const wake=boat.getObjectByName('boat-wake')
+    expect(new Set(wake.children.map(child=>child.material)).size).toBe(wake.children.length)
     disposeObject3D(boat)
   })
   it('creates and animates an articulated trekker',()=>{

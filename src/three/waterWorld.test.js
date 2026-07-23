@@ -2,11 +2,28 @@ import { describe,expect,it } from 'vitest'
 import * as THREE from 'three'
 import { createMaterials,disposeObject3D } from './primitives'
 import { LANDMARKS } from './terrain'
+import { createExpeditionBoat,updateBoat } from './expeditionVehicles'
 import { createWaterWorld,updateWaterWorld } from './waterWorld'
+
+const averageNormalY=object=>{
+  const normals=object.geometry.getAttribute('normal')
+  let total=0
+  for(let index=0;index<normals.count;index+=1) total+=normals.getY(index)
+  return total/normals.count
+}
+
+const rowWidth=(water,row)=>{
+  const position=water.geometry.getAttribute('position')
+  const columns=water.geometry.userData.crossSectionColumns||2
+  const offset=row*columns
+  return new THREE.Vector3().fromBufferAttribute(position,offset)
+    .distanceTo(new THREE.Vector3().fromBufferAttribute(position,offset+columns-1))
+}
+
 describe('water world',()=>{
-  it('contains water, shoreline, jetty, rocks and wake',()=>{
+  it('contains water, shoreline, jetty, rocks and reeds',()=>{
     const world=createWaterWorld(createMaterials(),'desktop')
-    ;['reflective-water','water-shoreline','boat-jetty','water-rocks','water-reeds','boat-wake'].forEach(name=>expect(world.getObjectByName(name)).toBeTruthy())
+    ;['reflective-water','water-shoreline','boat-jetty','water-rocks','water-reeds'].forEach(name=>expect(world.getObjectByName(name)).toBeTruthy())
     updateWaterWorld(world,1)
     expect(world.getObjectByName('reflective-water').position.y).not.toBe(0)
     disposeObject3D(world)
@@ -22,6 +39,82 @@ describe('water world',()=>{
     expect(water.userData.forestLanding).toBe(water.getObjectByName('forest-water-landing'))
     expect(water.userData.forestSightline).toBe(water.getObjectByName('distant-forest-silhouette'))
     expect(water.userData.surfaceMaterials.every(material=>material.roughness<.45)).toBe(true)
+    disposeObject3D(water)
+  })
+
+  it('renders both curved banks with upward-facing normals',()=>{
+    const water=createWaterWorld(createMaterials(),'desktop')
+    expect(averageNormalY(water.getObjectByName('left-river-bank'))).toBeGreaterThan(.5)
+    expect(averageNormalY(water.getObjectByName('right-river-bank'))).toBeGreaterThan(.5)
+    disposeObject3D(water)
+  })
+
+  it('uses a colored cross-water mesh whose animated normals vary in two dimensions',()=>{
+    const water=createWaterWorld(createMaterials(),'desktop')
+    const surface=water.getObjectByName('reflective-water'),geometry=surface.geometry
+    expect(geometry.userData.crossSectionSegments).toBeGreaterThanOrEqual(4)
+    const columns=geometry.userData.crossSectionColumns,row=Math.floor(geometry.userData.routeSegments/2)
+    const colors=geometry.getAttribute('color'),edge=row*columns,center=edge+Math.floor(columns/2)
+    expect(Math.abs(colors.getZ(center)-colors.getZ(edge))).toBeGreaterThan(.05)
+    updateWaterWorld(water,.83)
+    const normals=geometry.getAttribute('normal')
+    const edgeNormal=new THREE.Vector3().fromBufferAttribute(normals,edge)
+    const centerNormal=new THREE.Vector3().fromBufferAttribute(normals,center)
+    expect(edgeNormal.distanceTo(centerNormal)).toBeGreaterThan(.005)
+    disposeObject3D(water)
+  })
+
+  it('adds a Fresnel terrain-and-sky reflection contribution to the physical surface',()=>{
+    const water=createWaterWorld(createMaterials(),'desktop')
+    const material=water.getObjectByName('reflective-water').material
+    expect(material.userData.reflectionMode).toBe('fresnel-sky-terrain')
+    const shader={uniforms:{},fragmentShader:'#include <common>\n#include <opaque_fragment>'}
+    material.onBeforeCompile(shader)
+    expect(shader.uniforms.reflectedSkyColor.value).toBeInstanceOf(THREE.Color)
+    expect(shader.uniforms.reflectedTerrainColor.value).toBeInstanceOf(THREE.Color)
+    expect(shader.fragmentShader).toContain('reflectionFresnel')
+    disposeObject3D(water)
+  })
+
+  it('narrows the water into the forest inlet',()=>{
+    const water=createWaterWorld(createMaterials(),'desktop')
+    const surface=water.getObjectByName('reflective-water')
+    const rows=surface.geometry.userData.routeSegments||76
+    const start=rowWidth(surface,0),middle=rowWidth(surface,Math.floor(rows/2)),end=rowWidth(surface,rows)
+    expect(end).toBeLessThan(start)
+    expect(end).toBeLessThan(middle)
+    disposeObject3D(water)
+  })
+
+  it('centers the visible landing decks on their shared terrain landmarks',()=>{
+    const water=createWaterWorld(createMaterials(),'desktop')
+    water.updateMatrixWorld(true)
+    ;[
+      ['boat-jetty',LANDMARKS.mountainLanding],
+      ['forest-jetty',LANDMARKS.forestLanding],
+    ].forEach(([name,coordinates])=>{
+      const center=new THREE.Box3().setFromObject(water.getObjectByName(name)).getCenter(new THREE.Vector3())
+      const landmark=new THREE.Vector3(...coordinates)
+      expect(new THREE.Vector2(center.x,center.z).distanceTo(new THREE.Vector2(landmark.x,landmark.z))).toBeLessThan(.2)
+    })
+    disposeObject3D(water)
+  })
+
+  it('hands wake ownership to the boat and keeps animated materials independent',()=>{
+    const materials=createMaterials(),water=createWaterWorld(materials,'desktop'),boat=createExpeditionBoat(materials)
+    water.add(boat)
+    const attachedWakes=[]
+    water.traverse(object=>{if(object.name==='boat-wake') attachedWakes.push(object)})
+    expect(attachedWakes).toEqual([boat.getObjectByName('boat-wake')])
+    updateBoat(boat,water.userData.route,.45,.6,false)
+    updateWaterWorld(water,.6,boat)
+    const wakes=[]
+    water.traverse(object=>{if(object.name==='boat-wake') wakes.push(object)})
+    expect(wakes).toEqual([boat.getObjectByName('boat-wake')])
+    expect(water.userData.wake).toBe(wakes[0])
+    const foam=water.getObjectByName('water-foam-accents')
+    expect(new Set(foam.children.map(child=>child.material)).size).toBe(foam.children.length)
+    expect(new Set(wakes[0].children.map(child=>child.material)).size).toBe(wakes[0].children.length)
     disposeObject3D(water)
   })
 })
