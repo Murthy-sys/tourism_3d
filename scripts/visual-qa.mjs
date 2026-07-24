@@ -5,6 +5,8 @@ import {
   BRAND_CAPABILITIES,
   BRAND_REASONS,
   CHAPTERS,
+  SOCIAL_MEDIA_METRICS,
+  SOCIAL_MEDIA_PROFILE,
 } from '../src/journey/chapters.js'
 
 const args=process.argv.slice(2)
@@ -21,6 +23,7 @@ const outputRoot=path.resolve(
 )
 const viewport=requested==='mobile'?{width:390,height:844}:{width:1440,height:900}
 const captureTravel=10000
+const cameraSettleTimeout=90000
 const WHO_WE_ARE=CHAPTERS.find(chapter=>chapter.id==='who-we-are')
 const states=[
   {
@@ -129,6 +132,25 @@ const states=[
     handoff:{biomes:['water','forest'],transports:['boat','jeep']},
   },
   {name:'forest-finale',progress:.84,phase:'forest-jeep',activeBiome:'forest',activeTransport:'jeep'},
+  {
+    name:'social-performance',
+    progress:.91,
+    phase:'forest-jeep',
+    activeBiome:'forest',
+    activeTransport:'jeep',
+    content:{
+      title:'Reach that moves people.',
+      creatorCard:false,
+      body:'',
+      items:[],
+      performance:{
+        handle:SOCIAL_MEDIA_PROFILE.handle,
+        source:SOCIAL_MEDIA_PROFILE.sourceLabel,
+        labels:SOCIAL_MEDIA_METRICS.map(metric=>metric.label),
+        values:SOCIAL_MEDIA_METRICS.map(metric=>metric.display),
+      },
+    },
+  },
 ]
 const requestedState=process.env.QA_STATE
 const captureStates=requestedState
@@ -354,7 +376,7 @@ try{
       const distance=(a,b)=>Math.hypot(...a.map((value,index)=>value-b[index]))
       return distance(debug.camera,debug.desiredCamera)<.35&&
         distance(debug.cameraTarget,debug.desiredTarget)<.35
-    },null,{timeout:45000})
+    },null,{timeout:cameraSettleTimeout})
     await page.waitForTimeout(180)
 
     const snapshot=await page.evaluate(()=>window.__journeyQA())
@@ -363,6 +385,29 @@ try{
         document.querySelector('.chapter-counter')
       const rect=overlayElement?.getBoundingClientRect()
       const chapter=document.querySelector('.chapter')
+      const performanceElement=document.querySelector('.chapter--social-performance')
+      const performanceRect=performanceElement?.getBoundingClientRect()
+      const performance=performanceElement?{
+        handle:performanceElement
+          .querySelector('.social-performance__header>a')
+          ?.textContent?.replace('↗','').trim()||'',
+        source:performanceElement
+          .querySelector('.social-performance__source')
+          ?.textContent?.trim()||'',
+        labels:[...performanceElement.querySelectorAll('dt')]
+          .map(node=>node.textContent?.trim()||''),
+        values:[...performanceElement.querySelectorAll('dd')]
+          .map(node=>node.getAttribute('aria-label')?.split(': ').slice(1).join(': ')||''),
+        itemFontSize:parseFloat(getComputedStyle(
+          performanceElement.querySelector('dt'),
+        ).fontSize),
+        rect:{
+          left:Math.round(performanceRect.left),
+          top:Math.round(performanceRect.top),
+          right:Math.round(performanceRect.right),
+          bottom:Math.round(performanceRect.bottom),
+        },
+      }:null
       const brandCards=chapter
         ?[...chapter.querySelectorAll('.brand-value-card')].map(card=>{
           const cardRect=card.getBoundingClientRect()
@@ -411,6 +456,7 @@ try{
             ),
           ].map(item=>item.textContent?.trim()||''),
           brandCards,
+          performance,
         }:null,
         controls,
         overlay:rect?{
@@ -446,6 +492,29 @@ try{
         JSON.stringify(state.content.items)
       ){
         throw new Error(`${state.name} content items mismatch`)
+      }
+      if(state.content.performance){
+        const performance=layout.content.performance
+        for(const key of ['handle','source','labels','values']){
+          if(
+            JSON.stringify(performance[key])!==
+            JSON.stringify(state.content.performance[key])
+          ){
+            throw new Error(`${state.name} performance ${key} mismatch`)
+          }
+        }
+        if(requested==='mobile'&&performance.itemFontSize<10){
+          throw new Error(
+            `Mobile performance type is too small: ${performance.itemFontSize}px`,
+          )
+        }
+        for(const control of layout.controls){
+          if(rectanglesOverlap(performance.rect,control.rect)){
+            throw new Error(
+              `${state.name} performance card overlaps ${control.name}`,
+            )
+          }
+        }
       }
       if(state.content.brandCards){
         const actualCards=layout.content.brandCards.map(({title,items})=>({

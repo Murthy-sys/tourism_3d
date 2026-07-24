@@ -79,4 +79,24 @@ describe('visual QA fail-closed corpus',()=>{
     expect(source).toContain('const captureTravel=10000')
     expect(source).toContain('track.style.height=`${innerHeight+captureTravel}px`')
   })
+
+  it('allows a cold desktop camera jump to settle without weakening accuracy',()=>{
+    expect(source).toContain('const cameraSettleTimeout=90000')
+    expect(source).toContain('distance(debug.camera,debug.desiredCamera)<.35')
+    expect(source).toContain(
+      'distance(debug.cameraTarget,debug.desiredTarget)<.35',
+    )
+    expect(source).toContain('timeout:cameraSettleTimeout')
+  })
+
+  it('verifies the social performance dashboard before Contact',()=>{
+    expect(source).toContain("name:'social-performance'")
+    expect(source).toContain('progress:.91')
+    expect(source).toContain('labels:SOCIAL_MEDIA_METRICS.map')
+    expect(source).toContain('values:SOCIAL_MEDIA_METRICS.map')
+    expect(source).toContain("document.querySelector('.chapter--social-performance')")
+    expect(source).toContain('layout.content.performance')
+    expect(source).toContain('performance.itemFontSize<10')
+    expect(source).toContain('rectanglesOverlap(performance.rect,control.rect)')
+  })
 })

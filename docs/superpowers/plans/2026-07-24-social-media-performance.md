@@ -38,7 +38,7 @@
 - Produces: `getSocialMetricWeight(progress, index, reducedMotion): number`.
 - Produces: `<SocialMediaPerformance progress reducedMotion />`.
 
-- [ ] **Step 1: Write failing data tests**
+- [x] **Step 1: Write failing data tests**
 
 Add imports for `SOCIAL_MEDIA_METRICS`, `SOCIAL_MEDIA_PROFILE`, and
 `SOCIAL_PERFORMANCE_START`, then add:
@@ -105,7 +105,7 @@ it('owns the approved social performance data without invented insights',()=>{
 })
 ```
 
-- [ ] **Step 2: Write failing component and formatter tests**
+- [x] **Step 2: Write failing component and formatter tests**
 
 Create `src/components/SocialMediaPerformance.test.jsx`:
 
@@ -170,7 +170,7 @@ describe('SocialMediaPerformance',()=>{
 })
 ```
 
-- [ ] **Step 3: Verify RED**
+- [x] **Step 3: Verify RED**
 
 Run:
 
@@ -181,7 +181,7 @@ npm test -- --run src/journey/chapters.test.js src/components/SocialMediaPerform
 Expected: FAIL because the social constants, formatter, and component do not
 exist.
 
-- [ ] **Step 4: Add the authoritative model**
+- [x] **Step 4: Add the authoritative model**
 
 Add this before `CHAPTERS` in `src/journey/chapters.js`:
 
@@ -203,7 +203,7 @@ export const SOCIAL_MEDIA_METRICS=[
 ]
 ```
 
-- [ ] **Step 5: Implement the focused component**
+- [x] **Step 5: Implement the focused component**
 
 Create `src/components/SocialMediaPerformance.jsx`:
 
@@ -298,7 +298,7 @@ export default function SocialMediaPerformance({
 }
 ```
 
-- [ ] **Step 6: Verify GREEN and commit**
+- [x] **Step 6: Verify GREEN and commit**
 
 Run:
 
@@ -332,7 +332,7 @@ git commit -m "Add social performance metric component"
 - Preserves: the `CHAPTERS` array, four menu entries, `.94` Contact boundary,
   and all existing Plans actions before `.88`.
 
-- [ ] **Step 1: Write failing boundary and propagation tests**
+- [x] **Step 1: Write failing boundary and propagation tests**
 
 Add this component test:
 
@@ -396,7 +396,7 @@ it('passes reduced-motion state to chapter overlays',()=>{
 })
 ```
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 Run:
 
@@ -407,7 +407,7 @@ npm test -- --run src/components/ChapterContent.test.jsx src/components/JourneyS
 Expected: FAIL because the performance branch and reduced-motion prop are not
 wired.
 
-- [ ] **Step 3: Integrate the component**
+- [x] **Step 3: Integrate the component**
 
 In `ChapterContent.jsx`, import `SOCIAL_PERFORMANCE_START` and
 `SocialMediaPerformance`, accept `reducedMotion=false`, and return the
@@ -435,7 +435,7 @@ In `JourneyShell.jsx`, pass the existing value:
 />
 ```
 
-- [ ] **Step 4: Add the glass dashboard styling**
+- [x] **Step 4: Add the glass dashboard styling**
 
 Append desktop styles beside the other architectural chapters:
 
@@ -453,7 +453,7 @@ Append the mobile override after the existing architectural mobile rules:
 The existing global reduced-motion rule suppresses CSS transitions; the
 component supplies final numeric values when `reducedMotion` is true.
 
-- [ ] **Step 5: Verify integration and commit**
+- [x] **Step 5: Verify integration and commit**
 
 Run:
 
@@ -487,7 +487,7 @@ git commit -m "Integrate social performance scroll beat"
   source note, item font sizes, and dashboard rectangle.
 - Requires: forest-jeep continuity and zero overlap with controls.
 
-- [ ] **Step 1: Write failing visual-QA source tests**
+- [x] **Step 1: Write failing visual-QA source tests**
 
 Extend `scripts/visual-qa.test.js`:
 
@@ -504,7 +504,7 @@ it('verifies the social performance dashboard before Contact',()=>{
 })
 ```
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 Run:
 
@@ -514,7 +514,7 @@ npm test -- --run scripts/visual-qa.test.js
 
 Expected: FAIL because the state and performance evidence do not exist.
 
-- [ ] **Step 3: Add the deterministic state and DOM evidence**
+- [x] **Step 3: Add the deterministic state and DOM evidence**
 
 Import `SOCIAL_MEDIA_METRICS` and `SOCIAL_MEDIA_PROFILE`. Add this after
 `forest-finale`:
@@ -599,7 +599,7 @@ if(state.content.performance){
 }
 ```
 
-- [ ] **Step 4: Verify source tests GREEN**
+- [x] **Step 4: Verify source tests GREEN**
 
 Run:
 
@@ -609,7 +609,7 @@ npm test -- --run scripts/visual-qa.test.js
 
 Expected: all visual-QA source tests pass.
 
-- [ ] **Step 5: Build and capture the affected state**
+- [x] **Step 5: Build and capture the affected state**
 
 Run:
 
@@ -629,7 +629,7 @@ Expected: exact six metrics, final public displays, three pending displays,
 forest-jeep continuity, no control overlap, no clipping/overflow, no console
 failures, and zero audio controls. Inspect both full-page images.
 
-- [ ] **Step 6: Update evidence and run complete verification**
+- [x] **Step 6: Update evidence and run complete verification**
 
 Update `design-qa.md` to document the new `.91` state, source labels,
 progress-driven animation, metric readability, and screenshot paths.

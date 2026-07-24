@@ -6,12 +6,13 @@ Final result: **passed**.
 
 - Desktop viewport: `1440×900`.
 - Mobile viewport: `390×844`.
-- Twelve deterministic scroll states: trailhead establishing (`0`), travelers beside coach (`.035`), trailhead departure (`.08`), mountain entry (`.12`), brand collaboration overview (`.21`), transparent creator profile (`.24`), paired brand-value cards / distant water reveal (`.26`), mountain-water handoff (`.35`), water corridor (`.50`), distant forest reveal (`.59`), water-forest handoff (`.67`), and forest finale (`.84`).
-- Forty-eight final captures: full-page and isolated-WebGL evidence for every state at both viewports.
+- Thirteen deterministic scroll states: trailhead establishing (`0`), travelers beside coach (`.035`), trailhead departure (`.08`), mountain entry (`.12`), brand collaboration overview (`.21`), transparent creator profile (`.24`), paired brand-value cards / distant water reveal (`.26`), mountain-water handoff (`.35`), water corridor (`.50`), distant forest reveal (`.59`), water-forest handoff (`.67`), forest finale (`.84`), and social performance (`.91`).
+- Fifty-two final captures: full-page and isolated-WebGL evidence for every state at both viewports.
 - Screenshot roots:
   - Desktop: `/tmp/tourist-management-bus-qa-final/desktop`
   - Mobile: `/tmp/tourist-management-bus-qa-final/mobile`
   - Focused card/opening evidence: `/tmp/tourist-management-card-qa`
+  - Social performance evidence: `/tmp/tourist-management-social-qa/desktop/social-performance-page.png` and `/tmp/tourist-management-social-qa/mobile/social-performance-page.png`
 
 ## Fail-closed runtime evidence
 
@@ -30,6 +31,8 @@ The three portfolio beats additionally compare the live DOM against the exact so
 - “Destination stories. Brand impact.” plus the full collaboration-positioning body and all nine approved promotion services.
 - “Karnataka, experienced deeply.” inside the transparent creator card plus the exact eight requested coverage pillars, in order.
 - “What We Offer” and “Why Brands Should Work With Us” as two separate glass cards, with all nine services and all six brand reasons in the approved order.
+- “Reach that moves people.” compares the profile handle and public-estimate source against the authoritative exports, plus all six labels and their final accessible displays. The `.91` capture remains forest-jeep, rejects dashboard/control overlap, and requires metric labels to measure at least `10px` on mobile.
+- Cold desktop software-WebGL startup can render at 3–4 FPS; QA therefore allows `90s` for the camera to settle while retaining the existing `.35` position/target thresholds and `.8` discontinuity limit.
 
 ## Visual acceptance
 
@@ -39,11 +42,12 @@ The three portfolio beats additionally compare the live DOM against the exact so
 - The following beat presents a prominent diagonal desktop composition—offer at the top-left and brand reasons at the bottom-right—then stacks the same two cards in reading order on mobile without clipping the menu, counter, or scroll cue. Review raised mobile labels from `8px` to a responsive `10.92px` at the approved viewport.
 - Mountain, reflective-water, and dense-forest environments remain in the approved order with trekker → boat → jeep handoffs and no camera snap.
 - Water, landing, party, boat occupants, forest route, and complete jeep remain readable in their approved compositions.
+- The Social Media Performance beat keeps its two-column glass dashboard legible at both `1440×900` and `390×844`: Followers (`156K+`), Reel Views (`815K avg.`), and Engagement (`46.7%`) are final at `.91`; Total Reach, Viral Reels, and Audience Insights remain explicitly `Updating soon`. Its profile and source note are `@sanchari.kannadiga` and `Public estimates · July 2026`.
 - Background audio and sound controls remain absent.
 
 ## Automated verification
 
-- `npm test -- --run`: passed, 23 files and 173 tests.
-- `npm run build`: passed, 53 modules transformed.
+- `npm test -- --run`: passed, 24 files and 181 tests.
+- `npm run build`: passed, 54 modules transformed.
 - `git diff --check`: passed.
 - The existing Vite bundle-size advisory remains non-blocking.
