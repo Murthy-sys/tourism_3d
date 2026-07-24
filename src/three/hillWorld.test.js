@@ -48,14 +48,11 @@ describe('hill world',()=>{
   it('uses the requested terrain quality and exposes journey anchors',()=>{
     const desktop=createHillWorld(createMaterials(),'desktop')
     const mobile=createHillWorld(createMaterials(),'mobile')
-    expect(desktop.getObjectByName('hill-terrain').geometry.attributes.position.count).toBe((112+1)*(120+1))
-    expect(mobile.getObjectByName('hill-terrain').geometry.attributes.position.count).toBe((64+1)*(76+1))
     expect(desktop.getObjectByName('hill-terrain').geometry.attributes.color).toBeTruthy()
     expect(desktop.getObjectByName('hill-terrain').material.userData.surfaceDetail)
       .toBe('multiscale-color-noise')
     expect(desktop.getObjectByName('hill-terrain').geometry.userData.colorVariation)
       .toBeGreaterThan(.08)
-    expect(desktop.userData.route.points).toHaveLength(32)
     expect(desktop.userData.landing).toBe(desktop.getObjectByName('mountain-water-landing'))
     expect(desktop.userData.distantWaterAnchor.isVector3).toBe(true)
     const mist=desktop.getObjectByName('hill-mist')
@@ -67,6 +64,50 @@ describe('hill world',()=>{
     const before=mist.children[0].position.x
     updateHillWorld(desktop,2)
     expect(mist.children[0].position.x).not.toBe(before)
+    disposeObject3D(desktop)
+    disposeObject3D(mobile)
+  })
+
+  it('extends one continuous grounded route through every mountain landmark',()=>{
+    const world=createHillWorld(createMaterials(),'desktop')
+    const {route,routeProgress,heightAt}=world.userData
+    expect(routeProgress).toEqual({
+      trailheadStart:0,
+      mountainEntry:expect.any(Number),
+      mountainStart:expect.any(Number),
+      mountainLanding:1,
+    })
+    expect(routeProgress.mountainEntry).toBeGreaterThan(0)
+    expect(routeProgress.mountainStart).toBeGreaterThan(routeProgress.mountainEntry)
+    expect(routeProgress.mountainStart).toBeLessThan(1)
+    Object.entries(routeProgress).forEach(([name,progress])=>{
+      const landmark=new THREE.Vector3(...LANDMARKS[name])
+      expect(route.getPointAt(progress).distanceTo(landmark)).toBeLessThan(.08)
+    })
+    route.getSpacedPoints(120).slice(0,-1).forEach(point=>{
+      expect(Math.abs(point.y-heightAt(point.x,point.z))).toBeLessThan(.3)
+    })
+    disposeObject3D(world)
+  })
+
+  it('composes the natural trailhead and expanded terrain at both quality levels',()=>{
+    const desktop=createHillWorld(createMaterials(),'desktop')
+    const mobile=createHillWorld(createMaterials(),'mobile')
+    expect(desktop.userData.trailhead).toBe(desktop.getObjectByName('trailhead'))
+    expect(desktop.getObjectByName('hill-terrain').geometry.attributes.position.count)
+      .toBe((128+1)*(160+1))
+    expect(mobile.getObjectByName('hill-terrain').geometry.attributes.position.count)
+      .toBe((72+1)*(104+1))
+    ;[
+      'trailhead-gravel',
+      'trailhead-tire-marks',
+      'trailhead-damp-patches',
+      'hill-trail',
+      'mountain-water-landing',
+    ].forEach(name=>{
+      expect(desktop.getObjectByName(name)).toBeTruthy()
+      expect(mobile.getObjectByName(name)).toBeTruthy()
+    })
     disposeObject3D(desktop)
     disposeObject3D(mobile)
   })

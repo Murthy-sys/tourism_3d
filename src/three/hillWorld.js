@@ -1,5 +1,7 @@
 import * as THREE from 'three'
 import { mesh } from './primitives'
+import {createTrailhead} from './trailhead'
+import {TRAILHEAD_STANDING_POSES} from './trekkingParty'
 import {
   LANDMARKS,
   createTerrainGeometry,
@@ -28,29 +30,81 @@ const routeDistance=(x,z,points)=>points.reduce((distance,point)=>{
   return Math.min(distance,Math.hypot(x-point.x,z-point.z))
 },Infinity)
 
+const appendSegment=(points,from,to,count,heightAt,amplitude,frequency)=>{
+  for(let index=1;index<count;index+=1){
+    const t=index/(count-1)
+    const x=THREE.MathUtils.lerp(from[0],to[0],t)+
+      Math.sin(t*Math.PI)*Math.sin(t*Math.PI*frequency)*amplitude
+    const z=THREE.MathUtils.lerp(from[2],to[2],t)
+    const endpoint=index===count-1
+    const y=endpoint?to[1]:heightAt(x,z)+.08
+    points.push(new THREE.Vector3(x,y,z))
+  }
+}
+
+const closestProgress=(route,landmark)=>{
+  const target=new THREE.Vector3(...landmark)
+  let closest=0
+  let distance=Infinity
+  for(let index=0;index<=4096;index+=1){
+    const progress=index/4096
+    const candidate=route.getPointAt(progress)
+    const nextDistance=candidate.distanceToSquared(target)
+    if(nextDistance<distance){
+      closest=progress
+      distance=nextDistance
+    }
+  }
+  return closest
+}
+
 const createRoute=heightAt=>{
-  const [startX,,startZ]=LANDMARKS.mountainStart
-  const [endX,endY,endZ]=LANDMARKS.mountainLanding
-  const points=Array.from({length:32},(_,index)=>{
-    const t=index/31
-    const meander=Math.sin(t*Math.PI)*(
-      Math.sin(t*Math.PI*3.4)*1.45+
-      Math.sin(t*Math.PI*7.1)*.34
-    )
-    const x=THREE.MathUtils.lerp(startX,endX,t)+meander
-    const z=THREE.MathUtils.lerp(startZ,endZ,t)
-    const y=index===31?endY:heightAt(x,z)+.08
-    return new THREE.Vector3(x,y,z)
-  })
-  return new THREE.CatmullRomCurve3(points,false,'centripetal')
+  const points=[new THREE.Vector3(...LANDMARKS.trailheadStart)]
+  appendSegment(
+    points,
+    LANDMARKS.trailheadStart,
+    LANDMARKS.mountainEntry,
+    14,
+    heightAt,
+    .28,
+    1.4,
+  )
+  appendSegment(
+    points,
+    LANDMARKS.mountainEntry,
+    LANDMARKS.mountainStart,
+    10,
+    heightAt,
+    .42,
+    1.8,
+  )
+  appendSegment(
+    points,
+    LANDMARKS.mountainStart,
+    LANDMARKS.mountainLanding,
+    32,
+    heightAt,
+    1.45,
+    3.4,
+  )
+  const route=new THREE.CatmullRomCurve3(points,false,'centripetal')
+  return{
+    route,
+    routeProgress:{
+      trailheadStart:0,
+      mountainEntry:closestProgress(route,LANDMARKS.mountainEntry),
+      mountainStart:closestProgress(route,LANDMARKS.mountainStart),
+      mountainLanding:1,
+    },
+  }
 }
 
 const createTerrain=(heightAt,quality)=>{
-  const segmentsX=quality==='mobile'?64:112
-  const segmentsZ=quality==='mobile'?76:120
+  const segmentsX=quality==='mobile'?72:128
+  const segmentsZ=quality==='mobile'?104:160
   const geometry=createTerrainGeometry({
-    width:72,
-    depth:78,
+    width:84,
+    depth:104,
     segmentsX,
     segmentsZ,
     heightAt,
@@ -428,16 +482,22 @@ const createWaterGlint=()=>{
 export function createHillWorld(materials,quality='desktop'){
   const world=namedGroup('hill-world')
   const heightAt=sampleMountainHeight
-  const route=createRoute(heightAt)
+  const {route,routeProgress}=createRoute(heightAt)
   const terrain=createTerrain(heightAt,quality)
   const ridges=createRidges()
   const rocks=createRockFaces(materials,heightAt,route.points,quality)
   const vegetation=createVegetation(materials,heightAt,route.points,quality)
   const mist=createMist(quality)
   const trail=createTrail(materials,route,heightAt,quality)
+  const trailhead=createTrailhead(materials,{
+    quality,
+    heightAt,
+    route,
+    standingPoses:TRAILHEAD_STANDING_POSES,
+  })
   const landing=createLanding(materials)
   const water=createWaterGlint()
-  world.add(terrain,ridges,rocks,vegetation,mist,trail,landing,water)
+  world.add(terrain,ridges,rocks,vegetation,mist,trail,trailhead,landing,water)
 
   const warmLight=new THREE.DirectionalLight('#ffe1aa',3.1)
   warmLight.position.set(-16,24,13)
@@ -445,7 +505,9 @@ export function createHillWorld(materials,quality='desktop'){
 
   world.userData={
     route,
+    routeProgress,
     heightAt,
+    trailhead,
     landing,
     distantWaterAnchor:new THREE.Vector3(2,.4,-51),
     mist,

@@ -1,6 +1,13 @@
 import * as THREE from 'three'
 import { mesh } from './primitives'
 
+export const TRAILHEAD_STANDING_POSES=Object.freeze([
+  Object.freeze({role:'guide',position:Object.freeze([3.2,.35,33.7]),heading:-3.04}),
+  Object.freeze({role:'tourist',position:Object.freeze([1.8,.35,36.5]),heading:-2.35}),
+  Object.freeze({role:'tourist',position:Object.freeze([3.2,.35,36.7]),heading:2.65}),
+  Object.freeze({role:'tourist',position:Object.freeze([2.4,.35,38]),heading:-2.7}),
+])
+
 const material=(color,roughness=.78)=>new THREE.MeshStandardMaterial({
   color,
   roughness,
