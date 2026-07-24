@@ -19,6 +19,8 @@ const minimumRouteDistance=(point,route)=>
   )
 
 const TURNOUT_SURFACE_CLEARANCE=.03125
+const OPENING_CAMERA=new THREE.Vector3(8.5,3.8,46)
+const CAMERA_CLEARANCE=6
 
 const createTerrainAlignedTurnout=(terrainGeometry,quality)=>{
   const sourcePosition=terrainGeometry?.getAttribute?.('position')
@@ -193,6 +195,7 @@ export function createTrailhead(materials,{
     const x=-2+Math.cos(angle)*radiusX
     const z=34+Math.sin(angle)*radiusZ
     const point=new THREE.Vector3(x,heightAt(x,z),z)
+    if(point.distanceTo(OPENING_CAMERA)<CAMERA_CLEARANCE+1.25) continue
     if(minimumRouteDistance(point,route)<2.4) continue
     if(standingPoints.some(candidate=>candidate.distanceTo(point)<1.6)) continue
 
@@ -239,7 +242,7 @@ export function createTrailhead(materials,{
     turnoutBounds,
     routeObstacles,
     routeClearance:1.5,
-    cameraClearance:3,
+    cameraClearance:CAMERA_CLEARANCE,
     turnoutSurfaceClearance:TURNOUT_SURFACE_CLEARANCE,
   }
   return trailhead

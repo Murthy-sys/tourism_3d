@@ -1,6 +1,7 @@
 import { mkdir,rm } from 'node:fs/promises'
 import path from 'node:path'
 import { chromium } from '@playwright/test'
+import {BRAND_CAPABILITIES,CHAPTERS} from '../src/journey/chapters.js'
 
 const args=process.argv.slice(2)
 const projectIndex=args.indexOf('--project')
@@ -16,6 +17,7 @@ const outputRoot=path.resolve(
 )
 const viewport=requested==='mobile'?{width:390,height:844}:{width:1440,height:900}
 const captureTravel=10000
+const WHO_WE_ARE=CHAPTERS.find(chapter=>chapter.id==='who-we-are')
 const states=[
   {
     name:'trailhead-establishing',
@@ -54,12 +56,31 @@ const states=[
     opening:{departureWeight:1,coach:'mounted',party:'visible'},
   },
   {
+    name:'brand-collaboration-overview',
+    progress:.21,
+    phase:'mountain-trek',
+    activeBiome:'mountain',
+    activeTransport:'trekker',
+    content:{
+      title:'Destination stories. Brand impact.',
+      creatorCard:false,
+      body:WHO_WE_ARE.body,
+      items:BRAND_CAPABILITIES,
+    },
+  },
+  {
     name:'distant-water-reveal',
     progress:.26,
     phase:'mountain-trek',
     activeBiome:'mountain',
     activeTransport:'trekker',
     nextBiome:'water',
+    content:{
+      title:'Karnataka, experienced deeply.',
+      creatorCard:true,
+      body:WHO_WE_ARE.creator.body,
+      items:WHO_WE_ARE.creator.pillars,
+    },
   },
   {
     name:'mountain-water-handoff',
@@ -318,8 +339,19 @@ try{
       const overlayElement=document.querySelector('.chapter')||
         document.querySelector('.chapter-counter')
       const rect=overlayElement?.getBoundingClientRect()
+      const chapter=document.querySelector('.chapter')
       return{
         horizontalOverflow:document.documentElement.scrollWidth>innerWidth,
+        content:chapter?{
+          title:chapter.querySelector('h1')?.textContent?.trim()||'',
+          creatorCard:chapter.classList.contains('chapter--creator-card'),
+          body:chapter.querySelector('.chapter__body')?.textContent?.trim()||'',
+          items:[
+            ...chapter.querySelectorAll(
+              '.operations-proof span, .creator-pillars span',
+            ),
+          ].map(item=>item.textContent?.trim()||''),
+        }:null,
         overlay:rect?{
           left:Math.round(rect.left),
           top:Math.round(rect.top),
@@ -335,8 +367,25 @@ try{
     if(requested==='mobile'&&!layout.overlay){
       throw new Error(`Mobile overlay is missing at ${state.name}`)
     }
-    if(requested==='mobile'&&layout.overlay.clipped){
-      throw new Error(`Mobile overlay is clipped at ${state.name}`)
+    if(layout.overlay?.clipped){
+      throw new Error(`${requested} overlay is clipped at ${state.name}`)
+    }
+    if(state.content){
+      if(layout.content?.title!==state.content.title){
+        throw new Error(`${state.name} content title mismatch`)
+      }
+      if(layout.content.creatorCard!==state.content.creatorCard){
+        throw new Error(`${state.name} creator card mismatch`)
+      }
+      if(layout.content.body!==state.content.body){
+        throw new Error(`${state.name} content body mismatch`)
+      }
+      if(
+        JSON.stringify(layout.content.items)!==
+        JSON.stringify(state.content.items)
+      ){
+        throw new Error(`${state.name} content items mismatch`)
+      }
     }
     assertSnapshot(snapshot,state,externalFailures)
 

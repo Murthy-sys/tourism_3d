@@ -11,9 +11,19 @@ describe('cinematic chapter content',()=>{
 
   it('renders realistic nationwide tourism operations',()=>{
     const chapter=CHAPTERS.find(({id})=>id==='who-we-are')
-    render(<ChapterContent chapter={chapter} progress={.25}/>)
-    expect(screen.getByText('Destination specialists')).toBeInTheDocument()
-    expect(screen.getByText('24/7 journey support')).toBeInTheDocument()
+    render(<ChapterContent chapter={chapter} progress={.19}/>)
+    expect(screen.getByText('Campaign concepts')).toBeInTheDocument()
+    expect(screen.getByText('Audience-ready content')).toBeInTheDocument()
+  })
+
+  it('reveals the transparent creator card after the Who We Are beat',()=>{
+    const chapter=CHAPTERS.find(({id})=>id==='who-we-are')
+    render(<ChapterContent chapter={chapter} progress={.24}/>)
+    expect(screen.getByText('About the creator')).toBeInTheDocument()
+    expect(screen.getByText(/premium travel content across Karnataka/i))
+      .toBeInTheDocument()
+    expect(screen.getByLabelText('Creator coverage').children).toHaveLength(8)
+    expect(screen.getByRole('article')).toHaveClass('chapter--creator-card')
   })
 
   it('renders three accessible monument plan actions',()=>{

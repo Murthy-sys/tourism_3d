@@ -10,6 +10,7 @@ Task 3: complete (commits 7c003c5..d9e6c00, review clean; phase/UI/runtime check
 Task 4: complete (commits d9e6c00..ce33d03, review approved)
 Task 4 minor review notes for final triage: intermediate blended member bounds are not directly checked against the coach; four standing-position vectors are allocated per frame.
 Task 5: complete (commits ce33d03..b636004, review clean after fail-closed projection fix)
+Task 6: complete (desktop/mobile 11-state visual QA, 169 tests, production build, and final review clean after fixes)
 
 ## Archived Previous Plan
 

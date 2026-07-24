@@ -39,6 +39,21 @@ describe('journey chapters', () => {
     expect(about.body).toMatch(/travel companies|adventure brands/i)
     expect(about.body).toMatch(/government tourism departments/i)
     expect(about.body).toMatch(/brand collaborations/i)
+    expect(about.body).not.toMatch(/partners with/i)
+    expect(about.body).toMatch(/designed to build/i)
+    expect(about.creator.body).toMatch(
+      /premium travel content across Karnataka/i,
+    )
+    expect(about.creator.pillars).toEqual([
+      'Hidden destinations',
+      'Waterfalls',
+      'Trekking',
+      'Temples & heritage',
+      'Road trips',
+      'Nature',
+      'Local culture & festivals',
+      'Adventure experiences',
+    ])
     expect(about.body).not.toMatch(/South Indian/i)
   })
   it('contains no customer-facing Himalaya, snow, or ice semantics',()=>{

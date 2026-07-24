@@ -118,6 +118,39 @@ describe('renderer quality', () => {
       },
     })
   })
+  it('keeps the production trekking party visible behind the brand overview',()=>{
+    const scene=new THREE.Scene()
+    const materials=createMaterials()
+    const controller=createExpeditionController(scene,materials,'desktop')
+    const state=getJourneyState(.21)
+    const transition=controller.update(state.expedition,0,true)
+    const transport=controller.transports.trekker
+    const transportPosition=getTransportWorldPosition(
+      'trekker',
+      transport,
+    ).toArray()
+    const frame=getResolvedCameraFrame({
+      quality:'desktop',
+      progress:.21,
+      state,
+      transportPosition,
+    })
+    const camera=new THREE.PerspectiveCamera(48,1440/900,.1,420)
+    camera.position.set(...frame.camera)
+    camera.lookAt(...frame.target)
+    const snapshot=getJourneyQASnapshot({
+      state,
+      transition,
+      renderedWorlds:{mountain:true,water:false,forest:false},
+      transports:controller.transports,
+      scenery:controller.scenery,
+      camera,
+      cameraJump:0,
+    })
+    controller.dispose()
+    Object.values(materials).forEach(material=>material.dispose())
+    expect(snapshot.visibleMembers).toEqual({guides:1,tourists:3})
+  })
   it('keeps all four production boat occupants visible at the distant forest reveal',()=>{
     const scene=new THREE.Scene()
     const materials=createMaterials()

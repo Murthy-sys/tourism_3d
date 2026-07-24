@@ -85,6 +85,22 @@ describe('trailhead clearing',()=>{
     disposeObject3D(trailhead)
   })
 
+  it('keeps edge details outside the opening camera bubble',()=>{
+    const trailhead=createTrailhead(createMaterials(),{
+      quality:'desktop',
+      heightAt:sampleMountainHeight,
+      route,
+      standingPoses,
+    })
+    const openingCamera=new THREE.Vector3(8.5,3.8,46)
+    expect(trailhead.userData.cameraClearance).toBeGreaterThanOrEqual(6)
+    trailhead.userData.routeObstacles.forEach(bounds=>{
+      expect(bounds.distanceToPoint(openingCamera))
+        .toBeGreaterThanOrEqual(trailhead.userData.cameraClearance)
+    })
+    disposeObject3D(trailhead)
+  })
+
   it('preserves semantic groups on mobile with fewer decorative instances',()=>{
     const options={heightAt:sampleMountainHeight,route,standingPoses}
     const desktop=createTrailhead(createMaterials(),{...options,quality:'desktop'})

@@ -10,6 +10,7 @@ describe('visual QA fail-closed corpus',()=>{
       "name:'travelers-beside-coach'",
       "name:'trailhead-departure'",
       "name:'mountain-entry'",
+      "name:'brand-collaboration-overview'",
       "name:'distant-water-reveal'",
       "name:'mountain-water-handoff'",
       "name:'water-corridor'",
@@ -27,6 +28,21 @@ describe('visual QA fail-closed corpus',()=>{
     expect(source).toContain('snapshot.opening.departureWeight')
     expect(source).toContain('Coach world matrix changed')
     expect(source).toContain("hasOwnProperty.call(snapshot.transportWeights,'coach')")
+  })
+
+  it('verifies the live brand overview and creator card content',()=>{
+    expect(source).toContain("title:'Destination stories. Brand impact.'")
+    expect(source).toContain("title:'Karnataka, experienced deeply.'")
+    expect(source).toContain('layout.content.creatorCard')
+    expect(source).toContain('body:WHO_WE_ARE.body')
+    expect(source).toContain('items:BRAND_CAPABILITIES')
+    expect(source).toContain('items:WHO_WE_ARE.creator.pillars')
+    expect(source).toContain('layout.content.body!==state.content.body')
+    expect(source).toContain('JSON.stringify(layout.content.items)')
+  })
+
+  it('rejects clipped overlays at both approved viewports',()=>{
+    expect(source).toContain('if(layout.overlay?.clipped)')
   })
 
   it('clears stale output and validates evidence before writing screenshots',()=>{
