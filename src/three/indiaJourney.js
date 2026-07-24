@@ -40,7 +40,7 @@ const hierarchyVisible=(object,root)=>{
 const materialsVisible=object=>{
   const materials=Array.isArray(object.material)?object.material:[object.material]
   return materials.filter(Boolean).some(material=>
-    (material.opacity??1)>.01
+    material.visible!==false&&(material.opacity??1)>.01
   )
 }
 
@@ -101,7 +101,22 @@ export const getProjectedObjectBounds=(object,camera)=>{
     }
   }
   object.updateWorldMatrix(true,true)
-  const bounds=new THREE.Box3().setFromObject(object)
+  const bounds=new THREE.Box3()
+  const meshBounds=new THREE.Box3()
+  object.traverse(candidate=>{
+    if(
+      !candidate.isMesh||
+      !hierarchyVisible(candidate,object)||
+      !materialsVisible(candidate)||
+      !candidate.geometry
+    ) return
+    if(!candidate.geometry.boundingBox) candidate.geometry.computeBoundingBox()
+    const geometryBounds=candidate.geometry.boundingBox
+    if(geometryBounds&&!geometryBounds.isEmpty()){
+      meshBounds.copy(geometryBounds).applyMatrix4(candidate.matrixWorld)
+      bounds.union(meshBounds)
+    }
+  })
   if(bounds.isEmpty()){
     return{
       rendered:false,

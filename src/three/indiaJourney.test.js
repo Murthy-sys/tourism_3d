@@ -244,6 +244,75 @@ describe('renderer quality', () => {
     material.dispose()
   })
 
+  it('does not project an object whose only mesh is hidden',()=>{
+    const camera=new THREE.PerspectiveCamera(60,1,.1,100)
+    camera.position.set(0,1,5)
+    camera.lookAt(0,1,0)
+    const root=new THREE.Group()
+    const hiddenMesh=new THREE.Mesh(
+      new THREE.BoxGeometry(1,1,1),
+      new THREE.MeshBasicMaterial(),
+    )
+    hiddenMesh.visible=false
+    root.add(hiddenMesh)
+    expect(getProjectedObjectBounds(root,camera)).toMatchObject({
+      rendered:false,
+      fullyFramed:false,
+    })
+    disposeObject3D(root)
+  })
+
+  it('does not project an object whose only mesh has zero opacity',()=>{
+    const camera=new THREE.PerspectiveCamera(60,1,.1,100)
+    camera.position.set(0,1,5)
+    camera.lookAt(0,1,0)
+    const root=new THREE.Group()
+    root.add(new THREE.Mesh(
+      new THREE.BoxGeometry(1,1,1),
+      new THREE.MeshBasicMaterial({opacity:0,transparent:true}),
+    ))
+    expect(getProjectedObjectBounds(root,camera)).toMatchObject({
+      rendered:false,
+      fullyFramed:false,
+    })
+    disposeObject3D(root)
+  })
+
+  it('does not project an object whose only mesh material is hidden',()=>{
+    const camera=new THREE.PerspectiveCamera(60,1,.1,100)
+    camera.position.set(0,1,5)
+    camera.lookAt(0,1,0)
+    const root=new THREE.Group()
+    const material=new THREE.MeshBasicMaterial()
+    material.visible=false
+    root.add(new THREE.Mesh(new THREE.BoxGeometry(1,1,1),material))
+    expect(getProjectedObjectBounds(root,camera)).toMatchObject({
+      rendered:false,
+      fullyFramed:false,
+    })
+    disposeObject3D(root)
+  })
+
+  it('excludes hidden oversized descendants from projected bounds',()=>{
+    const camera=new THREE.PerspectiveCamera(60,1,.1,100)
+    camera.position.set(0,1,5)
+    camera.lookAt(0,1,0)
+    const root=new THREE.Group()
+    const visibleMesh=new THREE.Mesh(
+      new THREE.BoxGeometry(1,1,1),
+      new THREE.MeshBasicMaterial(),
+    )
+    const hiddenOversizedMesh=new THREE.Mesh(
+      new THREE.BoxGeometry(100,100,100),
+      new THREE.MeshBasicMaterial(),
+    )
+    hiddenOversizedMesh.visible=false
+    root.add(visibleMesh,hiddenOversizedMesh)
+    expect(getProjectedObjectBounds(root,camera))
+      .toEqual(getProjectedObjectBounds(visibleMesh,camera))
+    disposeObject3D(root)
+  })
+
   it('includes fail-closed coach and fully framed party evidence',()=>{
     const camera=new THREE.PerspectiveCamera(60,1,.1,100)
     camera.position.set(0,2,8)
