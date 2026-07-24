@@ -97,7 +97,7 @@ describe('India journey data', () => {
     const expected=[
       {progress:0,camera:[8.5,3.8,46],target:[-2,1.55,34.8]},
       {progress:.08,camera:[8,5.6,39.5],target:[2.6,1.9,28.5]},
-      {progress:.12,camera:[7,8.4,30.5],target:[2,4.2,20]},
+      {progress:.12,camera:[8,7,40],target:[2.6,1.9,28.5]},
       {progress:.18,camera:[4.5,9.8,6],target:[0,3,-4]},
     ]
     expected.forEach(({progress,camera,target})=>{

@@ -16,7 +16,9 @@ import {
   getTransportWorldPosition,
   getWorldVisibility,
 } from './indiaJourney'
-import { disposeObject3D } from './primitives'
+import { createExpeditionController } from './expeditionController'
+import { getJourneyState } from './journeyData'
+import { createMaterials,disposeObject3D } from './primitives'
 
 describe('renderer quality', () => {
   it('selects the simplified mobile scene at narrow widths', () => {
@@ -76,6 +78,45 @@ describe('renderer quality', () => {
       state,
       transportPosition:[-2,.25,-60],
     })).toEqual(getMobileTransportCamera('boat',[-2,.25,-60]))
+  })
+  it('fully frames the production trekking party at desktop mountain entry',()=>{
+    const scene=new THREE.Scene()
+    const materials=createMaterials()
+    const controller=createExpeditionController(scene,materials,'desktop')
+    const state=getJourneyState(.12)
+    const transition=controller.update(state.expedition,0,true)
+    const transport=controller.transports.trekker
+    const transportPosition=getTransportWorldPosition(
+      'trekker',
+      transport,
+    ).toArray()
+    const frame=getResolvedCameraFrame({
+      quality:'desktop',
+      progress:.12,
+      state,
+      transportPosition,
+    })
+    const camera=new THREE.PerspectiveCamera(48,1440/900,.1,420)
+    camera.position.set(...frame.camera)
+    camera.lookAt(...frame.target)
+    const snapshot=getJourneyQASnapshot({
+      state,
+      transition,
+      renderedWorlds:{mountain:true,water:false,forest:false},
+      transports:controller.transports,
+      scenery:controller.scenery,
+      camera,
+      cameraJump:0,
+    })
+    controller.dispose()
+    Object.values(materials).forEach(material=>material.dispose())
+    expect(snapshot).toMatchObject({
+      visibleMembers:{guides:1,tourists:3},
+      opening:{
+        departureWeight:1,
+        fullyFramedMembers:{guides:1,tourists:3},
+      },
+    })
   })
   it('frames the party around its members instead of its origin',()=>{
     const party=new THREE.Group()
