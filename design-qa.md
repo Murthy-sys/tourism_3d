@@ -51,3 +51,4 @@ The four portfolio beats additionally compare the live DOM against the exact sou
 - `npm run build`: passed, 54 modules transformed.
 - `git diff --check`: passed.
 - The existing Vite bundle-size advisory remains non-blocking.
+- Contact package evidence: `/tmp/tourist-management-package-qa/desktop/contact-packages-page.png` and `/tmp/tourist-management-package-qa/mobile/contact-packages-page.png`
