@@ -1,0 +1,280 @@
+# Review package: f32117f..72737e8
+
+## Commits
+72737e8 Isolate jungle world materials
+e727b09 Densify forest and add marsh landing
+
+## Files changed
+ src/three/jungleWorld.js      | 194 +++++++++++++++++++++++++++++++++++++++---
+ src/three/jungleWorld.test.js |  54 +++++++++++-
+ 2 files changed, 235 insertions(+), 13 deletions(-)
+
+## Diff
+diff --git a/src/three/jungleWorld.js b/src/three/jungleWorld.js
+index 0cde973..938b9f5 100644
+--- a/src/three/jungleWorld.js
++++ b/src/three/jungleWorld.js
+@@ -1,19 +1,189 @@
+ import * as THREE from 'three'
+ import { mesh } from './primitives'
+ 
+-const jungleTree=(m,x,z,s=1)=>{const g=new THREE.Group(),trunk=new THREE.MeshStandardMaterial({color:'#39281d',roughness:1}),leaf=new THREE.MeshStandardMaterial({color:x%2?'#254f32':'#3b6c3a',roughness:.9});g.add(mesh(new THREE.CylinderGeometry(.18*s,.34*s,3.8*s,9),trunk,[0,1.9*s,0]));for(let i=0;i<5;i++){const a=i/5*Math.PI*2;g.add(mesh(new THREE.IcosahedronGeometry((1.1+(i%2)*.25)*s,2),leaf,[Math.cos(a)*.7*s,(4.1+(i%3)*.42)*s,Math.sin(a)*.7*s]))}for(let i=0;i<3;i++)g.add(mesh(new THREE.TorusGeometry((.5+i*.18)*s,.035*s,6,18,Math.PI*1.3),m.leaf2,[0,(3.7-i*.5)*s,0],[0,i*.7,0]));g.position.set(x,0,z);return g}
+-const nameGroup=name=>{const g=new THREE.Group();g.name=name;return g}
++const nameGroup=name=>{const group=new THREE.Group();group.name=name;return group}
++const hash=(index,salt=0)=>{const value=Math.sin((index+1)*127.1+salt*311.7)*43758.5453123;return value-Math.floor(value)}
++const namedMesh=(name,geometry,material,position=[0,0,0],rotation=[0,0,0])=>{const object=mesh(geometry,material,position,rotation);object.name=name;return object}
++
++function distanceToRoute(point,routePoints){
++  return routePoints.reduce((nearest,routePoint)=>Math.min(nearest,Math.hypot(point.x-routePoint.x,point.z-routePoint.z)),Infinity)
++}
++
++function forestPosition(index,routePoints,corridor,canopy=false){
++  for(let attempt=0;attempt<48;attempt++){
++    const seed=index*59+attempt
++    const point=new THREE.Vector3(THREE.MathUtils.lerp(-20,20,hash(seed,1)),0,THREE.MathUtils.lerp(-19.5,21.5,hash(seed,2)))
++    const marshDensity=THREE.MathUtils.clamp((point.z+20)/13,.16,1)
++    if(distanceToRoute(point,routePoints)>corridor&&(!canopy||hash(seed,3)<marshDensity))return point
++  }
++  return new THREE.Vector3(THREE.MathUtils.lerp(-20,-18,hash(index,38)),0,THREE.MathUtils.lerp(-19,21,hash(index,39)))
++}
++
++function addCrown(crown,material,variant,scale){
++  const add=(geometry,position,objectScale=[1,1,1])=>{const foliage=mesh(geometry,material,position);foliage.scale.set(...objectScale);crown.add(foliage)}
++  if(variant===0){
++    add(new THREE.IcosahedronGeometry(1.05*scale,1),[-.55*scale,0,0]);add(new THREE.IcosahedronGeometry(1.2*scale,2),[.48*scale,.2*scale,.1*scale]);add(new THREE.IcosahedronGeometry(.9*scale,1),[0,.75*scale,-.18*scale])
++  }else if(variant===1){
++    add(new THREE.ConeGeometry(1.45*scale,2.2*scale,9),[0,.3*scale,0]);add(new THREE.ConeGeometry(1.05*scale,1.8*scale,9),[0,1.35*scale,0])
++  }else if(variant===2){
++    add(new THREE.SphereGeometry(1.15*scale,12,8),[0,.25*scale,0],[1.35,.72,.92]);add(new THREE.SphereGeometry(.82*scale,10,7),[-.75*scale,.72*scale,.08*scale],[.82,1.2,.78])
++  }else if(variant===3){
++    add(new THREE.DodecahedronGeometry(1.12*scale,0),[-.5*scale,.15*scale,0],[.9,1.18,.9]);add(new THREE.DodecahedronGeometry(1.02*scale,0),[.58*scale,.4*scale,.1*scale],[.88,1.28,.88]);add(new THREE.DodecahedronGeometry(.82*scale,0),[0,1.18*scale,0])
++  }else if(variant===4){
++    add(new THREE.ConeGeometry(1.6*scale,1.35*scale,12),[0,-.05*scale,0]);add(new THREE.IcosahedronGeometry(.88*scale,1),[0,.9*scale,0],[.85,1.35,.85]);add(new THREE.SphereGeometry(.62*scale,10,7),[.8*scale,.42*scale,-.1*scale])
++  }else{
++    for(let i=0;i<5;i++){const angle=i/5*Math.PI*2;add(new THREE.OctahedronGeometry((.72+(i%2)*.2)*scale,1),[Math.cos(angle)*.72*scale,(i%3)*.38*scale,Math.sin(angle)*.58*scale],[1,1.25,1])}
++  }
++}
++
++function jungleTree(materials,foliage,index,position,scale){
++  const tree=new THREE.Group(),height=(3.6+hash(index,5)*1.6)*scale,variant=index%6
++  tree.name=`jungle-tree-${index}`
++  tree.userData.crownSilhouette=variant
++  tree.add(namedMesh('tapered-trunk',new THREE.CylinderGeometry(.13*scale,.34*scale,height,9),materials.wood,[0,height/2,0]))
++  const forks=nameGroup('branch-forks')
++  ;[-1,1].forEach((side,branchIndex)=>forks.add(mesh(new THREE.CylinderGeometry(.065*scale,.11*scale,1.75*scale,7),materials.wood,[side*.43*scale,height*.76,(branchIndex-.5)*.32*scale],[branchIndex?.24:-.2,0,side*.68])))
++  tree.add(forks)
++  const crown=nameGroup(`crown-silhouette-${variant}`);crown.position.y=height;addCrown(crown,foliage[variant%foliage.length],variant,scale);tree.add(crown)
++  tree.position.copy(position);tree.rotation.y=hash(index,6)*Math.PI*2
++  return tree
++}
++
++function createFern(material,index){
++  const fern=nameGroup(`fern-${index}`)
++  for(let leaf=0;leaf<5;leaf++){
++    const angle=leaf/5*Math.PI*2
++    const frond=mesh(new THREE.PlaneGeometry(.24,.95),material,[Math.cos(angle)*.2,.32,Math.sin(angle)*.2],[-1.05,angle,0])
++    fern.add(frond)
++  }
++  return fern
++}
++
++function createBroadLeaves(material,index){
++  const plant=nameGroup(`broad-leaves-${index}`)
++  for(let leaf=0;leaf<3;leaf++){
++    const angle=leaf/3*Math.PI*2+.35
++    const blade=mesh(new THREE.SphereGeometry(.36,8,5),material,[Math.cos(angle)*.3,.28+leaf*.04,Math.sin(angle)*.3],[0,angle,Math.PI/3]);blade.scale.set(.48,1.35,.18);plant.add(blade)
++  }
++  return plant
++}
++
++function createGrass(material,index){
++  const grass=nameGroup(`grass-clump-${index}`)
++  for(let blade=0;blade<6;blade++){
++    const angle=blade/6*Math.PI*2
++    grass.add(mesh(new THREE.ConeGeometry(.055,.72+(blade%3)*.12,5),material,[Math.cos(angle)*.14,.36,Math.sin(angle)*.14],[Math.sin(angle)*.16,0,Math.cos(angle)*.16]))
++  }
++  return grass
++}
++
++function addUndergrowth(group,materials,routePoints,quality){
++  const clusterCount=quality==='mobile'?26:52
++  for(let i=0;i<clusterCount;i++){
++    const plant=i%3===0?createFern(materials.fern,i):i%3===1?createBroadLeaves(materials.broad,i):createGrass(materials.grass,i)
++    plant.position.copy(forestPosition(i+700,routePoints,1.85));plant.rotation.y=hash(i,8)*Math.PI*2;plant.scale.setScalar(.65+hash(i,9)*.65);group.add(plant)
++  }
++}
++
++function addVines(group,materials,treePositions,quality){
++  const count=quality==='mobile'?8:18
++  for(let i=0;i<count;i++){
++    const anchor=treePositions[(i*7)%treePositions.length],vine=nameGroup(`vine-${i}`),length=1.5+hash(i,10)*2.2
++    vine.position.set(anchor.x+(hash(i,11)-.5)*1.2,2.6+hash(i,12)*2.1,anchor.z+(hash(i,13)-.5)*1.2)
++    vine.add(mesh(new THREE.TorusGeometry(.36+hash(i,14)*.28,.025,5,16,Math.PI*1.45),materials.vine,[0,-length*.34,0],[0,hash(i,15)*Math.PI,0]),mesh(new THREE.CylinderGeometry(.018,.028,length,6),materials.vine,[.28,-length*.62,0],[0,0,.08]))
++    group.add(vine)
++  }
++}
++
++function addFallenTimber(group,materials,routePoints,quality){
++  const count=quality==='mobile'?4:9
++  for(let i=0;i<count;i++){
++    const position=forestPosition(i+1300,routePoints,2.35),log=nameGroup(`fallen-log-${i}`),length=1.8+hash(i,16)*2.4
++    log.position.copy(position);log.rotation.y=hash(i,17)*Math.PI
++    log.add(mesh(new THREE.CylinderGeometry(.18,.25,length,9),materials.wood,[0,.22,0],[Math.PI/2,0,0]),mesh(new THREE.TorusGeometry(.2,.035,6,12),materials.moss,[0,.25,-length*.18],[Math.PI/2,0,0]))
++    group.add(log)
++  }
++}
++
++function createMarshEdge(materials,endpoint,quality){
++  const marsh=nameGroup('forest-marsh-edge');marsh.position.set(endpoint.x,0,endpoint.z-2.8)
++  marsh.add(mesh(new THREE.PlaneGeometry(18,10,6,4),materials.soil,[0,-.11,0],[-Math.PI/2,0,0]))
++  const poolCount=quality==='mobile'?3:6
++  for(let i=0;i<poolCount;i++){
++    const x=(hash(i,18)-.5)*13,z=(hash(i,19)-.5)*7,pool=mesh(new THREE.CircleGeometry(.65+hash(i,20)*1.1,20),materials.shallows,[x,.015,z],[-Math.PI/2,0,0]);pool.scale.x=1.5+hash(i,21);marsh.add(pool)
++  }
++  const reedCount=quality==='mobile'?18:38
++  for(let i=0;i<reedCount;i++){
++    const side=i%2?-1:1,x=side*(2.8+hash(i,22)*5),z=(hash(i,23)-.5)*7.4,height=.65+hash(i,24)*.75
++    marsh.add(namedMesh('marsh-reed',new THREE.CylinderGeometry(.018,.028,height,5),materials.reed,[x,height/2,z],[0,0,(hash(i,25)-.5)*.18]))
++  }
++  const rootCount=quality==='mobile'?5:10
++  for(let i=0;i<rootCount;i++){
++    const root=mesh(new THREE.TorusGeometry(.75+hash(i,26)*.8,.045,6,18,Math.PI*(.65+hash(i,27))),materials.root,[(hash(i,28)-.5)*13,.025,(hash(i,29)-.5)*7],[Math.PI/2,hash(i,30)*Math.PI,0]);root.name='marsh-root';root.scale.y=.45;marsh.add(root)
++  }
++  const stoneCount=quality==='mobile'?7:15
++  for(let i=0;i<stoneCount;i++){
++    const stone=namedMesh('wet-stone',new THREE.DodecahedronGeometry(.16+hash(i,31)*.24,1),materials.wetStone,[(hash(i,32)-.5)*14,.08,(hash(i,33)-.5)*7],[hash(i,34),hash(i,35)*Math.PI,hash(i,36)]);stone.scale.y=.45;marsh.add(stone)
++  }
++  return marsh
++}
++
++function createLanding(materials,route){
++  const landing=nameGroup('forest-landing'),endpoint=route.getPoint(1),tangent=route.getTangent(1).normalize()
++  landing.position.copy(endpoint).addScaledVector(tangent,1.6);landing.rotation.y=Math.atan2(tangent.x,tangent.z)
++  for(let plank=0;plank<9;plank++)landing.add(namedMesh('landing-plank',new THREE.BoxGeometry(4.8,.2,.48),materials.landingWood,[0,.14,(plank-4)*.5]))
++  ;[-2.05,2.05].forEach(x=>[-1.7,1.7].forEach(z=>landing.add(namedMesh('landing-pile',new THREE.CylinderGeometry(.13,.18,1.25,8),materials.wood,[x,-.34,z]))))
++  return landing
++}
+ 
+ export function createJungleWorld(m,quality='desktop'){
+-  const world=new THREE.Group();world.name='jungle-world'
+-  const ground=new THREE.MeshStandardMaterial({color:'#182b1c',roughness:.95});world.add(mesh(new THREE.PlaneGeometry(44,46,14,14),ground,[0,-.18,0],[-Math.PI/2,0,0]))
+-  const foreground=nameGroup('jungle-foreground'),mid=nameGroup('jungle-midground'),back=nameGroup('jungle-background'),count=quality==='mobile'?10:24
+-  for(let i=0;i<count;i++){const side=i%2?-1:1,x=side*(4+(i%5)*1.8),z=-16+(i%8)*4.6,s=.75+(i%4)*.14;(i<6?foreground:i<15?mid:back).add(jungleTree(m,x,z,s))}world.add(foreground,mid,back)
+-  const track=nameGroup('forest-track'),points=[];for(let i=0;i<18;i++)points.push(new THREE.Vector3(Math.sin(i*.5)*2.1,.02,11-i*1.85));track.add(mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(points),120,1.15,8,false),new THREE.MeshStandardMaterial({color:'#5b4127',roughness:1})));track.userData.curve=new THREE.CatmullRomCurve3(points);world.add(track)
+-  const rocks=nameGroup('jungle-rocks');for(let i=0;i<(quality==='mobile'?8:18);i++)rocks.add(mesh(new THREE.DodecahedronGeometry(.25+(i%4)*.13,1),m.stone,[(i%2?-1:1)*(2.8+(i%6)),.12,-14+(i%9)*3],[i*.2,0,i*.1]));world.add(rocks)
+-  const puddles=nameGroup('jungle-puddles');[-8,0,7].forEach((z,i)=>puddles.add(mesh(new THREE.CircleGeometry(.6+i*.2,24),m.water,[i%2?1.4:-1.2,.04,z],[-Math.PI/2,0,0])));world.add(puddles)
+-  const mist=nameGroup('jungle-mist'),mistMat=new THREE.MeshBasicMaterial({color:'#b4cdb6',transparent:true,opacity:.09,depthWrite:false});for(let i=0;i<(quality==='mobile'?3:7);i++)mist.add(mesh(new THREE.PlaneGeometry(14,4),mistMat,[(i%3-1)*7,2,-15+i*5]));world.add(mist)
+-  const outpost=nameGroup('ranger-outpost');outpost.position.set(-7,0,-13);outpost.add(mesh(new THREE.BoxGeometry(5,.5,3.5),m.wood,[0,.25,0]),mesh(new THREE.BoxGeometry(4,2.4,2.7),m.sand,[0,1.7,0]),mesh(new THREE.ConeGeometry(3.5,1.5,4),m.leaf,[0,3.55,0],[0,Math.PI/4,0]),mesh(new THREE.BoxGeometry(2.4,1.15,.08),m.dark,[0,1.9,1.39]));world.add(outpost)
++  const localMaterials=Object.fromEntries(['wood','leaf','leaf2','stone','water','sand','dark'].map(key=>[key,m[key].clone()]))
++  const world=nameGroup('jungle-world')
++  const ground=new THREE.MeshStandardMaterial({color:'#182b1c',roughness:.95})
++  const materials={
++    fern:new THREE.MeshStandardMaterial({color:'#315d37',roughness:.92,side:THREE.DoubleSide}),
++    broad:new THREE.MeshStandardMaterial({color:'#497b43',roughness:.88}),
++    grass:new THREE.MeshStandardMaterial({color:'#698447',roughness:.94}),
++    vine:new THREE.MeshStandardMaterial({color:'#536f39',roughness:.96}),
++    moss:new THREE.MeshStandardMaterial({color:'#57703e',roughness:1}),
++    soil:new THREE.MeshStandardMaterial({color:'#1d241e',roughness:.98}),
++    shallows:new THREE.MeshPhysicalMaterial({color:'#486f68',roughness:.16,metalness:.1,transparent:true,opacity:.68,clearcoat:.6}),
++    reed:new THREE.MeshStandardMaterial({color:'#718250',roughness:.9}),
++    root:new THREE.MeshStandardMaterial({color:'#34281f',roughness:1}),
++    wetStone:new THREE.MeshPhysicalMaterial({color:'#45524c',roughness:.28,clearcoat:.75}),
++    landingWood:new THREE.MeshStandardMaterial({color:'#5a3d29',roughness:.84}),
++  }
++  const foliage=[localMaterials.leaf,localMaterials.leaf2,materials.fern,materials.broad,materials.moss,materials.grass]
++  world.add(mesh(new THREE.PlaneGeometry(44,46,14,14),ground,[0,-.18,0],[-Math.PI/2,0,0]))
++
++  const points=[]
++  for(let i=0;i<18;i++)points.push(new THREE.Vector3(Math.sin(i*.5)*2.1,.02,11-i*1.85))
++  const route=new THREE.CatmullRomCurve3(points),routePoints=route.getPoints(80),track=nameGroup('forest-track')
++  track.add(mesh(new THREE.TubeGeometry(route,120,1.15,8,false),new THREE.MeshStandardMaterial({color:'#5b4127',roughness:1})));track.userData.curve=route;world.add(track)
++
++  const foreground=nameGroup('jungle-foreground'),mid=nameGroup('jungle-midground'),back=nameGroup('jungle-background')
++  const treeTarget=quality==='mobile'?34:58,treePositions=[]
++  for(let i=0;i<treeTarget;i++){
++    const position=forestPosition(i,routePoints,3.15,true),scale=.68+hash(i,4)*.55,tree=jungleTree(localMaterials,foliage,i,position,scale)
++    ;(position.z>7?foreground:position.z>-8?mid:back).add(tree);treePositions.push(position)
++  }
++  world.add(foreground,mid,back)
++
++  const undergrowth=nameGroup('jungle-undergrowth');addUndergrowth(undergrowth,materials,routePoints,quality);world.add(undergrowth)
++  const vines=nameGroup('jungle-vines');addVines(vines,materials,treePositions,quality);world.add(vines)
++  const timber=nameGroup('jungle-fallen-timber');addFallenTimber(timber,{...materials,wood:localMaterials.wood},routePoints,quality);world.add(timber)
++
++  const rocks=nameGroup('jungle-rocks')
++  for(let i=0;i<(quality==='mobile'?8:18);i++){const position=forestPosition(i+1700,routePoints,2.2);rocks.add(mesh(new THREE.DodecahedronGeometry(.25+(i%4)*.13,1),localMaterials.stone,[position.x,.12,position.z],[i*.2,0,i*.1]))}
++  world.add(rocks)
++  const puddles=nameGroup('jungle-puddles');[-8,0,7].forEach((z,i)=>puddles.add(mesh(new THREE.CircleGeometry(.6+i*.2,24),localMaterials.water,[i%2?1.4:-1.2,.04,z],[-Math.PI/2,0,0])));world.add(puddles)
++  const mist=nameGroup('jungle-mist'),mistMat=new THREE.MeshBasicMaterial({color:'#b4cdb6',transparent:true,opacity:.09,depthWrite:false})
++  for(let i=0;i<(quality==='mobile'?3:7);i++)mist.add(mesh(new THREE.PlaneGeometry(14,4),mistMat,[(i%3-1)*7,2,-15+i*5]))
++  world.add(mist)
++
++  const endpoint=route.getPoint(1),marsh=createMarshEdge(materials,endpoint,quality),landing=createLanding({...materials,wood:localMaterials.wood},route);world.add(marsh,landing)
++  const outpost=nameGroup('ranger-outpost');outpost.position.set(-7,0,-13);outpost.add(mesh(new THREE.BoxGeometry(5,.5,3.5),localMaterials.wood,[0,.25,0]),mesh(new THREE.BoxGeometry(4,2.4,2.7),localMaterials.sand,[0,1.7,0]),mesh(new THREE.ConeGeometry(3.5,1.5,4),localMaterials.leaf,[0,3.55,0],[0,Math.PI/4,0]),mesh(new THREE.BoxGeometry(2.4,1.15,.08),localMaterials.dark,[0,1.9,1.39]));world.add(outpost)
+   const light=new THREE.SpotLight('#ffd98a',34,35,.5,.75);light.position.set(-8,16,7);light.target.position.set(0,0,-8);world.add(light,light.target)
+-  world.userData={route:track.userData.curve,copyAnchor:new THREE.Vector3(-7,3,-13)};return world
++  world.userData={route,landing,copyAnchor:new THREE.Vector3(-7,3,-13)}
++  return world
+ }
+diff --git a/src/three/jungleWorld.test.js b/src/three/jungleWorld.test.js
+index cf7cab1..7294581 100644
+--- a/src/three/jungleWorld.test.js
++++ b/src/three/jungleWorld.test.js
+@@ -1,4 +1,56 @@
+ import { describe,expect,it } from 'vitest'
+ import { createJungleWorld } from './jungleWorld'
++import { createExpeditionJeep } from './expeditionVehicles'
+ import { createMaterials,disposeObject3D } from './primitives'
+-describe('jungle world',()=>{it('contains layered vegetation, track, mist and outpost',()=>{const world=createJungleWorld(createMaterials(),'desktop');['jungle-foreground','jungle-midground','jungle-background','forest-track','jungle-mist','ranger-outpost','jungle-rocks','jungle-puddles'].forEach(name=>expect(world.getObjectByName(name)).toBeTruthy());disposeObject3D(world)})})
++
++const treeCount=world=>['jungle-foreground','jungle-midground','jungle-background']
++  .reduce((count,name)=>count+world.getObjectByName(name).children.length,0)
++const meshCount=object=>{let count=0;object.traverse(child=>{if(child.isMesh)count++});return count}
++const materialSet=root=>{
++  const materials=new Set()
++  root.traverse(object=>(Array.isArray(object.material)?object.material:[object.material]).filter(Boolean).forEach(material=>materials.add(material)))
++  return materials
++}
++
++describe('jungle world',()=>{
++  it('contains dense layered vegetation, timber, marsh edge and landing',()=>{
++    const world=createJungleWorld(createMaterials(),'desktop')
++    ;['jungle-foreground','jungle-midground','jungle-background','forest-track','jungle-mist','ranger-outpost','jungle-rocks','jungle-puddles','jungle-undergrowth','jungle-vines','jungle-fallen-timber','forest-marsh-edge','forest-landing'].forEach(name=>expect(world.getObjectByName(name)).toBeTruthy())
++    expect(treeCount(world)).toBeGreaterThanOrEqual(55)
++    expect(meshCount(world.getObjectByName('jungle-undergrowth'))).toBeGreaterThanOrEqual(140)
++    disposeObject3D(world)
++  })
++
++  it('keeps the mobile forest dense enough for a continuous canopy',()=>{
++    const world=createJungleWorld(createMaterials(),'mobile')
++    expect(treeCount(world)).toBeGreaterThanOrEqual(32)
++    expect(meshCount(world.getObjectByName('jungle-undergrowth'))).toBeGreaterThanOrEqual(70)
++    disposeObject3D(world)
++  })
++
++  it('aligns the physical landing with the jeep route endpoint',()=>{
++    const world=createJungleWorld(createMaterials(),'desktop')
++    const endpoint=world.userData.route.getPoint(1)
++    expect(world.userData.landing).toBe(world.getObjectByName('forest-landing'))
++    expect(world.userData.landing.position.distanceTo(endpoint)).toBeLessThanOrEqual(6)
++    disposeObject3D(world)
++  })
++
++  it('owns materials independently of the shared palette, other jungles and transports',()=>{
++    const materials=createMaterials()
++    const first=createJungleWorld(materials,'mobile')
++    const second=createJungleWorld(materials,'mobile')
++    const jeep=createExpeditionJeep(materials)
++    const shared=new Set(Object.values(materials))
++    const firstMaterials=materialSet(first)
++    const secondMaterials=materialSet(second)
++    const jeepMaterials=materialSet(jeep)
++    expect([...firstMaterials].every(material=>!shared.has(material))).toBe(true)
++    expect([...secondMaterials].every(material=>!shared.has(material))).toBe(true)
++    expect([...firstMaterials].every(material=>!secondMaterials.has(material))).toBe(true)
++    expect([...firstMaterials].every(material=>!jeepMaterials.has(material))).toBe(true)
++    disposeObject3D(first)
++    disposeObject3D(second)
++    disposeObject3D(jeep)
++  })
++})

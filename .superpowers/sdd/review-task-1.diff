@@ -1,0 +1,86 @@
+# Review package: e77d301..2429ec5
+
+## Commits
+2429ec5 Add deterministic continuous terrain
+
+## Files changed
+ src/three/terrain.js      | 44 ++++++++++++++++++++++++++++++++++++++++++++
+ src/three/terrain.test.js | 19 +++++++++++++++++++
+ 2 files changed, 63 insertions(+)
+
+## Diff
+diff --git a/src/three/terrain.js b/src/three/terrain.js
+new file mode 100644
+index 0000000..8354e0f
+--- /dev/null
++++ b/src/three/terrain.js
+@@ -0,0 +1,44 @@
++import * as THREE from 'three'
++
++export const smoothstep=(a,b,v)=>{
++  const t=THREE.MathUtils.clamp((v-a)/(b-a||1),0,1)
++  return t*t*(3-2*t)
++}
++
++const wave=(x,z)=>Math.sin(x*.19+Math.sin(z*.11))*1.8+Math.cos(z*.12-x*.07)*1.25+Math.sin((x+z)*.31)*.42
++
++export const sampleHillHeight=(x,z)=>Math.max(0,(wave(x,z)+3.2)*smoothstep(8,-28,z))
++
++export const sampleHillSlope=(x,z)=>Math.hypot(
++  sampleHillHeight(x+.15,z)-sampleHillHeight(x-.15,z),
++  sampleHillHeight(x,z+.15)-sampleHillHeight(x,z-.15),
++)/.3
++
++export const createTerrainGeometry=({width,depth,segmentsX,segmentsZ,heightAt})=>{
++  const geometry=new THREE.PlaneGeometry(width,depth,segmentsX,segmentsZ)
++  geometry.rotateX(-Math.PI/2)
++  const positions=geometry.attributes.position
++  const slopes=new Float32Array(positions.count)
++  let maxSlope=0
++
++  for(let i=0;i<positions.count;i++){
++    const x=positions.getX(i),z=positions.getZ(i),height=heightAt(x,z)
++    positions.setY(i,height)
++    const slope=sampleHillSlope(x,z)
++    slopes[i]=slope
++    maxSlope=Math.max(maxSlope,slope)
++  }
++
++  for(let i=0;i<slopes.length;i++)slopes[i]/=maxSlope||1
++  positions.needsUpdate=true
++  geometry.setAttribute('slope',new THREE.BufferAttribute(slopes,1))
++  geometry.computeVertexNormals()
++  return geometry
++}
++
++export const getLandscapeWeights=p=>{
++  const waterIn=smoothstep(.54,.62,p),hillIn=smoothstep(.69,.77,p)
++  const forest=1-waterIn,water=waterIn*(1-hillIn),hills=hillIn
++  const total=forest+water+hills
++  return{forest:forest/total,water:water/total,hills:hills/total}
++}
+diff --git a/src/three/terrain.test.js b/src/three/terrain.test.js
+new file mode 100644
+index 0000000..f434c47
+--- /dev/null
++++ b/src/three/terrain.test.js
+@@ -0,0 +1,19 @@
++import {describe,expect,it} from 'vitest'
++import {createTerrainGeometry,getLandscapeWeights,sampleHillHeight,sampleHillSlope,smoothstep} from './terrain'
++
++describe('continuous terrain',()=>{
++  it('samples deterministic non-conical hill heights',()=>{
++    expect(sampleHillHeight(4,-9)).toBe(sampleHillHeight(4,-9))
++    expect(new Set([-12,-6,0,6,12].map(x=>sampleHillHeight(x,-18).toFixed(3))).size).toBeGreaterThan(3)
++    expect(sampleHillSlope(4,-9)).toBeGreaterThanOrEqual(0)
++  })
++  it('builds displaced geometry and smooth normalized weights',()=>{
++    const geometry=createTerrainGeometry({width:10,depth:20,segmentsX:8,segmentsZ:12,heightAt:sampleHillHeight})
++    expect(geometry.attributes.position.count).toBe(117)
++    for(const p of [.55,.6,.65,.7,.75]){
++      const w=getLandscapeWeights(p)
++      expect(w.forest+w.water+w.hills).toBeCloseTo(1,5)
++    }
++    expect(smoothstep(0,1,.5)).toBeCloseTo(.5)
++  })
++})

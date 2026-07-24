@@ -1,0 +1,1541 @@
+# Review package: 3500631..a6db2e1
+
+## Commits
+a6db2e1 Harden visual acceptance and landscape detail
+a241ad3 Verify continuous realistic landscape
+
+## Files changed
+ design-qa.md                           |  97 +++++++--------
+ scripts/visual-qa-core.mjs             |  71 +++++++++++
+ scripts/visual-qa-core.test.js         |  66 ++++++++++
+ scripts/visual-qa.mjs                  | 220 +++++++++++++++++++++++++++------
+ src/three/expeditionController.js      |  76 ++++++++++++
+ src/three/expeditionController.test.js |  76 +++++++++++-
+ src/three/hillWorld.js                 |  80 ++++++++++++
+ src/three/hillWorld.test.js            |  26 ++++
+ src/three/indiaJourney.js              |  62 +++++++++-
+ src/three/indiaJourney.test.js         |  76 +++++++++++-
+ src/three/journeyData.js               |   4 +-
+ src/three/journeyData.test.js          |  15 ++-
+ src/three/jungleWorld.js               |  31 ++++-
+ src/three/jungleWorld.test.js          |   9 ++
+ src/three/waterWorld.js                |  32 ++++-
+ src/three/waterWorld.test.js           |  12 ++
+ 16 files changed, 849 insertions(+), 104 deletions(-)
+
+## Diff
+diff --git a/design-qa.md b/design-qa.md
+index e462196..66472e8 100644
+--- a/design-qa.md
++++ b/design-qa.md
+@@ -1,49 +1,48 @@
+-# Design QA
+-
+-## Automated coverage
+-
+-- Ambassador, jeep, boat, and articulated trekker structure and movement: passed.
+-- Explicit Ambassador-to-jeep, jeep-to-boat, and boat-to-trek handoff ranges: passed.
+-- Dense jungle foreground, midground, background, track, mist, rocks, puddles, and outpost: passed.
+-- Reflective water, shoreline, jetty, rocks, reeds, wake, and water animation: passed.
+-- Reference-matched teal rowboat, seated orange-clad rower, detailed interior, and synchronized twin-oar stroke: passed.
+-- Layered ice mountains, glacier, trail, base camp, drifting snow, and contact shelter: passed.
+-- Expedition visibility, mobile ice-layer framing, and trekker-follow camera: passed.
+-- Background audio implementation and sound controls removed: passed.
+-
+-## Desktop — 1440×900
+-
+-- Ambassador opening and Who We Are pavilion remain intact: passed.
+-- Jungle scene fills the viewport and frames the moving jeep on the forest track: passed after camera correction.
+-- Water world frames the moving boat, traveller, shoreline, and jetty: passed after closer camera and reflection correction.
+-- Upgraded boat hull reads as one coherent longitudinal craft; rower and oars remain seated inside its silhouette: passed.
+-- Ice world shows the animated trekker, glacier, layered peaks, path, snow, and base camp: passed after closer camera correction.
+-- Handoff states render both adjacent environments/transports without abrupt disappearance: passed.
+-- Environmental labels identify Jungle by Jeep, Water by Boat, and Himalayas on Foot: passed.
+-- No entry sound prompt, background audio, or fixed sound control: passed.
+-- Menu, booking, submission, overflow, and console checks: passed.
+-
+-## Mobile — 390×844
+-
+-- Jungle jeep remains visible with its traveller and road: passed.
+-- Water boat remains visible with traveller, jetty, and water surface: passed.
+-- Teal hull, orange rower, and both orange-bladed oars remain readable in mobile framing: passed.
+-- Ice trekker remains visible with backpack, pole, route, camp, and mountains: passed after removing the obstructing foreground layer and adding trekker-follow framing.
+-- Contact shelter remains readable without mountain occlusion: passed.
+-- Required worlds and transports are preserved rather than removed: passed.
+-- Menu, booking, overflow, no-sound, and console checks: passed.
+-
+-## Interaction results
+-
+-- Entry and journey sound controls: absent.
+-- Background audio initialization: absent.
+-- Plans menu jump: passed.
+-- Booking form submission: passed.
+-- Conventional navbar, stacked sections, and footer: absent.
+-- Application warnings/errors: none.
+-
+-## Remaining optional polish
+-
+-- P3: Licensed hero-grade GLTF vehicles, scanned terrain textures, and HDR environments could further increase photorealism beyond the current original real-time geometry.
+-
+-final result: passed
++# Continuous Landscape Design QA
++
++Date: 2026-07-23
++
++## Acceptance result
++
++Task 7 passes at 1440×900 and 390×844 after rejection repair. The accepted build has a readable layered forest-to-water bank, a broad water corridor with wet shelves and shore detail, and hill country populated with terrain-following bushes, dense trail grass, stones, earth patches, and flowers. The guide-led four-person trekking party remains readable on desktop and mobile. No snow, ice, or glacier content appears.
++
++## Fail-closed automated coverage
++
++- Party counts come only from member roots attached to the active Three.js scene which contain a mesh, have visible ancestors, and have an effectively visible material (`opacity > .05`). Pre-trek frames therefore correctly report zero renderable party members; hill frames report one guide, three tourists, and four walkers.
++- Zone and transport weights count only roots attached to the active scene with renderable meshes. Metadata alone cannot make a detached or empty world pass.
++- The full active scene is scanned for forbidden snow, ice, and glacier terms in object names, material names, and nested metadata.
++- Negative tests detach, empty, hide, and zero-opacity party roots; detach a world; and inject a scene-level snow overlay. Every mutation is detected.
++- Exact contracts pin `water-corridor` to water/boat, `hill-reveal` to hills/trekker, and `hill-contact` to hills/trekker. Tests prove incorrect zone and transport semantics fail.
++- Each browser frame captures the WebGL canvas with all stage/page overlays hidden. A 32×32 RGBA sample must have positive visible dimensions, at least 80% opaque pixels, luminance range of at least 12, and at least eight quantized color buckets. Hidden and blank-canvas evidence fails in negative tests; full-page PNG byte size is not used as render proof.
++
++## Transition and landscape inspection
++
++| Frame | Contract | Inspection |
++| --- | --- | --- |
++| Forest → water `.595` | forest + water; jeep + boat | The outgoing forest remains readable through layered shrubs, reeds, stones, roots, trees, wet bank shelves, shared dock, jeep, and boat. The bank now reads as a continuous landing rather than an empty crossfade. |
++| Water corridor `.66` | water; boat | Boat, rower, oars, channel, shallows, wet shelves, rocks, sparse bank trees, and jetties remain distinct at both widths. |
++| Water → hills `.725` | water + hills; boat + trekker | The dock and boat overlap the approaching hikers and textured valley without a hard scene switch. |
++| Hill reveal `.79` | hills; trekker | Four hikers occupy a route bordered by dense varied grass, bushes, stones, earth patches, flowers, and scattered trees. |
++| Trekking `.82` | hills; trekker | Desktop and mobile visibly show the guide plus all three tourists following the route. |
++| Contact `.96` | hills; trekker | The lodge, party, exposed earth, vegetation, rocks, and layered non-icy ridges remain readable. |
++
++The hill coverage is deterministic and tested: 58/34 bushes, 150/88 grass clumps, and 50/30 ground-detail placements on desktop/mobile, including at least 100 desktop grass clumps close to the route. Forest and water handoff detail groups are also count- and type-tested.
++
++## Interaction and responsive inspection
++
++- Ambassador and moving-jeep smoke frames remain visible and nonblank.
++- Desktop retains the complete party composition; mobile shows all four walkers in the hill reveal and trekking frames.
++- Menu navigation exposes five actions and the Plans jump lands on “Three ways into India.”
++- Booking submission reaches “Journey request received.”
++- Both modes report no audio controls/elements, no fallback, no legacy navbar/sections, no horizontal overflow, no console/page errors, and `failures:[]`.
++
++## Accepted evidence
++
++All 20 full-page frames and all 16 isolated-canvas frames were opened and visually inspected after the final run.
++
++- Desktop full-page frames: `/tmp/continuous-landscape-qa-repair/desktop/{ambassador-smoke,jungle-jeep-smoke,forest-water-transition,water-corridor,water-hill-transition,hill-reveal,trekking-party,hill-contact,menu,booking}.png`
++- Desktop isolated canvases: `/tmp/continuous-landscape-qa-repair/desktop/{ambassador-smoke,jungle-jeep-smoke,forest-water-transition,water-corridor,water-hill-transition,hill-reveal,trekking-party,hill-contact}-canvas.png`
++- Mobile full-page frames: `/tmp/continuous-landscape-qa-repair/mobile/{ambassador-smoke,jungle-jeep-smoke,forest-water-transition,water-corridor,water-hill-transition,hill-reveal,trekking-party,hill-contact,menu,booking}.png`
++- Mobile isolated canvases: `/tmp/continuous-landscape-qa-repair/mobile/{ambassador-smoke,jungle-jeep-smoke,forest-water-transition,water-corridor,water-hill-transition,hill-reveal,trekking-party,hill-contact}-canvas.png`
++
++Visual result: passed. The deliberately stylized low-poly treatment is consistent across vehicles, vegetation, terrain, water, and people; the repaired density and bank layering supply the believable environmental detail required for acceptance.
+diff --git a/scripts/visual-qa-core.mjs b/scripts/visual-qa-core.mjs
+new file mode 100644
+index 0000000..a81593e
+--- /dev/null
++++ b/scripts/visual-qa-core.mjs
+@@ -0,0 +1,71 @@
++const ACTIVE_THRESHOLD=.05
++
++export const CANVAS_ISOLATION_STYLE=`
++  .experience__stage > :not(.journey__canvas),
++  .experience > :not(.experience__track) {
++    visibility: hidden !important;
++  }
++`
++
++export const FRAME_CONTRACTS={
++  'forest-water-transition':{progress:.595,zones:['forest','water'],transports:['jeep','boat'],viewportTransports:['jeep','boat'],party:false},
++  'water-corridor':{progress:.66,zones:['water'],transports:['boat'],viewportTransports:['boat'],party:false},
++  'water-hill-transition':{progress:.725,zones:['hills','water'],transports:['boat','trekker'],viewportTransports:['boat','trekker'],party:true},
++  'hill-reveal':{progress:.79,zones:['hills'],transports:['trekker'],viewportTransports:['trekker'],party:true},
++  'trekking-party':{progress:.82,zones:['hills'],transports:['trekker'],party:true,screenParty:true},
++  'hill-contact':{progress:.96,zones:['hills'],transports:['trekker'],party:true},
++}
++
++const activeNames=weights=>Object.entries(weights||{})
++  .filter(([,weight])=>Number.isFinite(weight)&&weight>ACTIVE_THRESHOLD)
++  .map(([name])=>name)
++  .sort()
++
++export function validateFrameContract(name,qa,mode){
++  const contract=FRAME_CONTRACTS[name]
++  if(!contract)return[`${name}: no frame contract exists`]
++  const failures=[]
++  const zones=activeNames(qa.zoneWeights)
++  const transports=activeNames(qa.transportWeights)
++  if(JSON.stringify(zones)!==JSON.stringify([...contract.zones].sort()))failures.push(`${name}: zones expected ${contract.zones.join('+')}, received ${zones.join('+')||'none'}`)
++  if(JSON.stringify(transports)!==JSON.stringify([...contract.transports].sort()))failures.push(`${name}: transports expected ${contract.transports.join('+')}, received ${transports.join('+')||'none'}`)
++  if(qa.iceObjects!==0)failures.push(`${name}: expected zero snow/ice objects, received ${qa.iceObjects}`)
++  const expectedParty=contract.party?{guides:1,tourists:3,walkers:4}:{guides:0,tourists:0,walkers:0}
++  if(qa.guides!==expectedParty.guides)failures.push(`${name}: expected ${expectedParty.guides} renderable guides, received ${qa.guides}`)
++  if(qa.tourists!==expectedParty.tourists)failures.push(`${name}: expected ${expectedParty.tourists} renderable tourists, received ${qa.tourists}`)
++  if(qa.walkersOnTrail!==expectedParty.walkers)failures.push(`${name}: expected ${expectedParty.walkers} renderable walkers on trail, received ${qa.walkersOnTrail}`)
++  ;(contract.viewportTransports||[]).forEach(transport=>{
++    if(!qa.transports?.find(candidate=>candidate.name===transport)?.visible)failures.push(`${name}: ${transport} renderable center is outside the viewport`)
++  })
++  if(contract.screenParty){
++    if(qa.visibleMembers?.guides!==1)failures.push(`${name}: expected one guide inside the viewport`)
++    const tourists=mode==='mobile'?2:3
++    if((qa.visibleMembers?.tourists||0)<tourists)failures.push(`${name}: expected ${mode==='mobile'?'at least two':'three'} tourists inside the viewport`)
++  }
++  return failures
++}
++
++export function analyzeRgbaPixels(rgba,width,height){
++  const pixelCount=Math.max(1,width*height)
++  let opaque=0,minLuminance=255,maxLuminance=0
++  const buckets=new Set()
++  for(let index=0;index<pixelCount;index++){
++    const offset=index*4,r=rgba[offset]||0,g=rgba[offset+1]||0,b=rgba[offset+2]||0,a=rgba[offset+3]||0
++    if(a>24)opaque++
++    const luminance=.2126*r+.7152*g+.0722*b
++    minLuminance=Math.min(minLuminance,luminance)
++    maxLuminance=Math.max(maxLuminance,luminance)
++    buckets.add(`${r>>4}-${g>>4}-${b>>4}-${a>>6}`)
++  }
++  const opaqueRatio=opaque/pixelCount
++  const luminanceRange=maxLuminance-minLuminance
++  const uniqueBuckets=buckets.size
++  return{width,height,opaqueRatio,luminanceRange,uniqueBuckets,blank:opaqueRatio<.8||luminanceRange<12||uniqueBuckets<8}
++}
++
++export function validateCanvasEvidence({presentation,pixels}){
++  const failures=[]
++  if(!presentation?.visible||presentation.width<=0||presentation.height<=0)failures.push('canvas is not visible with positive dimensions')
++  if(!pixels||pixels.blank)failures.push('canvas render pixels are blank or lack a real color/luminance histogram')
++  return failures
++}
+diff --git a/scripts/visual-qa-core.test.js b/scripts/visual-qa-core.test.js
+new file mode 100644
+index 0000000..a67ac56
+--- /dev/null
++++ b/scripts/visual-qa-core.test.js
+@@ -0,0 +1,66 @@
++import {describe,expect,it} from 'vitest'
++import {analyzeRgbaPixels,CANVAS_ISOLATION_STYLE,FRAME_CONTRACTS,validateCanvasEvidence,validateFrameContract} from './visual-qa-core.mjs'
++
++const qaFor=(zoneWeights,transportWeights)=>({
++  guides:transportWeights.trekker>.05?1:0,
++  tourists:transportWeights.trekker>.05?3:0,
++  iceObjects:0,
++  walkersOnTrail:transportWeights.trekker>.05?4:0,
++  zoneWeights,
++  transportWeights,
++  visibleMembers:{guides:transportWeights.trekker>.05?1:0,tourists:transportWeights.trekker>.05?3:0},
++  transports:Object.entries(transportWeights).map(([name,weight])=>({name,visible:weight>.05})),
++})
++
++describe('visual QA contracts',()=>{
++  it('pins the stable hill reveal after the water-to-hill blend completes',()=>{
++    expect(FRAME_CONTRACTS['hill-reveal'].progress).toBe(.79)
++  })
++  it.each([
++    ['water-corridor',qaFor({forest:0,water:1,hills:0},{ambassador:0,jeep:0,boat:1,trekker:0})],
++    ['hill-reveal',qaFor({forest:0,water:0,hills:1},{ambassador:0,jeep:0,boat:0,trekker:1})],
++    ['hill-contact',qaFor({forest:0,water:0,hills:1},{ambassador:0,jeep:0,boat:0,trekker:1})],
++  ])('accepts the explicit %s zone and transport semantics',(name,qa)=>{
++    expect(validateFrameContract(name,qa,'desktop')).toEqual([])
++  })
++
++  it.each(['water-corridor','hill-reveal','hill-contact'])('rejects wrong %s zone and transport semantics',name=>{
++    const qa=qaFor({forest:1,water:0,hills:0},{ambassador:0,jeep:1,boat:0,trekker:0})
++    const failures=validateFrameContract(name,qa,'desktop')
++    expect(failures.some(failure=>failure.includes('zones'))).toBe(true)
++    expect(failures.some(failure=>failure.includes('transports'))).toBe(true)
++  })
++
++  it('accepts an active renderable contact party without requiring its aggregate center onscreen',()=>{
++    const qa=qaFor({forest:0,water:0,hills:1},{ambassador:0,jeep:0,boat:0,trekker:1})
++    qa.transports.find(transport=>transport.name==='trekker').visible=false
++    expect(validateFrameContract('hill-contact',qa,'desktop')).toEqual([])
++  })
++})
++
++describe('canvas evidence',()=>{
++  it('isolates the WebGL canvas from every stage and experience overlay',()=>{
++    expect(CANVAS_ISOLATION_STYLE).toContain('.experience__stage > :not(.journey__canvas)')
++    expect(CANVAS_ISOLATION_STYLE).toContain('.experience > :not(.experience__track)')
++  })
++
++  it('rejects hidden and blank canvas captures',()=>{
++    const blank=analyzeRgbaPixels(new Uint8ClampedArray(16*16*4).fill(0),16,16)
++    expect(validateCanvasEvidence({presentation:{visible:false,width:16,height:16},pixels:blank})).toEqual(expect.arrayContaining([
++      expect.stringContaining('visible'),
++      expect.stringContaining('blank'),
++    ]))
++  })
++
++  it('accepts visible canvas pixels with a real luminance and color histogram',()=>{
++    const rgba=new Uint8ClampedArray(16*16*4)
++    for(let index=0;index<16*16;index++){
++      rgba[index*4]=(index%16)*16
++      rgba[index*4+1]=Math.floor(index/16)*16
++      rgba[index*4+2]=(index*7)%256
++      rgba[index*4+3]=255
++    }
++    const pixels=analyzeRgbaPixels(rgba,16,16)
++    expect(validateCanvasEvidence({presentation:{visible:true,width:390,height:844},pixels})).toEqual([])
++  })
++})
+diff --git a/scripts/visual-qa.mjs b/scripts/visual-qa.mjs
+index 786eb90..3f60031 100644
+--- a/scripts/visual-qa.mjs
++++ b/scripts/visual-qa.mjs
+@@ -1,49 +1,191 @@
+-import { chromium } from '@playwright/test'
++import {mkdir} from 'node:fs/promises'
++import path from 'node:path'
++import {chromium} from '@playwright/test'
++import {analyzeRgbaPixels,CANVAS_ISOLATION_STYLE,FRAME_CONTRACTS,validateCanvasEvidence,validateFrameContract} from './visual-qa-core.mjs'
+ 
+ const requested=process.argv[2]||'desktop'
++if(!['desktop','mobile'].includes(requested))throw new Error(`Unknown QA mode "${requested}". Use desktop or mobile.`)
++
+ const baseUrl=process.env.QA_BASE_URL||'http://127.0.0.1:4173/'
+ const viewport=requested==='mobile'?{width:390,height:844}:{width:1440,height:900}
++const screenshotDir=path.resolve(process.env.QA_SCREENSHOT_DIR||`/tmp/continuous-landscape-qa/${requested}`)
++const states=[
++  'forest-water-transition','water-corridor','water-hill-transition','hill-reveal','trekking-party','hill-contact',
++].map(name=>({name,progress:FRAME_CONTRACTS[name].progress}))
++
++await mkdir(screenshotDir,{recursive:true})
+ const browser=await chromium.launch({headless:true})
+ const page=await browser.newPage({viewport})
+ const messages=[]
+-page.on('console',m=>{if(['error','warning'].includes(m.type())&&!m.text().includes('ReadPixels'))messages.push(`${m.type()}: ${m.text()}`)})
+-page.on('pageerror',e=>messages.push(`pageerror: ${e.message}`))
+-await page.goto(baseUrl,{waitUntil:'networkidle'})
+-await page.getByRole('button',{name:'Start'}).waitFor({timeout:15000})
+-await page.getByRole('button',{name:'Start'}).click()
+-await page.waitForTimeout(1400)
+-
+-const track=page.locator('.experience__track')
+-const height=await track.evaluate(el=>el.offsetHeight)
+-const states=[['opening-drive',.08],['who-we-are',.25],['ambassador-to-jeep',.39],['jungle-jeep',.48],['jeep-to-boat',.60],['water-boat',.66],['boat-to-trek',.72],['hill-trek',.82],['contact',.96]]
+-const seen=[]
+-for(const [name,progress] of states){
+-  await page.evaluate(({y})=>{document.documentElement.style.scrollBehavior='auto';scrollTo(0,y)},{y:(height-viewport.height)*progress})
+-  await page.waitForTimeout(850)
+-  const heading=await page.locator('.chapter h1').count()?await page.locator('.chapter h1').innerText():null
+-  const activePlan=await page.locator('.monument-plan-actions button.active strong').count()?await page.locator('.monument-plan-actions button.active strong').innerText():null
+-  seen.push({name,heading,activePlan})
+-  await page.screenshot({path:`/tmp/ambassador-india-${requested}-${name}.png`})
++const failures=[]
++const check=(condition,message)=>{if(!condition)failures.push(message)}
++page.on('console',message=>{
++  if(['error','warning'].includes(message.type())&&!message.text().includes('ReadPixels'))messages.push(`${message.type()}: ${message.text()}`)
++})
++page.on('pageerror',error=>messages.push(`pageerror: ${error.message}`))
++
++let result
++try{
++  await page.goto(baseUrl,{waitUntil:'networkidle'})
++  await page.getByRole('button',{name:'Start'}).waitFor({timeout:15000})
++  const soundControlsBeforeStart=await page.getByRole('button',{name:/sound/i}).count()
++  const audioElementsBeforeStart=await page.locator('audio').count()
++  await page.getByRole('button',{name:'Start'}).click()
++  await page.waitForFunction(()=>typeof window.__journeyQA==='function',undefined,{timeout:15000})
++  await page.waitForTimeout(900)
++
++  const track=page.locator('.experience__track')
++  const height=await track.evaluate(element=>element.offsetHeight)
++  const scrollToProgress=async progress=>{
++    await page.evaluate(({height,viewportHeight,progress})=>{
++      document.documentElement.style.scrollBehavior='auto'
++      scrollTo(0,(height-viewportHeight)*progress)
++    },{height,viewportHeight:viewport.height,progress})
++    await page.waitForFunction(target=>Math.abs(window.__journeyQA().progress-target)<.002,progress,{timeout:5000})
++    await page.waitForTimeout(900)
++  }
++
++  const captureCanvasEvidence=async name=>{
++    const canvas=page.locator('.journey__canvas')
++    const screenshot=path.join(screenshotDir,`${name}-canvas.png`)
++    const png=await canvas.screenshot({path:screenshot,style:CANVAS_ISOLATION_STYLE})
++    const presentation=await canvas.evaluate(element=>{
++      const style=getComputedStyle(element),rect=element.getBoundingClientRect()
++      return{
++        visible:style.display!=='none'&&style.visibility!=='hidden'&&Number(style.opacity)>.05&&rect.width>0&&rect.height>0,
++        width:rect.width,
++        height:rect.height,
++      }
++    })
++    const sample=await page.evaluate(async base64=>{
++      const image=new Image()
++      image.src=`data:image/png;base64,${base64}`
++      await image.decode()
++      const canvas=document.createElement('canvas')
++      canvas.width=32;canvas.height=32
++      const context=canvas.getContext('2d',{willReadFrequently:true})
++      context.drawImage(image,0,0,32,32)
++      return Array.from(context.getImageData(0,0,32,32).data)
++    },png.toString('base64'))
++    const pixels=analyzeRgbaPixels(Uint8ClampedArray.from(sample),32,32)
++    return{screenshot,presentation,pixels}
++  }
++
++  const captureVehicleSmoke=async(name,progress)=>{
++    await scrollToProgress(progress)
++    const qa=await page.evaluate(()=>window.__journeyQA())
++    const screenshot=path.join(screenshotDir,`${name}-smoke.png`)
++    await page.screenshot({path:screenshot})
++    const canvas=await captureCanvasEvidence(`${name}-smoke`)
++    return{qa,screenshot,canvas}
++  }
++  const ambassadorSmoke=await captureVehicleSmoke('ambassador',.08)
++  const jeepSmoke=await captureVehicleSmoke('jungle-jeep',.48)
++
++  const seen=[]
++  for(const state of states){
++    await scrollToProgress(state.progress)
++    const heading=await page.locator('.chapter h1').count()?await page.locator('.chapter h1').innerText():null
++    const activePlan=await page.locator('.monument-plan-actions button.active strong').count()
++      ?await page.locator('.monument-plan-actions button.active strong').innerText()
++      :null
++    const qa=await page.evaluate(()=>window.__journeyQA())
++    const horizontalOverflow=await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)
++    const fallback=await page.locator('.journey-fallback').count()
++    const canvasSize=await page.locator('.journey__canvas').evaluate(canvas=>({width:canvas.width,height:canvas.height}))
++    const screenshot=path.join(screenshotDir,`${state.name}.png`)
++    await page.screenshot({path:screenshot})
++    const canvas=await captureCanvasEvidence(state.name)
++    const frame={...state,heading,activePlan,qa,horizontalOverflow,fallback,canvasSize,screenshot,canvas}
++    seen.push(frame)
++
++    validateFrameContract(state.name,qa,requested).forEach(failure=>check(false,failure))
++    validateCanvasEvidence(canvas).forEach(failure=>check(false,`${state.name}: ${failure}`))
++    check(!horizontalOverflow,`${state.name}: horizontal overflow detected`)
++    check(fallback===0,`${state.name}: WebGL fallback rendered`)
++    check(canvasSize.width>0&&canvasSize.height>0,`${state.name}: canvas has no render dimensions`)
++  }
++
++  const soundControls=await page.getByRole('button',{name:/sound/i}).count()
++  const audioElements=await page.locator('audio').count()
++  await page.getByRole('button',{name:'Open journey menu'}).click()
++  const menuItems=await page.locator('.journey-menu__items button').count()
++  const menuOverflow=await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)
++  const menuScreenshot=path.join(screenshotDir,'menu.png')
++  await page.screenshot({path:menuScreenshot})
++  await page.getByRole('button',{name:'Plans'}).click()
++  await page.waitForFunction(()=>Math.abs(window.__journeyQA().progress-.65)<.02,undefined,{timeout:5000})
++  await page.waitForTimeout(300)
++  const menuJump=await page.locator('.chapter h1').innerText()
++
++  await page.getByRole('button',{name:'Open journey menu'}).click()
++  await page.getByRole('button',{name:'Plan a Trip'}).click()
++  const dialog=page.locator('.booking-overlay')
++  await dialog.waitFor()
++  const bookingOverflow=await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)
++  const bookingScreenshot=path.join(screenshotDir,'booking.png')
++  await page.screenshot({path:bookingScreenshot})
++  await page.getByLabel('Full name').fill('QA Traveller')
++  await page.getByLabel('Email').fill('qa@example.com')
++  await page.getByLabel('Plan or destination').fill('Heritage India')
++  await page.getByRole('button',{name:'Request itinerary'}).click()
++  const bookingSubmitted=await page.getByText('Journey request received').isVisible()
++  await page.waitForTimeout(300)
++
++  const horizontalOverflow=seen.some(frame=>frame.horizontalOverflow)||menuOverflow||bookingOverflow
++  const fixedNavbar=await page.locator('.navbar').count()
++  const conventionalSections=await page.locator('#services,#destinations,#testimonials,footer').count()
++  const frameNames=seen.map(frame=>frame.name)
++  check(JSON.stringify(frameNames)===JSON.stringify(states.map(state=>state.name)),'captured frame names do not match the Task 7 contract')
++  check(ambassadorSmoke.qa.phase==='ambassador'&&ambassadorSmoke.qa.transportWeights.ambassador>.95,'opening Ambassador smoke state did not render')
++  check(ambassadorSmoke.qa.transports.find(transport=>transport.name==='ambassador')?.visible,'opening Ambassador center is outside the viewport')
++  validateCanvasEvidence(ambassadorSmoke.canvas).forEach(failure=>check(false,`opening Ambassador: ${failure}`))
++  check(jeepSmoke.qa.phase==='jungle-jeep'&&jeepSmoke.qa.transportWeights.jeep>.95,'moving jeep smoke state did not render')
++  check(jeepSmoke.qa.transports.find(transport=>transport.name==='jeep')?.visible,'moving jeep center is outside the viewport')
++  validateCanvasEvidence(jeepSmoke.canvas).forEach(failure=>check(false,`moving jeep: ${failure}`))
++  check(soundControlsBeforeStart===0,`expected no entry sound control, received ${soundControlsBeforeStart}`)
++  check(soundControls===0,`expected no journey sound control, received ${soundControls}`)
++  check(audioElementsBeforeStart===0&&audioElements===0,`expected no audio elements, received ${audioElementsBeforeStart}/${audioElements}`)
++  check(menuItems===5,`expected five menu actions, received ${menuItems}`)
++  check(menuJump==='Three ways into India.',`Plans menu jump landed on "${menuJump}"`)
++  check(bookingSubmitted,'booking form did not reach the success state')
++  check(!horizontalOverflow,'horizontal overflow occurred during at least one QA state')
++  check(fixedNavbar===0,`expected no fixed legacy navbar, received ${fixedNavbar}`)
++  check(conventionalSections===0,`expected no conventional legacy sections, received ${conventionalSections}`)
++  check(messages.length===0,`console/page messages were emitted: ${messages.join(' | ')}`)
++
++  result={
++    requested,
++    baseUrl,
++    viewport,
++    screenshotDir,
++    frameNames,
++    seen,
++    ambassadorSmoke,
++    jeepSmoke,
++    soundControlsBeforeStart,
++    soundControls,
++    audioElementsBeforeStart,
++    audioElements,
++    menuItems,
++    menuJump,
++    bookingSubmitted,
++    horizontalOverflow,
++    fixedNavbar,
++    conventionalSections,
++    messages,
++    screenshotPaths:{
++      smoke:[ambassadorSmoke.screenshot,jeepSmoke.screenshot],
++      frames:seen.map(frame=>frame.screenshot),
++      canvas:[ambassadorSmoke.canvas.screenshot,jeepSmoke.canvas.screenshot,...seen.map(frame=>frame.canvas.screenshot)],
++      menu:menuScreenshot,
++      booking:bookingScreenshot,
++    },
++    failures,
++  }
++}finally{
++  await browser.close()
+ }
+ 
+-const soundControls=await page.getByRole('button',{name:/sound/i}).count()
+-
+-await page.getByRole('button',{name:'Open journey menu'}).click()
+-const menuItems=await page.locator('.journey-menu__items button').count()
+-await page.screenshot({path:`/tmp/ambassador-india-${requested}-menu.png`})
+-await page.getByRole('button',{name:'Plans'}).click()
+-await page.waitForTimeout(1500)
+-const menuJump=await page.locator('.chapter h1').innerText()
+-await page.getByRole('button',{name:'Open journey menu'}).click()
+-await page.getByRole('button',{name:'Plan a Trip'}).click()
+-const dialog=page.locator('.booking-overlay')
+-await dialog.waitFor()
+-await page.screenshot({path:`/tmp/ambassador-india-${requested}-booking.png`})
+-await page.getByLabel('Full name').fill('QA Traveller')
+-await page.getByLabel('Email').fill('qa@example.com')
+-await page.getByLabel('Plan or destination').fill('Heritage India')
+-await page.getByRole('button',{name:'Request itinerary'}).click()
+-const bookingSubmitted=await page.getByText('Journey request received').isVisible()
+-const result={requested,seen,soundControls,menuItems,menuJump,bookingSubmitted,horizontalOverflow:await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),fixedNavbar:await page.locator('.navbar').count(),conventionalSections:await page.locator('#services,#destinations,#testimonials,footer').count(),messages}
+ console.log(JSON.stringify(result,null,2))
+-await browser.close()
++if(failures.length)throw new Error(`Visual QA failed:\n- ${failures.join('\n- ')}`)
+diff --git a/src/three/expeditionController.js b/src/three/expeditionController.js
+index 61ad383..426c02a 100644
+--- a/src/three/expeditionController.js
++++ b/src/three/expeditionController.js
+@@ -112,20 +112,96 @@ const setTransportWeight=(transport,materials,casters,weight)=>{
+   setShadowWeight(casters,weight)
+ }
+ 
+ const alignWorldAnchor=(world,anchor,target)=>{
+   world.updateMatrixWorld(true)
+   const current=anchor.getWorldPosition(new THREE.Vector3())
+   world.position.add(target.clone().sub(current))
+   world.updateMatrixWorld(true)
+ }
+ 
++const forbiddenIcePattern=/(snow|ice|glacier)/i
++const isAttachedToScene=(root,scene)=>{
++  if(!root?.isObject3D||!scene?.isScene)return false
++  for(let current=root;current;current=current.parent)if(current===scene)return true
++  return false
++}
++const hasVisibleAncestors=(object,scene)=>{
++  for(let current=object;current;current=current.parent){
++    if(current.visible===false)return false
++    if(current===scene)return true
++  }
++  return false
++}
++const hasVisibleMaterial=object=>{
++  const materials=Array.isArray(object.material)?object.material:[object.material]
++  return materials.filter(Boolean).some(material=>material.visible!==false&&(material.opacity??1)>.05)
++}
++export const hasRenderableMesh=(root,scene)=>{
++  if(!isAttachedToScene(root,scene))return false
++  let renderable=false
++  root.traverse(object=>{
++    if(!renderable&&object.isMesh&&hasVisibleAncestors(object,scene)&&hasVisibleMaterial(object))renderable=true
++  })
++  return renderable
++}
++const containsForbiddenContent=value=>{
++  const seen=new WeakSet()
++  const inspect=candidate=>{
++    if(typeof candidate==='string')return forbiddenIcePattern.test(candidate)
++    if(!candidate||typeof candidate!=='object'||candidate.isObject3D||candidate.isMaterial)return false
++    if(seen.has(candidate))return false
++    seen.add(candidate)
++    return Object.values(candidate).some(inspect)
++  }
++  return inspect(value)
++}
++const countForbiddenSceneObjects=scene=>{
++  if(!scene?.isScene)return 0
++  let count=0
++  scene.traverse(object=>{
++    const materials=(Array.isArray(object.material)?object.material:[object.material]).filter(Boolean)
++    if(forbiddenIcePattern.test(object.name||'')||containsForbiddenContent(object.userData)||materials.some(material=>forbiddenIcePattern.test(material.name||'')))count++
++  })
++  return count
++}
++const distanceToLine=(point,start,end,minimum=0,maximum=1)=>{
++  const dx=end.x-start.x,dz=end.z-start.z,lengthSquared=dx*dx+dz*dz
++  const projected=lengthSquared?((point.x-start.x)*dx+(point.z-start.z)*dz)/lengthSquared:0
++  const t=Math.min(maximum,Math.max(minimum,projected))
++  return Math.hypot(point.x-(start.x+dx*t),point.z-(start.z+dz*t))
++}
++
++const distanceToRoute=(point,route)=>{
++  const samples=route.getSpacedPoints(160)
++  return Math.min(...samples.slice(1).map((end,index)=>distanceToLine(
++    point,
++    samples[index],
++    end,
++    index===0?Number.NEGATIVE_INFINITY:0,
++    index===samples.length-2?Number.POSITIVE_INFINITY:1,
++  )))
++}
++
++export function getExpeditionQASnapshot({worlds,transports},scene){
++  const members=(transports.trekker.userData.members||[]).filter(member=>hasRenderableMesh(member.root,scene))
++  const activeWeight=root=>hasRenderableMesh(root,scene)?Number(root.userData.zoneWeight??root.userData.transitionWeight??0):0
++  return{
++    guides:members.filter(member=>member.role==='guide').length,
++    tourists:members.filter(member=>member.role==='tourist').length,
++    iceObjects:countForbiddenSceneObjects(scene),
++    walkersOnTrail:members.filter(member=>distanceToRoute(member.root.position,worlds.hills.userData.route)<.12).length,
++    zoneWeights:Object.fromEntries(Object.entries(worlds).map(([name,world])=>[name,activeWeight(world)])),
++    transportWeights:Object.fromEntries(Object.entries(transports).map(([name,transport])=>[name,activeWeight(transport)])),
++  }
++}
++
+ export function createExpeditionController(scene,materials,quality){
+   const forest=createJungleWorld(materials,quality)
+   const water=createWaterWorld(materials,quality)
+   const hills=createHillWorld(materials,quality)
+   forest.position.z=-52
+   forest.updateMatrixWorld(true)
+   alignWorldAnchor(water,water.userData.forestLanding,forest.userData.landing.getWorldPosition(new THREE.Vector3()))
+   alignWorldAnchor(hills,hills.userData.landing,water.userData.hillLanding.getWorldPosition(new THREE.Vector3()))
+ 
+   const worldMaterials={
+diff --git a/src/three/expeditionController.test.js b/src/three/expeditionController.test.js
+index 0ca6761..0e121d5 100644
+--- a/src/three/expeditionController.test.js
++++ b/src/three/expeditionController.test.js
+@@ -1,14 +1,14 @@
+ import * as THREE from 'three'
+ import {describe,expect,it,vi} from 'vitest'
+ import {createMaterials,disposeObject3D} from './primitives'
+-import {createExpeditionController,getTransitionState} from './expeditionController'
++import {createExpeditionController,getExpeditionQASnapshot,getTransitionState} from './expeditionController'
+ import {getExpeditionState} from './journeyData'
+ 
+ const sampleTransitions=()=>Array.from({length:201},(_,index)=>{
+   const progress=index*.005
+   return{progress,state:getTransitionState(getExpeditionState(progress))}
+ })
+ 
+ const materialFor=(root,name)=>{
+   let material
+   root.getObjectByName(name).traverse(object=>{if(!material&&object.material)material=object.material})
+@@ -77,20 +77,94 @@ describe('continuous expedition transitions',()=>{
+ 
+   it('uses the guide-led party behind the camera-compatible trekker key',()=>{
+     const scene=new THREE.Scene()
+     const controller=createExpeditionController(scene,createMaterials(),'mobile')
+     expect(controller.transports.trekker.name).toBe('guide-led-trekking-party')
+     expect(controller.transports.trekker.userData.members).toHaveLength(4)
+     expect(controller.worlds.hills.name).toBe('hill-world')
+     disposeObject3D(scene)
+   })
+ 
++  it('reports browser QA counters, live blend weights and trail placement',()=>{
++    const scene=new THREE.Scene()
++    const controller=createExpeditionController(scene,createMaterials(),'mobile')
++    const transition=controller.update(getExpeditionState(.72),2,false)
++    const snapshot=getExpeditionQASnapshot(controller,scene)
++
++    expect(snapshot.guides).toBe(1)
++    expect(snapshot.tourists).toBe(3)
++    expect(snapshot.iceObjects).toBe(0)
++    expect(snapshot.walkersOnTrail).toBe(4)
++    expect(snapshot.zoneWeights).toEqual(transition.worlds)
++    expect(snapshot.transportWeights).toEqual({
++      jeep:transition.transports.jeep,
++      boat:transition.transports.boat,
++      trekker:transition.transports.trekker,
++    })
++    expect(Object.values(snapshot.zoneWeights).filter(weight=>weight>.05)).toHaveLength(2)
++    disposeObject3D(scene)
++  })
++
++  it.each([
++    ['detached',({party,root})=>party.remove(root)],
++    ['empty',({root})=>root.clear()],
++    ['hidden',({root})=>{root.visible=false}],
++    ['zero-opacity',({root})=>root.traverse(object=>{
++      const objectMaterials=Array.isArray(object.material)?object.material:[object.material]
++      objectMaterials.filter(Boolean).forEach(material=>{material.transparent=true;material.opacity=0})
++    })],
++  ])('fails closed when a %s party root is not renderable',(_,mutate)=>{
++    const scene=new THREE.Scene()
++    const controller=createExpeditionController(scene,createMaterials(),'mobile')
++    controller.update(getExpeditionState(.82),2,false)
++    const party=controller.transports.trekker
++    const member=party.userData.members[1]
++    mutate({party,root:member.root})
++    scene.updateMatrixWorld(true)
++
++    const snapshot=getExpeditionQASnapshot(controller,scene)
++    expect(snapshot.guides).toBe(1)
++    expect(snapshot.tourists).toBe(2)
++    expect(snapshot.walkersOnTrail).toBe(3)
++    disposeObject3D(scene)
++  })
++
++  it('requires weighted worlds to remain attached to the active scene',()=>{
++    const scene=new THREE.Scene()
++    const controller=createExpeditionController(scene,createMaterials(),'mobile')
++    controller.update(getExpeditionState(.82),2,false)
++    expect(controller.worlds.hills.userData.zoneWeight).toBe(1)
++    scene.remove(controller.worlds.hills)
++
++    const snapshot=getExpeditionQASnapshot(controller,scene)
++    expect(snapshot.zoneWeights.hills).toBe(0)
++    expect(snapshot.transportWeights.trekker).toBe(0)
++    expect(snapshot.guides).toBe(0)
++    expect(snapshot.tourists).toBe(0)
++    expect(snapshot.walkersOnTrail).toBe(0)
++    controller.dispose()
++  })
++
++  it('finds forbidden snow and ice content anywhere in the active scene',()=>{
++    const scene=new THREE.Scene()
++    const controller=createExpeditionController(scene,createMaterials(),'mobile')
++    controller.update(getExpeditionState(.82),2,false)
++    const overlay=new THREE.Group()
++    overlay.name='decorative-overlay'
++    overlay.userData.description='soft snow overlay'
++    scene.add(overlay)
++
++    const snapshot=getExpeditionQASnapshot(controller,scene)
++    expect(snapshot.iceObjects).toBe(1)
++    controller.dispose()
++  })
++
+   it('does not jump transports backward at phase boundaries',()=>{
+     const scene=new THREE.Scene()
+     const controller=createExpeditionController(scene,createMaterials(),'mobile')
+     const positionOf=name=>name==='trekker'
+       ? controller.transports.trekker.userData.members[0].root.position.clone()
+       : controller.transports[name].position.clone()
+ 
+     for(const [boundary,name] of [[.41,'jeep'],[.62,'boat'],[.75,'trekker']]){
+       controller.update(getExpeditionState(boundary-1e-6),2,false)
+       const before=positionOf(name)
+diff --git a/src/three/hillWorld.js b/src/three/hillWorld.js
+index a5313c0..013867e 100644
+--- a/src/three/hillWorld.js
++++ b/src/three/hillWorld.js
+@@ -157,20 +157,96 @@ const createRockFaces=(materials,quality)=>{
+       rock.name='hill-rock-outcrop'
+       rock.rotation.set(deterministic(index+4)*.5,deterministic(index+5)*Math.PI,deterministic(index+6)*.35)
+       rock.scale.set(1+.8*deterministic(index+7),.45+.5*deterministic(index+8),.7+.5*deterministic(index+9))
+       rock.userData.slope=slope
+       rocks.add(rock)
+     }
+   }
+   return rocks
+ }
+ 
++const routeClearance=(point,routePoints)=>routePoints.reduce((nearest,sample)=>Math.min(nearest,Math.hypot(point.x-sample.x,point.z-sample.z)),Infinity)
++const groundPoint=(index,salt,routePoints,clearance=.8)=>{
++  for(let attempt=0;attempt<40;attempt++){
++    const seed=index*47+salt*131+attempt
++    const x=THREE.MathUtils.lerp(-29,29,deterministic(seed+1))
++    const z=THREE.MathUtils.lerp(-32,16,deterministic(seed+2))
++    if(routeClearance({x,z},routePoints)<clearance||lodgeGradeWeight(x,z)>.08||visualSlopeAt(x,z)>1.15)continue
++    return new THREE.Vector3(x,heightAt(x,z),z)
++  }
++  const x=THREE.MathUtils.lerp(-27,27,deterministic(index+salt+91)),z=THREE.MathUtils.lerp(-28,12,deterministic(index+salt+109))
++  return new THREE.Vector3(x,heightAt(x,z),z)
++}
++const routeSideGroundPoint=(index,count,route)=>{
++  const t=.03+(index/Math.max(1,count-1))*.86
++  const point=route.getPoint(t),tangent=route.getTangent(t).normalize()
++  const side=index%2?-1:1,offset=.75+deterministic(index+305)*3.45
++  const x=point.x-tangent.z*side*offset,z=point.z+tangent.x*side*offset
++  return new THREE.Vector3(x,heightAt(x,z),z)
++}
++
++const createHillGroundCover=(materials,quality,route)=>{
++  const routePoints=route.getSpacedPoints(120)
++  const bushes=named('hill-bushes')
++  const grass=named('hill-grass-clumps')
++  const detail=named('hill-ground-detail')
++  const grassMaterial=new THREE.MeshStandardMaterial({color:'#728746',roughness:.98})
++  const dryGrassMaterial=new THREE.MeshStandardMaterial({color:'#9a8b4f',roughness:1})
++  const earthMaterial=new THREE.MeshStandardMaterial({color:'#6f573b',roughness:1,side:THREE.DoubleSide})
++  const flowerMaterial=new THREE.MeshStandardMaterial({color:'#d5a34f',roughness:.86})
++  const bushCount=quality==='mobile'?34:58
++  const grassCount=quality==='mobile'?88:150
++  const detailCount=quality==='mobile'?30:50
++
++  for(let index=0;index<bushCount;index++){
++    const bush=named(`hill-bush-${index}`),scale=.45+deterministic(index+210)*.62
++    bush.add(
++      mesh(new THREE.IcosahedronGeometry(.48,1),index%3===0?materials.leaf2:materials.leaf,[-.28,.32,0]),
++      mesh(new THREE.IcosahedronGeometry(.56,1),index%4===0?materials.leaf2:materials.leaf,[.2,.38,.08]),
++      mesh(new THREE.IcosahedronGeometry(.38,1),materials.leaf,[0,.68,-.12]),
++    )
++    bush.position.copy(groundPoint(index,4,routePoints,1.05));bush.rotation.y=deterministic(index+240)*Math.PI*2;bush.scale.set(scale,.72*scale,scale);bush.userData.coverType='bush';bushes.add(bush)
++  }
++
++  for(let index=0;index<grassCount;index++){
++    const clump=named(`hill-grass-${index}`),material=index%5===0?dryGrassMaterial:grassMaterial
++    for(let blade=0;blade<4;blade++){
++      const angle=blade/4*Math.PI*2+deterministic(index*7+blade)*.35,height=.36+deterministic(index*11+blade)*.42
++      clump.add(mesh(new THREE.ConeGeometry(.035,height,4),material,[Math.cos(angle)*.11,height/2,Math.sin(angle)*.11],[Math.sin(angle)*.14,0,Math.cos(angle)*.14]))
++    }
++    clump.position.copy(routeSideGroundPoint(index,grassCount,route));clump.rotation.y=deterministic(index+330)*Math.PI*2;clump.scale.setScalar(.9+deterministic(index+350)*.72);clump.userData.coverType='grass';grass.add(clump)
++  }
++
++  for(let index=0;index<detailCount;index++){
++    const type=['stone','earth','flowers'][index%3],position=groundPoint(index,15,routePoints,.5)
++    let object
++    if(type==='stone'){
++      object=mesh(new THREE.DodecahedronGeometry(.16+deterministic(index+410)*.28,0),materials.stone)
++      object.scale.set(1.2+deterministic(index+420),.38+deterministic(index+430)*.3,.75+deterministic(index+440)*.55)
++      object.rotation.set(deterministic(index+450)*.3,deterministic(index+460)*Math.PI,deterministic(index+470)*.22)
++      position.y+=.08
++    }else if(type==='earth'){
++      object=mesh(new THREE.CircleGeometry(.35+deterministic(index+480)*.48,10),earthMaterial,[0,.025,0],[-Math.PI/2,0,0])
++      object.scale.set(1.5+deterministic(index+490),.7+deterministic(index+500)*.5,1)
++      position.y+=.025
++    }else{
++      object=named(`hill-wildflowers-${index}`)
++      for(let flower=0;flower<5;flower++){
++        const angle=flower/5*Math.PI*2,height=.22+(flower%3)*.06
++        object.add(mesh(new THREE.CylinderGeometry(.012,.018,height,4),grassMaterial,[Math.cos(angle)*.1,height/2,Math.sin(angle)*.1]),mesh(new THREE.SphereGeometry(.04,6,4),flowerMaterial,[Math.cos(angle)*.1,height,Math.sin(angle)*.1]))
++      }
++    }
++    object.name=object.name||`hill-${type}-${index}`;object.position.add(position);object.userData.detailType=type;detail.add(object)
++  }
++  return{bushes,grass,detail}
++}
++
+ class TerrainRoute extends THREE.CatmullRomCurve3{
+   constructor(points,heightSampler){
+     super(points,false,'centripetal')
+     this.heightSampler=heightSampler
+   }
+   getPoint(t,target=new THREE.Vector3()){
+     super.getPoint(t,target)
+     target.y=this.heightSampler(target.x,target.z)+.08
+     return target
+   }
+@@ -275,35 +351,39 @@ const createMist=()=>{
+ 
+ export function createHillWorld(materials,quality='desktop'){
+   const world=named('hill-world')
+   const localMaterials=Object.fromEntries(['wood','leaf','leaf2','stone','dark','ivory'].map(key=>[key,materials[key].clone()]))
+   const route=createRoute()
+   const start=route.points[0]
+   const end=route.points.at(-1)
+   const mist=createMist()
+   const landing=createLanding(localMaterials,start)
+   const lodge=createLodge(localMaterials,end)
++  const groundCover=createHillGroundCover(localMaterials,quality,route)
+   const sun=new THREE.DirectionalLight('#f0ca88',2.6)
+   sun.name='hill-country-sun'
+   sun.position.set(-12,18,8)
+   sun.target.name='hill-country-sun-target'
+   sun.target.position.set(2,heightAt(2,-18),-18)
+   sun.castShadow=quality==='desktop'
+   sun.userData.baseIntensity=sun.intensity
+   const fill=new THREE.HemisphereLight('#b9d0c0','#3d4936',1.15)
+   fill.name='hill-country-fill'
+   fill.userData.baseIntensity=fill.intensity
+   world.add(
+     createTerrain(quality),
+     createRidges(quality),
+     createForest(localMaterials,quality),
+     createRockFaces(localMaterials,quality),
++    groundCover.bushes,
++    groundCover.grass,
++    groundCover.detail,
+     mist,
+     createTrail(route),
+     landing,
+     lodge,
+     sun,
+     sun.target,
+     fill,
+   )
+   world.userData={
+     route,
+diff --git a/src/three/hillWorld.test.js b/src/three/hillWorld.test.js
+index 4eaed33..1f813c5 100644
+--- a/src/three/hillWorld.test.js
++++ b/src/three/hillWorld.test.js
+@@ -93,20 +93,46 @@ describe('hill world',()=>{
+ 
+     expect(world.userData.route.points).toHaveLength(30)
+     const [start]=world.userData.route.points
+     const end=world.userData.route.points.at(-1)
+     expect(world.userData.landing.position.distanceTo(new THREE.Vector3(start.x-3.3,start.y-.08,start.z))).toBeLessThan(.01)
+     expect(world.getObjectByName('hill-lodge').position.distanceTo(new THREE.Vector3(end.x,end.y-.08,end.z))).toBeLessThan(.01)
+     expect(world.userData.copyAnchor.y).toBeGreaterThan(end.y)
+     disposeObject3D(world)
+   })
+ 
++  it('fills the hill country with bushes, dense grass and varied ground detail',()=>{
++    const world=createHillWorld(createMaterials(),'desktop')
++    const bushes=world.getObjectByName('hill-bushes')
++    const grass=world.getObjectByName('hill-grass-clumps')
++    const detail=world.getObjectByName('hill-ground-detail')
++    expect(bushes?.children.length).toBeGreaterThanOrEqual(54)
++    expect(grass?.children.length).toBeGreaterThanOrEqual(110)
++    expect(detail?.children.length).toBeGreaterThanOrEqual(46)
++    expect(new Set(detail.children.map(child=>child.userData.detailType))).toEqual(new Set(['stone','earth','flowers']))
++    const routePoints=world.userData.route.getSpacedPoints(120)
++    const nearTrail=grass.children.filter(clump=>routePoints.some(point=>Math.hypot(point.x-clump.position.x,point.z-clump.position.z)<4.8))
++    expect(nearTrail.length).toBeGreaterThanOrEqual(100)
++    ;[bushes,grass,detail].forEach(group=>group.children.forEach(child=>{
++      expect(Math.abs(child.position.y-world.userData.heightAt(child.position.x,child.position.z))).toBeLessThan(.35)
++    }))
++    disposeObject3D(world)
++  })
++
++  it('keeps meaningful hill ground detail on mobile',()=>{
++    const world=createHillWorld(createMaterials(),'mobile')
++    expect(world.getObjectByName('hill-bushes')?.children.length).toBeGreaterThanOrEqual(32)
++    expect(world.getObjectByName('hill-grass-clumps')?.children.length).toBeGreaterThanOrEqual(62)
++    expect(world.getObjectByName('hill-ground-detail')?.children.length).toBeGreaterThanOrEqual(28)
++    disposeObject3D(world)
++  })
++
+   it('grades the complete lodge foundation footprint to the terrain',()=>{
+     const world=createHillWorld(createMaterials(),'desktop')
+     const lodge=world.getObjectByName('hill-lodge')
+     const foundation=world.getObjectByName('hill-lodge-foundation')
+     expect(foundation).toBeTruthy()
+     world.updateMatrixWorld(true)
+     const bounds=new THREE.Box3().setFromObject(foundation)
+     for(const dx of [-2.55,-1.275,0,1.275,2.55]){
+       for(const dz of [-1.9,-.95,0,.95,1.9]){
+         const terrainY=world.userData.heightAt(lodge.position.x+dx,lodge.position.z+dz)
+diff --git a/src/three/indiaJourney.js b/src/three/indiaJourney.js
+index e8f5606..9e3f879 100644
+--- a/src/three/indiaJourney.js
++++ b/src/three/indiaJourney.js
+@@ -1,27 +1,56 @@
+ import * as THREE from 'three'
+ import {createAmbassador,updateAmbassador} from './ambassador'
+-import {createExpeditionController} from './expeditionController'
++import {createExpeditionController,getExpeditionQASnapshot,hasRenderableMesh} from './expeditionController'
+ import {clamp01,getJourneyState} from './journeyData'
+ import {createMaterials,disposeObject3D,mesh} from './primitives'
+ import {createIndiaRegions} from './regions'
+ 
+ const ATMOSPHERES={
+   forest:{fogColor:'#719080',fogNear:16,fogFar:70,exposure:1.12},
+   water:{fogColor:'#79b7bd',fogNear:18,fogFar:86,exposure:1.20},
+   hills:{fogColor:'#9aac9c',fogNear:20,fogFar:112,exposure:1.08},
+ }
+ 
+ export const getRenderQuality=width=>width<768?'mobile':'desktop'
+-export const getMobileTrekCamera=([x,y,z])=>({camera:[x+3,y+2.2,z+8],target:[x,y+.9,z]})
++export const getRenderFov=quality=>quality==='mobile'?64:48
++export const getMobileHandoffTargetOffset=state=>state.phase==='jeep-to-boat'
++  ? Math.sin(Math.PI*clamp01(state.localProgress))
++  : 0
++export const getMobileTrekCamera=([x,y,z])=>({camera:[x+3,y+3.5,z+20],target:[x,y+.7,z+4]})
+ export const usesMobileTrekCamera=phase=>phase==='hill-trek'||phase==='contact'
+ export const getDampingFactor=delta=>1-Math.exp(-Math.max(0,delta)*4.5)
++export const getPartyScreenSnapshot=(party,camera,weight,scene)=>{
++  camera.updateMatrixWorld(true)
++  return (party.userData.members||[]).map(({role,root})=>{
++    const clip=root.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0,1,0)).project(camera)
++    return{
++      name:root.name,
++      role,
++      visible:weight>.05&&hasRenderableMesh(root,scene)&&Math.abs(clip.x)<=1&&Math.abs(clip.y)<=1&&clip.z>=-1&&clip.z<=1,
++      ndc:{x:clip.x,y:clip.y,z:clip.z},
++    }
++  })
++}
++export const getTransportScreenSnapshot=(transports,camera,weights,scene)=>{
++  camera.updateMatrixWorld(true)
++  return Object.entries(transports).map(([name,transport])=>{
++    const bounds=new THREE.Box3().setFromObject(transport)
++    const center=bounds.isEmpty()?transport.getWorldPosition(new THREE.Vector3()):bounds.getCenter(new THREE.Vector3())
++    const clip=center.project(camera)
++    return{
++      name,
++      visible:(weights[name]||0)>.05&&hasRenderableMesh(transport,scene)&&Math.abs(clip.x)<=1&&Math.abs(clip.y)<=1&&clip.z>=-1&&clip.z<=1,
++      ndc:{x:clip.x,y:clip.y,z:clip.z},
++    }
++  })
++}
+ export const getAtmosphereState=weights=>{
+   const fogColor=new THREE.Color(0,0,0)
+   const state={fogColor,fogNear:0,fogFar:0,exposure:0}
+   Object.entries(ATMOSPHERES).forEach(([name,palette])=>{
+     const weight=weights[name]||0
+     const color=new THREE.Color(palette.fogColor)
+     fogColor.r+=color.r*weight
+     fogColor.g+=color.g*weight
+     fogColor.b+=color.b*weight
+     state.fogNear+=palette.fogNear*weight
+@@ -57,21 +86,21 @@ const setObjectWeight=(root,states,weight)=>{
+     const transparent=base.transparent||weight<1
+     material.opacity=base.opacity*weight
+     material.depthWrite=base.depthWrite&&weight>.35
+     if(material.transparent!==transparent){material.transparent=transparent;material.needsUpdate=true}
+   })
+ }
+ 
+ export function createIndiaJourney(canvas,{reducedMotion=false,onContextLost=()=>{}}={}){
+   const quality=getRenderQuality(window.innerWidth)
+   const scene=new THREE.Scene()
+-  const camera=new THREE.PerspectiveCamera(48,1,.1,300)
++  const camera=new THREE.PerspectiveCamera(getRenderFov(quality),1,.1,300)
+   const renderer=new THREE.WebGLRenderer({canvas,antialias:quality==='desktop',alpha:false,powerPreference:'high-performance'})
+   renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,quality==='mobile'?1.25:2))
+   renderer.outputColorSpace=THREE.SRGBColorSpace
+   renderer.toneMapping=THREE.ACESFilmicToneMapping
+   renderer.toneMappingExposure=1.18
+   renderer.shadowMap.enabled=quality==='desktop'
+   renderer.shadowMap.type=THREE.PCFSoftShadowMap
+ 
+   scene.fog=new THREE.Fog('#8fc7c7',20,75)
+   scene.background=new THREE.Color('#8fc7c7')
+@@ -98,20 +127,43 @@ export function createIndiaJourney(canvas,{reducedMotion=false,onContextLost=()=
+   const ambassadorMaterials=collectMaterialStates(ambassador)
+   scene.add(ambassador)
+   const expedition=createExpeditionController(scene,materials,quality)
+   const clock=new THREE.Clock()
+   let progress=0
+   let pointer={x:0,y:0}
+   let raf
+   let paused=false
+   let target=new THREE.Vector3()
+   let lost=false
++  let latestTransition
++
++  const getQASnapshot=()=>{
++    const state=getJourneyState(progress)
++    const snapshot=getExpeditionQASnapshot(expedition,scene)
++    const ambassadorWeight=hasRenderableMesh(ambassador,scene)?latestTransition?.transports.ambassador||0:0
++    const transportWeights={ambassador:ambassadorWeight,...snapshot.transportWeights}
++    const members=getPartyScreenSnapshot(expedition.transports.trekker,camera,transportWeights.trekker,scene)
++    const transports=getTransportScreenSnapshot({ambassador,...expedition.transports},camera,transportWeights,scene)
++    return{
++      ...snapshot,
++      progress,
++      phase:state.expedition.phase,
++      transportWeights,
++      members,
++      transports,
++      visibleMembers:{
++        guides:members.filter(member=>member.visible&&member.role==='guide').length,
++        tourists:members.filter(member=>member.visible&&member.role==='tourist').length,
++      },
++    }
++  }
++  window.__journeyQA=getQASnapshot
+ 
+   const resize=()=>{
+     const parent=canvas.parentElement
+     if(!parent)return
+     renderer.setSize(parent.clientWidth,parent.clientHeight,false)
+     camera.aspect=parent.clientWidth/Math.max(1,parent.clientHeight)
+     camera.updateProjectionMatrix()
+   }
+   const ro=new ResizeObserver(resize)
+   if(canvas.parentElement)ro.observe(canvas.parentElement)
+@@ -121,27 +173,29 @@ export function createIndiaJourney(canvas,{reducedMotion=false,onContextLost=()=
+     if(paused||lost)return
+     const delta=clock.getDelta()
+     const elapsed=clock.elapsedTime
+     const state=getJourneyState(progress)
+     let desiredPosition=new THREE.Vector3(...state.cameraPosition)
+     const visible=new Set(getWorldVisibility(state.phase))
+     world.children.forEach(group=>{group.visible=visible.has(group.name)})
+ 
+     updateAmbassador(ambassador,routeCurve,Math.min(progress,.41),elapsed,reducedMotion)
+     const transition=expedition.update(state.expedition,elapsed,reducedMotion)
++    latestTransition=transition
+     setObjectWeight(ambassador,ambassadorMaterials,transition.transports.ambassador)
+     route.visible=transition.transports.ambassador>0
+     journeyGround.visible=state.phase==='vehicle-intro'||state.phase==='operations'
+ 
+     let desiredTarget=state.phase==='vehicle-intro'
+       ? ambassador.position.clone().add(new THREE.Vector3(0,1,0))
+       : new THREE.Vector3(...state.cameraTarget)
++    if(quality==='mobile')desiredTarget.x+=getMobileHandoffTargetOffset(state.expedition)
+     if(quality==='mobile'&&usesMobileTrekCamera(state.expedition.phase)){
+       const party=expedition.transports.trekker
+       const guide=party.userData.members?.[0]?.root||party
+       const framing=getMobileTrekCamera(guide.getWorldPosition(new THREE.Vector3()).toArray())
+       desiredPosition=new THREE.Vector3(...framing.camera)
+       desiredTarget=new THREE.Vector3(...framing.target)
+     }
+     if(!reducedMotion){
+       desiredPosition.x+=pointer.x*.45
+       desiredPosition.y-=pointer.y*.25
+@@ -168,22 +222,24 @@ export function createIndiaJourney(canvas,{reducedMotion=false,onContextLost=()=
+     cancelAnimationFrame(raf)
+     onContextLost()
+   }
+   canvas.addEventListener('webglcontextlost',onLost)
+   animate()
+ 
+   return{
+     setProgress:value=>{progress=clamp01(value)},
+     setPointer:(x,y)=>{pointer={x,y}},
+     setReducedMotion:value=>{reducedMotion=value},
++    getQASnapshot,
+     pause:()=>{paused=true;cancelAnimationFrame(raf)},
+     resume:()=>{if(paused){paused=false;clock.getDelta();animate()}},
+     dispose:()=>{
+       cancelAnimationFrame(raf)
+       ro.disconnect()
+       canvas.removeEventListener('webglcontextlost',onLost)
++      if(window.__journeyQA===getQASnapshot)delete window.__journeyQA
+       expedition.dispose()
+       disposeObject3D(scene)
+       renderer.dispose()
+     },
+   }
+ }
+diff --git a/src/three/indiaJourney.test.js b/src/three/indiaJourney.test.js
+index 9826694..9cb13d1 100644
+--- a/src/three/indiaJourney.test.js
++++ b/src/three/indiaJourney.test.js
+@@ -1,33 +1,105 @@
+ import { describe, expect, it } from 'vitest'
+ import * as THREE from 'three'
+ import {createExpeditionController} from './expeditionController'
+ import {getExpeditionState,getJourneyState} from './journeyData'
+ import {createMaterials,disposeObject3D} from './primitives'
+-import {getAtmosphereState,getDampingFactor,getMobileTrekCamera,getRenderQuality,getWorldVisibility,usesMobileTrekCamera} from './indiaJourney'
++import {getAtmosphereState,getDampingFactor,getMobileHandoffTargetOffset,getMobileTrekCamera,getPartyScreenSnapshot,getRenderFov,getRenderQuality,getTransportScreenSnapshot,getWorldVisibility,usesMobileTrekCamera} from './indiaJourney'
+ 
+ describe('renderer quality', () => {
+   it('selects the simplified mobile scene at narrow widths', () => {
+     expect(getRenderQuality(390)).toBe('mobile')
+     expect(getRenderQuality(1440)).toBe('desktop')
++    expect(getRenderFov('mobile')).toBe(64)
++    expect(getRenderFov('desktop')).toBe(48)
+   })
+   it('isolates cinematic architecture from competing legacy regions',()=>{
+     expect(getWorldVisibility('operations')).toEqual(['deccan','tourism-operations-pavilion'])
+     expect(getWorldVisibility('plans')).toEqual([])
+     expect(getWorldVisibility('contact')).toEqual([])
+   })
+   it('frames the mobile trekker from a readable trailing distance',()=>{
+-    expect(getMobileTrekCamera([2,1,-130])).toEqual({camera:[5,3.2,-122],target:[2,1.9,-130]})
++    expect(getMobileTrekCamera([2,1,-130])).toEqual({camera:[5,4.5,-110],target:[2,1.7,-126]})
+     expect(usesMobileTrekCamera('hill-trek')).toBe(true)
+     expect(usesMobileTrekCamera('contact')).toBe(true)
+     expect(usesMobileTrekCamera('water-boat')).toBe(false)
+   })
++  it('reports the guide and at least two tourists inside the mobile party frame',()=>{
++    const scene=new THREE.Scene(),controller=createExpeditionController(scene,createMaterials(),'mobile')
++    const transition=controller.update(getExpeditionState(.82),2,false)
++    scene.updateMatrixWorld(true)
++    const guide=controller.transports.trekker.userData.members[0].root.getWorldPosition(new THREE.Vector3())
++    const framing=getMobileTrekCamera(guide.toArray())
++    const camera=new THREE.PerspectiveCamera(getRenderFov('mobile'),390/844,.1,300)
++    camera.position.set(...framing.camera)
++    camera.lookAt(new THREE.Vector3(...framing.target))
++    camera.updateMatrixWorld(true)
++
++    const members=getPartyScreenSnapshot(controller.transports.trekker,camera,transition.transports.trekker,scene)
++    expect(members.filter(member=>member.visible&&member.role==='guide')).toHaveLength(1)
++    expect(members.filter(member=>member.visible&&member.role==='tourist').length).toBeGreaterThanOrEqual(2)
++    disposeObject3D(scene)
++  })
++  it('reports all four walkers inside the desktop party frame',()=>{
++    const scene=new THREE.Scene(),controller=createExpeditionController(scene,createMaterials(),'desktop')
++    const transition=controller.update(getExpeditionState(.82),2,false)
++    scene.updateMatrixWorld(true)
++    const framing=getJourneyState(.82)
++    const camera=new THREE.PerspectiveCamera(48,1440/900,.1,300)
++    camera.position.set(...framing.cameraPosition)
++    camera.lookAt(new THREE.Vector3(...framing.cameraTarget))
++    camera.updateMatrixWorld(true)
++
++    const members=getPartyScreenSnapshot(controller.transports.trekker,camera,transition.transports.trekker,scene)
++    expect(members.filter(member=>member.visible)).toHaveLength(4)
++    disposeObject3D(scene)
++  })
++  it('keeps both sides of each mobile handoff inside the portrait frame',()=>{
++    const scene=new THREE.Scene(),controller=createExpeditionController(scene,createMaterials(),'mobile')
++    const camera=new THREE.PerspectiveCamera(getRenderFov('mobile'),390/844,.1,300)
++    const missing=[]
++    for(const [progress,names] of [[.595,['jeep','boat']],[.725,['boat','trekker']]]){
++      const transition=controller.update(getExpeditionState(progress),2,false)
++      scene.updateMatrixWorld(true)
++      const framing=getJourneyState(progress)
++      camera.position.set(...framing.cameraPosition)
++      const target=new THREE.Vector3(...framing.cameraTarget)
++      target.x+=getMobileHandoffTargetOffset(getExpeditionState(progress))
++      camera.lookAt(target)
++      camera.updateMatrixWorld(true)
++      const transports=getTransportScreenSnapshot(controller.transports,camera,transition.transports,scene)
++      names.forEach(name=>{
++        const transport=transports.find(candidate=>candidate.name===name)
++        if(!transport?.visible)missing.push({progress,name,ndc:transport?.ndc})
++      })
++    }
++    expect(missing).toEqual([])
++    disposeObject3D(scene)
++  })
++  it('does not project hidden or non-renderable party roots as visible',()=>{
++    const scene=new THREE.Scene(),controller=createExpeditionController(scene,createMaterials(),'mobile')
++    const transition=controller.update(getExpeditionState(.82),2,false)
++    scene.updateMatrixWorld(true)
++    const guide=controller.transports.trekker.userData.members[0].root.getWorldPosition(new THREE.Vector3())
++    const framing=getMobileTrekCamera(guide.toArray())
++    const camera=new THREE.PerspectiveCamera(getRenderFov('mobile'),390/844,.1,300)
++    camera.position.set(...framing.camera)
++    camera.lookAt(new THREE.Vector3(...framing.target))
++    camera.updateMatrixWorld(true)
++    const party=controller.transports.trekker
++    const member=party.userData.members[1].root
++    member.visible=false
++
++    const members=getPartyScreenSnapshot(party,camera,transition.transports.trekker,scene)
++    expect(members.find(candidate=>candidate.name===member.name)?.visible).toBe(false)
++    disposeObject3D(scene)
++  })
+   it('keeps mobile guide framing continuous into contact',()=>{
+     const scene=new THREE.Scene(),controller=createExpeditionController(scene,createMaterials(),'mobile')
+     const framingAt=progress=>{
+       controller.update(getExpeditionState(progress),2,false)
+       scene.updateMatrixWorld(true)
+       const guide=controller.transports.trekker.userData.members[0].root.getWorldPosition(new THREE.Vector3())
+       return getMobileTrekCamera(guide.toArray())
+     }
+     const before=framingAt(.92-1e-6),contact=framingAt(.92)
+     expect(new THREE.Vector3(...contact.camera).distanceTo(new THREE.Vector3(...before.camera))).toBeLessThan(.01)
+diff --git a/src/three/journeyData.js b/src/three/journeyData.js
+index c88fbee..f331d3c 100644
+--- a/src/three/journeyData.js
++++ b/src/three/journeyData.js
+@@ -26,22 +26,22 @@ const CINEMATIC_KEYFRAMES=[
+   {p:.18,camera:[-10,5,-10],target:[0,1.7,-24]},
+   {p:.25,camera:[-11,5.2,-12],target:[0,1.7,-24]},
+   {p:.38,camera:[8,6,-32],target:[0,2,-50]},
+   {p:.48,camera:[0,3.4,-41],target:[0,1.5,-53]},
+   {p:.57,camera:[8,4,-62],target:[1.7,1,-72.5]},
+   {p:.595,camera:[7,4,-66],target:[.8,1.22,-76.55]},
+   {p:.62,camera:[-5,4,-68],target:[4.8,1,-76.55]},
+   {p:.66,camera:[15,4,-84],target:[7.8,1,-92.5]},
+   {p:.70,camera:[-2,4,-98],target:[7.8,1,-108.55]},
+   {p:.725,camera:[3,5,-98],target:[11.1,1.52,-108.55]},
+-  {p:.75,camera:[17.3865,2.22,-100.5546],target:[14.3865,.92,-108.5546]},
+-  {p:.82,camera:[9,8,-120],target:[18.93,3.4,-129.48]},
++  {p:.75,camera:[17.3865,3.52,-88.5546],target:[14.3865,.72,-104.5546]},
++  {p:.82,camera:[9,8,-120],target:[17.65,2.38,-125.39]},
+   {p:.92,camera:[17,17,-144],target:[26.39,13.3,-154.55]},
+   {p:1,camera:[34,17,-145],target:[26.39,14,-154.55]},
+ ]
+ const cinematicState=value=>{const nextIndex=Math.max(1,CINEMATIC_KEYFRAMES.findIndex(k=>value<=k.p)),a=CINEMATIC_KEYFRAMES[nextIndex-1],b=CINEMATIC_KEYFRAMES[nextIndex],t=smoothstep(0,1,(value-a.p)/Math.max(.0001,b.p-a.p));return{cameraPosition:lerp3(a.camera,b.camera,t),cameraTarget:lerp3(a.target,b.target,t)}}
+ 
+ export function getExpeditionState(progress){
+   const p=clamp01(progress)
+   if(p<.38)return{progress:p,phase:'ambassador',activeTransport:'ambassador',handoff:null,localProgress:p/.38}
+   if(p<.41)return{progress:p,phase:'ambassador-to-jeep',activeTransport:'ambassador',handoff:'ambassador-to-jeep',localProgress:(p-.38)/.03}
+   if(p<.57)return{progress:p,phase:'jungle-jeep',activeTransport:'jeep',handoff:null,localProgress:(p-.41)/.16}
+diff --git a/src/three/journeyData.test.js b/src/three/journeyData.test.js
+index b47e3f1..36983fe 100644
+--- a/src/three/journeyData.test.js
++++ b/src/three/journeyData.test.js
+@@ -34,50 +34,53 @@ describe('India journey data', () => {
+   })
+ 
+   it('exposes the three plan focus states in journey order', () => {
+     expect([.48,.66,.82].map(p=>getJourneyState(p).planFocus)).toEqual([0,1,2])
+   })
+ 
+   it('frames the operations pavilion and each expedition world deliberately',()=>{
+     expect(getJourneyState(.25).cameraTarget[2]).toBeCloseTo(-24,0)
+     expect(getJourneyState(.48).cameraTarget[2]).toBeCloseTo(-53,0)
+     expect(getJourneyState(.66).cameraTarget[2]).toBeCloseTo(-92.5,0)
+-    expect(getJourneyState(.82).cameraTarget[2]).toBeCloseTo(-129.5,0)
++    expect(getJourneyState(.82).cameraTarget[2]).toBeCloseTo(-125.4,0)
+   })
+   it('moves through Ambassador, jeep, boat and trekking phases',()=>{
+     expect([.1,.34,.43,.55,.64,.78,.9].map(p=>getExpeditionState(p).activeTransport)).toEqual(['ambassador','ambassador','jeep','jeep','boat','trekker','trekker'])
+     expect(getExpeditionState(.39).handoff).toBe('ambassador-to-jeep')
+     expect(getExpeditionState(.60).handoff).toBe('jeep-to-boat')
+     expect(getExpeditionState(.72).handoff).toBe('boat-to-trek')
+     expect(getExpeditionState(.82).phase).toBe('hill-trek')
+   })
+   it('eases camera interpolation and centers intermediate frames on both landings',()=>{
+     expect(getJourneyState(.5025).cameraPosition[0]).toBeCloseTo(1.25,5)
+     const scene=new THREE.Scene(),controller=createExpeditionController(scene,createMaterials(),'mobile')
+     scene.updateMatrixWorld(true)
+     const forestLanding=controller.worlds.forest.userData.landing.getWorldPosition(new THREE.Vector3())
+     const hillLanding=controller.worlds.hills.userData.landing.getWorldPosition(new THREE.Vector3())
+     forestLanding.y+=1.2
+     hillLanding.y+=1.5
+     expect(new THREE.Vector3(...getJourneyState(.595).cameraTarget).distanceTo(forestLanding)).toBeLessThan(.25)
+     expect(new THREE.Vector3(...getJourneyState(.725).cameraTarget).distanceTo(hillLanding)).toBeLessThan(.25)
+     disposeObject3D(scene)
+   })
+-  it('targets the elevated hill trail and lodge with continuous desktop framing',()=>{
++  it('targets the guide-led hill party and lodge with continuous desktop framing',()=>{
+     const scene=new THREE.Scene(),controller=createExpeditionController(scene,createMaterials(),'mobile')
+     controller.update(getExpeditionState(.82),2,false)
+     scene.updateMatrixWorld(true)
+-    const guide=controller.transports.trekker.userData.members[0].root.getWorldPosition(new THREE.Vector3())
++    const partyCenter=controller.transports.trekker.userData.members
++      .map(member=>member.root.getWorldPosition(new THREE.Vector3()))
++      .reduce((sum,position)=>sum.add(position),new THREE.Vector3())
++      .multiplyScalar(1/controller.transports.trekker.userData.members.length)
+     const hillTarget=new THREE.Vector3(...getJourneyState(.82).cameraTarget)
+-    expect(Math.hypot(hillTarget.x-guide.x,hillTarget.z-guide.z)).toBeLessThan(2)
+-    expect(hillTarget.y-guide.y).toBeGreaterThanOrEqual(.5)
+-    expect(hillTarget.y-guide.y).toBeLessThan(3)
++    expect(Math.hypot(hillTarget.x-partyCenter.x,hillTarget.z-partyCenter.z)).toBeLessThan(.1)
++    expect(hillTarget.y-partyCenter.y).toBeGreaterThanOrEqual(.5)
++    expect(hillTarget.y-partyCenter.y).toBeLessThan(2)
+ 
+     const lodge=controller.worlds.hills.getObjectByName('hill-lodge').getWorldPosition(new THREE.Vector3())
+     const contactTarget=new THREE.Vector3(...getJourneyState(.92).cameraTarget)
+     expect(Math.hypot(contactTarget.x-lodge.x,contactTarget.z-lodge.z)).toBeLessThan(2)
+     expect(contactTarget.y-lodge.y).toBeGreaterThanOrEqual(1)
+     const before=new THREE.Vector3(...getJourneyState(.92-1e-6).cameraTarget)
+     expect(contactTarget.distanceTo(before)).toBeLessThan(.01)
+     disposeObject3D(scene)
+   })
+   it('describes the final stop as lush hill country without snow or Himalayan copy',()=>{
+diff --git a/src/three/jungleWorld.js b/src/three/jungleWorld.js
+index 6c19d3e..d668c5b 100644
+--- a/src/three/jungleWorld.js
++++ b/src/three/jungleWorld.js
+@@ -129,20 +129,48 @@ function createMarshEdge(materials,endpoint,quality){
+ }
+ 
+ function createLanding(materials,route){
+   const landing=nameGroup('forest-landing'),endpoint=route.getPoint(1),tangent=route.getTangent(1).normalize()
+   landing.position.copy(endpoint).addScaledVector(tangent,4.2);landing.rotation.y=Math.atan2(tangent.x,tangent.z)
+   for(let plank=0;plank<9;plank++)landing.add(namedMesh('landing-plank',new THREE.BoxGeometry(4.8,.2,.48),materials.landingWood,[0,.14,(plank-4)*.5]))
+   ;[-2.05,2.05].forEach(x=>[-1.7,1.7].forEach(z=>landing.add(namedMesh('landing-pile',new THREE.CylinderGeometry(.13,.18,1.25,8),materials.wood,[x,-.34,z]))))
+   return landing
+ }
+ 
++function createLandingBankLayers(materials,endpoint,quality){
++  const layers=nameGroup('forest-landing-bank-layers')
++  const count=quality==='mobile'?24:40
++  for(let index=0;index<count;index++){
++    const type=['shrub','reed','stone','root'][index%4]
++    const side=index%2?-1:1
++    const x=endpoint.x+side*(2.8+hash(index,41)*6)
++    const z=endpoint.z-4+hash(index,42)*9
++    let object
++    if(type==='shrub'){
++      object=nameGroup(`landing-shrub-${index}`)
++      object.add(mesh(new THREE.IcosahedronGeometry(.52,1),materials.broad,[-.28,.38,0]),mesh(new THREE.IcosahedronGeometry(.62,1),materials.fern,[.28,.45,.08]),mesh(new THREE.IcosahedronGeometry(.4,1),materials.grass,[0,.78,-.08]))
++      object.scale.setScalar(.75+hash(index,43)*.65)
++    }else if(type==='reed'){
++      object=nameGroup(`landing-reeds-${index}`)
++      for(let reed=0;reed<5;reed++){const height=.65+hash(index*5+reed,44)*.8;object.add(mesh(new THREE.CylinderGeometry(.015,.025,height,5),materials.reed,[(reed-2)*.1,height/2,(reed%2)*.08]))}
++    }else if(type==='stone'){
++      object=mesh(new THREE.DodecahedronGeometry(.24+hash(index,45)*.32,1),materials.wetStone)
++      object.name=`landing-wet-stone-${index}`;object.position.y=.1;object.scale.set(1.2,.48,.8)
++    }else{
++      object=mesh(new THREE.TorusGeometry(.55+hash(index,46)*.45,.045,6,18,Math.PI*(.7+hash(index,47)*.5)),materials.root,[0,.035,0],[Math.PI/2,hash(index,48)*Math.PI,0])
++      object.name=`landing-root-${index}`;object.scale.y=.5
++    }
++    object.position.x+=x;object.position.z+=z;object.userData.layerType=type;layers.add(object)
++  }
++  return layers
++}
++
+ export function createJungleWorld(m,quality='desktop'){
+   const localMaterials=Object.fromEntries(['wood','leaf','leaf2','stone','water','sand','dark'].map(key=>[key,m[key].clone()]))
+   const world=nameGroup('jungle-world')
+   const ground=new THREE.MeshStandardMaterial({color:'#182b1c',roughness:.95})
+   const materials={
+     fern:new THREE.MeshStandardMaterial({color:'#315d37',roughness:.92,side:THREE.DoubleSide}),
+     broad:new THREE.MeshStandardMaterial({color:'#497b43',roughness:.88}),
+     grass:new THREE.MeshStandardMaterial({color:'#698447',roughness:.94}),
+     vine:new THREE.MeshStandardMaterial({color:'#536f39',roughness:.96}),
+     moss:new THREE.MeshStandardMaterial({color:'#57703e',roughness:1}),
+@@ -174,16 +202,17 @@ export function createJungleWorld(m,quality='desktop'){
+   const timber=nameGroup('jungle-fallen-timber');addFallenTimber(timber,{...materials,wood:localMaterials.wood},routePoints,quality);world.add(timber)
+ 
+   const rocks=nameGroup('jungle-rocks')
+   for(let i=0;i<(quality==='mobile'?8:18);i++){const position=forestPosition(i+1700,routePoints,2.2);rocks.add(mesh(new THREE.DodecahedronGeometry(.25+(i%4)*.13,1),localMaterials.stone,[position.x,.12,position.z],[i*.2,0,i*.1]))}
+   world.add(rocks)
+   const puddles=nameGroup('jungle-puddles');[-8,0,7].forEach((z,i)=>puddles.add(mesh(new THREE.CircleGeometry(.6+i*.2,24),localMaterials.water,[i%2?1.4:-1.2,.04,z],[-Math.PI/2,0,0])));world.add(puddles)
+   const mist=nameGroup('jungle-mist'),mistMat=new THREE.MeshBasicMaterial({color:'#b4cdb6',transparent:true,opacity:.09,depthWrite:false})
+   for(let i=0;i<(quality==='mobile'?3:7);i++)mist.add(mesh(new THREE.PlaneGeometry(14,4),mistMat,[(i%3-1)*7,2,-15+i*5]))
+   world.add(mist)
+ 
+-  const endpoint=route.getPoint(1),marsh=createMarshEdge(materials,endpoint,quality),landing=createLanding({...materials,wood:localMaterials.wood},route);world.add(marsh,landing)
++  const endpoint=route.getPoint(1),marsh=createMarshEdge(materials,endpoint,quality),landing=createLanding({...materials,wood:localMaterials.wood},route)
++  const landingBankLayers=createLandingBankLayers(materials,endpoint,quality);world.add(marsh,landing,landingBankLayers)
+   const outpost=nameGroup('ranger-outpost');outpost.position.set(-7,0,-13);outpost.add(mesh(new THREE.BoxGeometry(5,.5,3.5),localMaterials.wood,[0,.25,0]),mesh(new THREE.BoxGeometry(4,2.4,2.7),localMaterials.sand,[0,1.7,0]),mesh(new THREE.ConeGeometry(3.5,1.5,4),localMaterials.leaf,[0,3.55,0],[0,Math.PI/4,0]),mesh(new THREE.BoxGeometry(2.4,1.15,.08),localMaterials.dark,[0,1.9,1.39]));world.add(outpost)
+   const light=new THREE.SpotLight('#ffd98a',34,35,.5,.75);light.position.set(-8,16,7);light.target.position.set(0,0,-8);world.add(light,light.target)
+   world.userData={route,landing,copyAnchor:new THREE.Vector3(-7,3,-13)}
+   return world
+ }
+diff --git a/src/three/jungleWorld.test.js b/src/three/jungleWorld.test.js
+index 7294581..5683163 100644
+--- a/src/three/jungleWorld.test.js
++++ b/src/three/jungleWorld.test.js
+@@ -29,20 +29,29 @@ describe('jungle world',()=>{
+   })
+ 
+   it('aligns the physical landing with the jeep route endpoint',()=>{
+     const world=createJungleWorld(createMaterials(),'desktop')
+     const endpoint=world.userData.route.getPoint(1)
+     expect(world.userData.landing).toBe(world.getObjectByName('forest-landing'))
+     expect(world.userData.landing.position.distanceTo(endpoint)).toBeLessThanOrEqual(6)
+     disposeObject3D(world)
+   })
+ 
++  it('layers vegetation and wet-bank detail around the forest landing',()=>{
++    const world=createJungleWorld(createMaterials(),'desktop')
++    const layers=world.getObjectByName('forest-landing-bank-layers')
++    expect(layers).toBeTruthy()
++    expect(layers.children.length).toBeGreaterThanOrEqual(34)
++    expect(new Set(layers.children.map(child=>child.userData.layerType))).toEqual(new Set(['shrub','reed','stone','root']))
++    disposeObject3D(world)
++  })
++
+   it('owns materials independently of the shared palette, other jungles and transports',()=>{
+     const materials=createMaterials()
+     const first=createJungleWorld(materials,'mobile')
+     const second=createJungleWorld(materials,'mobile')
+     const jeep=createExpeditionJeep(materials)
+     const shared=new Set(Object.values(materials))
+     const firstMaterials=materialSet(first)
+     const secondMaterials=materialSet(second)
+     const jeepMaterials=materialSet(jeep)
+     expect([...firstMaterials].every(material=>!shared.has(material))).toBe(true)
+diff --git a/src/three/waterWorld.js b/src/three/waterWorld.js
+index f75c132..76856fa 100644
+--- a/src/three/waterWorld.js
++++ b/src/three/waterWorld.js
+@@ -30,52 +30,82 @@ function createLanding(name,position,materials,width,lateralOffset){
+   ;[-1,1].forEach(side=>[-1.15,1.15].forEach(z=>landing.add(mesh(new THREE.CylinderGeometry(.08,.11,1.1,8),materials.wood,[side*(width/2-.25),-.28,z]))))
+   return landing
+ }
+ 
+ function createReflectionGeometry(){
+   const geometry=new THREE.PlaneGeometry(52,40,32,24),positions=geometry.getAttribute('position')
+   for(let index=0;index<positions.count;index++)positions.setZ(index,Math.sin(positions.getX(index)*.45+positions.getY(index)*.32)*.012)
+   positions.needsUpdate=true;geometry.computeVertexNormals();return geometry
+ }
+ 
++function createForestHandoffBankDetail(materials,landing,quality){
++  const detail=named('forest-handoff-bank-detail')
++  const count=quality==='mobile'?22:36
++  for(let index=0;index<count;index++){
++    const type=['tree','shrub','reed','rock'][index%4],side=index%2?-1:1
++    const x=landing.position.x+side*(2.8+(index%5)*.72)
++    const z=landing.position.z-6+(index*2.37)%11
++    let object
++    if(type==='tree')object=createTree(materials,x,z,.52+(index%3)*.12)
++    else if(type==='shrub'){
++      object=named(`forest-bank-shrub-${index}`);object.position.set(x,0,z)
++      object.add(mesh(new THREE.IcosahedronGeometry(.48,1),index%3===0?materials.leaf2:materials.leaf,[-.3,.35,0]),mesh(new THREE.IcosahedronGeometry(.58,1),materials.leaf,[.25,.42,.08]),mesh(new THREE.IcosahedronGeometry(.35,1),materials.leaf2,[0,.72,-.08]))
++    }else if(type==='reed'){
++      object=named(`forest-bank-reeds-${index}`);object.position.set(x,0,z)
++      for(let reed=0;reed<5;reed++){const height=.65+(reed%3)*.2;object.add(mesh(new THREE.CylinderGeometry(.016,.026,height,5),materials.reed,[(reed-2)*.09,height/2,(reed%2)*.08]))}
++    }else{
++      object=mesh(new THREE.DodecahedronGeometry(.28+(index%3)*.1,1),materials.wetRock,[x,.13,z]);object.name=`forest-bank-rock-${index}`;object.scale.set(1.25,.48,.85)
++    }
++    object.userData.detailType=type;detail.add(object)
++  }
++  return detail
++}
++
+ export function createWaterWorld(m,quality='desktop'){
+   const world=named('water-world')
+   const local=Object.fromEntries(['wood','leaf'].map(key=>[key,m[key].clone()]))
+   const materials={
+     ...local,
+     bank:new THREE.MeshStandardMaterial({color:'#617044',roughness:.94,metalness:.01}),
+     shallows:new THREE.MeshStandardMaterial({color:'#79c2bd',roughness:.26,metalness:.08,transparent:true,opacity:.38,depthWrite:false}),
+     wetRock:new THREE.MeshStandardMaterial({color:'#49575a',roughness:.38,metalness:.14}),
+     reed:new THREE.MeshStandardMaterial({color:'#748c55',roughness:.86,metalness:0}),
++    wetBank:new THREE.MeshStandardMaterial({color:'#394839',roughness:.97}),
+   }
+   const waterMat=new THREE.MeshStandardMaterial({color:'#317c8d',roughness:.3,metalness:.1,transparent:true,opacity:.9})
+   const water=mesh(new THREE.PlaneGeometry(52,40,32,32),waterMat,[0,.01,0],[-Math.PI/2,0,0]);water.name='reflective-water';world.add(water)
+ 
+   const reflectionMat=new THREE.MeshStandardMaterial({color:'#bce4df',roughness:.16,metalness:.18,transparent:true,opacity:.16,depthWrite:false})
+   const reflection=mesh(createReflectionGeometry(),reflectionMat,[0,.04,0],[-Math.PI/2,0,0]);reflection.name='water-reflection-layer';reflection.renderOrder=1;world.add(reflection)
+ 
+   const banks=named('river-banks')
+   const leftBank=mesh(createStripGeometry(-1),materials.bank,[0,.09,0]);leftBank.name='left-river-bank'
+   const rightBank=mesh(createStripGeometry(1),materials.bank,[0,.09,0]);rightBank.name='right-river-bank'
+   banks.add(leftBank,rightBank);world.add(banks)
+ 
++  const wetBankShelves=named('wet-bank-shelves')
++  const leftShelf=mesh(createStripGeometry(-1,.72),materials.wetBank,[0,.072,0]);leftShelf.name='left-wet-bank-shelf'
++  const rightShelf=mesh(createStripGeometry(1,.72),materials.wetBank,[0,.072,0]);rightShelf.name='right-wet-bank-shelf'
++  wetBankShelves.add(leftShelf,rightShelf);world.add(wetBankShelves)
++
+   const shallows=named('water-shallows')
+   const leftShallows=mesh(createStripGeometry(-1,1.35),materials.shallows,[0,.062,0]);leftShallows.name='left-water-shallows'
+   const rightShallows=mesh(createStripGeometry(1,1.35),materials.shallows,[0,.062,0]);rightShallows.name='right-water-shallows'
+   shallows.add(leftShallows,rightShallows);world.add(shallows)
+ 
+   const route=new THREE.CatmullRomCurve3([
+     new THREE.Vector3(-3,.1,16),new THREE.Vector3(-2.4,.1,9),new THREE.Vector3(-.7,.1,2),new THREE.Vector3(.45,.1,-7),new THREE.Vector3(0,.1,-16),
+   ])
+   const forestLanding=createLanding('forest-water-landing',route.getPoint(0),local,4.8,-4)
+   const hillLanding=createLanding('hill-water-landing',route.getPoint(1),local,3.7,3.3)
+-  world.add(forestLanding,hillLanding)
++  const forestBankDetail=createForestHandoffBankDetail({...local,...materials},forestLanding,quality)
++  world.add(forestLanding,hillLanding,forestBankDetail)
+ 
+   const shore=named('water-shoreline'),treeCount=quality==='mobile'?10:24
+   for(let index=0;index<treeCount;index++){
+     const side=index%2?-1:1,t=Math.sqrt((index+.5)/treeCount),z=THREE.MathUtils.lerp(START_Z,END_Z,t)
+     const x=innerEdge(side,t)+side*(2.4+(index%3)*1.2)
+     shore.add(createTree(local,x,z,.62+(index%4)*.09))
+   }
+   world.add(shore)
+ 
+   const jetty=named('boat-jetty');jetty.position.set(-7,.3,-12)
+diff --git a/src/three/waterWorld.test.js b/src/three/waterWorld.test.js
+index 450ecca..5a29fed 100644
+--- a/src/three/waterWorld.test.js
++++ b/src/three/waterWorld.test.js
+@@ -47,20 +47,32 @@ describe('water world',()=>{
+     const leftBank=world.getObjectByName('left-river-bank'),rightBank=world.getObjectByName('right-river-bank')
+     const leftShallows=world.getObjectByName('left-water-shallows'),rightShallows=world.getObjectByName('right-water-shallows')
+     const sampleZ=0
+     const leftInnerEdge=Math.max(...bankCoordinatesAt(leftBank,sampleZ))
+     const rightInnerEdge=Math.min(...bankCoordinatesAt(rightBank,sampleZ))
+     expect(Math.max(...bankCoordinatesAt(leftShallows,sampleZ))-leftInnerEdge).toBeGreaterThan(1)
+     expect(rightInnerEdge-Math.min(...bankCoordinatesAt(rightShallows,sampleZ))).toBeGreaterThan(1)
+     disposeObject3D(world)
+   })
+ 
++  it('keeps a layered forest bank readable around the incoming landing',()=>{
++    const world=createWaterWorld(createMaterials(),'desktop')
++    const detail=world.getObjectByName('forest-handoff-bank-detail')
++    expect(detail).toBeTruthy()
++    expect(world.getObjectByName('wet-bank-shelves')).toBeTruthy()
++    expect(detail.children.length).toBeGreaterThanOrEqual(30)
++    expect(new Set(detail.children.map(child=>child.userData.detailType))).toEqual(new Set(['tree','shrub','reed','rock']))
++    const landing=world.getObjectByName('forest-water-landing')
++    detail.children.forEach(child=>expect(Math.abs(child.position.z-landing.position.z)).toBeLessThan(10))
++    disposeObject3D(world)
++  })
++
+   it('parks the boat hull beside each landing deck with docking clearance',()=>{
+     const materials=createMaterials(),world=createWaterWorld(materials,'desktop'),boat=createExpeditionBoat(materials)
+     world.add(boat)
+     ;[[0,'forest-water-landing'],[1,'hill-water-landing']].forEach(([progress,landingName])=>{
+       updateBoat(boat,world.userData.route,progress,0,true);world.updateMatrixWorld(true)
+       const hullBox=new THREE.Box3().setFromObject(boat.getObjectByName('boat-hull'))
+       const deckBox=new THREE.Box3().setFromObject(world.getObjectByName(landingName))
+       const clearance=horizontalGap(hullBox,deckBox)
+       expect(clearance).toBeGreaterThan(.25)
+       expect(clearance).toBeLessThan(1.2)
