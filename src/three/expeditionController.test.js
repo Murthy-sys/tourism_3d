@@ -45,6 +45,83 @@ describe('expedition transition',()=>{
 })
 
 describe('expedition controller integration',()=>{
+  it('maps the opening beats into one monotonic mountain-route departure',()=>{
+    const scene=new THREE.Scene()
+    const controller=createExpeditionController(scene,createMaterials(),'mobile')
+    const weights=[]
+    const guidePositions=[]
+    ;[0,.045,.08,.12,.2,.28].forEach(progress=>{
+      const transition=controller.update(getExpeditionState(progress),1,true)
+      weights.push(transition.opening.departureWeight)
+      guidePositions.push(
+        controller.transports.trekker.userData.members[0].position.clone(),
+      )
+    })
+    expect(weights.slice(0,2)).toEqual([0,0])
+    expect(weights[2]).toBeCloseTo(.4376849383,8)
+    expect(weights.slice(3)).toEqual([1,1,1])
+    weights.slice(1).forEach((weight,index)=>
+      expect(weight).toBeGreaterThanOrEqual(weights[index])
+    )
+    guidePositions.slice(1).forEach((position,index)=>
+      expect(position.z).toBeLessThanOrEqual(guidePositions[index].z+.01)
+    )
+    controller.dispose()
+  })
+
+  it('mounts one stationary coach as mountain scenery and never as a transport',()=>{
+    const scene=new THREE.Scene()
+    const controller=createExpeditionController(scene,createMaterials(),'desktop')
+    expect(Object.keys(controller.transports)).toEqual(['trekker','boat','jeep'])
+    expect(Object.keys(controller.worlds)).toEqual(['mountain','water','forest'])
+    expect(Object.keys(getExpeditionTransition(getExpeditionState(.08)).transports))
+      .toEqual(['trekker','boat','jeep'])
+    const coach=controller.scenery.coach
+    expect(coach.parent).toBe(controller.worlds.mountain.userData.trailhead)
+    scene.updateMatrixWorld(true)
+    const initial=coach.matrixWorld.clone()
+    ;[0,.08,.12,.28,.5,.84,1].forEach(progress=>{
+      controller.update(getExpeditionState(progress),progress*10,true)
+      scene.updateMatrixWorld(true)
+      expect(coach.parent).toBe(controller.worlds.mountain.userData.trailhead)
+      expect(coach.matrixWorld.equals(initial)).toBe(true)
+    })
+    controller.dispose()
+  })
+
+  it('plants the staged party beside the coach without intersections',()=>{
+    const scene=new THREE.Scene()
+    const controller=createExpeditionController(scene,createMaterials(),'desktop')
+    controller.update(getExpeditionState(0),0,true)
+    scene.updateMatrixWorld(true)
+    const coachBounds=new THREE.Box3().setFromObject(controller.scenery.coach)
+    controller.worlds.mountain.userData.route.getSpacedPoints(120)
+      .slice(0,32)
+      .forEach(point=>expect(coachBounds.distanceToPoint(point)).toBeGreaterThan(.35))
+    const positions=new Set()
+    controller.transports.trekker.userData.members.forEach(member=>{
+      const bounds=new THREE.Box3().setFromObject(member)
+      expect(bounds.intersectsBox(coachBounds)).toBe(false)
+      expect(getBootBounds(member).min.y).toBeCloseTo(
+        controller.worlds.mountain.userData.heightAt(member.position.x,member.position.z),
+        2,
+      )
+      positions.add(`${member.position.x.toFixed(3)}:${member.position.z.toFixed(3)}`)
+    })
+    expect(positions.size).toBe(4)
+    controller.dispose()
+  })
+
+  it('disposes coach geometry once and remains idempotent',()=>{
+    const scene=new THREE.Scene()
+    const controller=createExpeditionController(scene,createMaterials(),'mobile')
+    const shell=controller.scenery.coach.getObjectByName('tour-coach-shell')
+    const dispose=vi.spyOn(shell.geometry,'dispose')
+    controller.dispose()
+    controller.dispose()
+    expect(dispose).toHaveBeenCalledTimes(1)
+  })
+
   it('constructs all worlds and transports in one shared coordinate space',()=>{
     const scene=new THREE.Scene()
     const controller=createExpeditionController(scene,createMaterials(),'mobile')

@@ -4,6 +4,7 @@ import { createHillWorld,updateHillWorld } from './hillWorld'
 import { createJungleWorld } from './jungleWorld'
 import { disposeObject3D } from './primitives'
 import { getBiomeWeights,smootherstep } from './terrain'
+import { createTourCoach } from './tourCoach'
 import { createTrekkingParty,updateTrekkingParty } from './trekkingParty'
 import { createWaterWorld,updateWaterWorld } from './waterWorld'
 
@@ -19,6 +20,31 @@ const PHASE_RANGES={
 const getStateProgress=state=>{
   const [start=0,end=1]=PHASE_RANGES[state?.phase]||[]
   return THREE.MathUtils.lerp(start,end,THREE.MathUtils.clamp(state?.localProgress||0,0,1))
+}
+
+export const getOpeningDepartureWeight=state=>
+  smootherstep(.045,.12,getStateProgress(state))
+
+export const getOpeningTrekState=(state,routeLandmarks,partySpan)=>{
+  const progress=getStateProgress(state)
+  const departureWeight=getOpeningDepartureWeight(state)
+  const entryTail=Math.max(
+    routeLandmarks.trailheadStart,
+    routeLandmarks.mountainEntry-partySpan,
+  )
+  const landingTail=1-partySpan
+  const routeProgress=progress<=.12
+    ?THREE.MathUtils.lerp(
+      routeLandmarks.trailheadStart,
+      entryTail,
+      departureWeight,
+    )
+    :THREE.MathUtils.lerp(
+      entryTail,
+      landingTail,
+      smootherstep(.12,.28,progress),
+    )
+  return{departureWeight,routeProgress}
 }
 
 export const getExpeditionTransition=state=>{
@@ -45,6 +71,7 @@ export const getExpeditionTransition=state=>{
         :0,
   }
   return{
+    opening:{departureWeight:getOpeningDepartureWeight(state)},
     worlds:getBiomeWeights(getStateProgress(state)),
     transports,
     cameraBlend:handoff,
@@ -181,6 +208,12 @@ const clearanceAlongLateral=(hullBounds,deckBounds,lateral,gap=.24)=>{
 
 export function createExpeditionController(scene,materials,quality){
   const mountain=createHillWorld(materials,quality)
+  const coach=createTourCoach(quality)
+  const coachPose=mountain.userData.trailhead.userData.coachPose
+  coach.position.copy(coachPose.position)
+  coach.rotation.y=coachPose.heading
+  mountain.userData.trailhead.add(coach)
+  mountain.userData.coach=coach
   const water=createWaterWorld(materials,quality)
   const forest=createJungleWorld(materials,quality)
   const trekker=createTrekkingParty(materials)
@@ -237,13 +270,22 @@ export function createExpeditionController(scene,materials,quality){
 
   const update=(state,elapsed,reducedMotion)=>{
     roots.forEach(root=>resetBlendState(blendStates.get(root)))
+    const opening=getOpeningTrekState(
+      state,
+      mountain.userData.routeProgress,
+      partySpan,
+    )
     updateTrekkingParty(
       trekker,
       mountain.userData.route,
-      routeProgress(state,'trekker',partySpan),
+      opening.routeProgress,
       elapsed,
       reducedMotion,
       mountainSurfaceHeightAt,
+      {
+        departureWeight:opening.departureWeight,
+        standingPoses:trekker.userData.standingPoses,
+      },
     )
     updateBoat(boat,water.userData.route,routeProgress(state,'boat'),elapsed,reducedMotion)
     updateJeep(
@@ -280,5 +322,12 @@ export function createExpeditionController(scene,materials,quality){
     })
   }
 
-  return{update,worlds,transports,transportRoot,dispose}
+  return{
+    update,
+    worlds,
+    transports,
+    transportRoot,
+    scenery:{coach},
+    dispose,
+  }
 }
