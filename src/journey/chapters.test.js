@@ -8,6 +8,7 @@ import {
   getChapterAtProgress,
   getProgressForChapter,
 } from './chapters'
+import * as chapterData from './chapters'
 
 describe('journey chapters', () => {
   it('contains the complete approved experience in order', () => {
@@ -76,6 +77,21 @@ describe('journey chapters', () => {
       'Cinematic Promotional Videos',
       'Tourism Brand Collaborations',
     ])
+  })
+  it('lists the approved reasons for brands to work with the creator',()=>{
+    expect(chapterData.BRAND_REASONS).toEqual([
+      'High-quality cinematic storytelling',
+      'Authentic travel experiences',
+      'Strong audience engagement',
+      'Karnataka-focused travel audience',
+      'Professional content creation',
+      'High-reach social media campaigns',
+    ])
+    const about=CHAPTERS.find(({id})=>id==='who-we-are')
+    expect(about.brandValue?.offer?.items).toBe(BRAND_CAPABILITIES)
+    expect(about.brandValue?.reasons?.items).toBe(
+      chapterData.BRAND_REASONS,
+    )
   })
   it('contains no customer-facing Himalaya, snow, or ice semantics',()=>{
     expect(JSON.stringify({chapters:CHAPTERS,plans:TRAVEL_PLANS})).not.toMatch(/himalaya|snow|ice/i)

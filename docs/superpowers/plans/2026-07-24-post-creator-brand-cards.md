@@ -33,7 +33,7 @@
 - Produces: `chapter.brandValue.offer` and `chapter.brandValue.reasons`, each with `title` and `items`.
 - Renders: `.chapter--brand-value` containing `.brand-value-card--offer` and `.brand-value-card--reasons`.
 
-- [ ] **Step 1: Write failing data and component tests**
+- [x] **Step 1: Write failing data and component tests**
 
 Pin `BRAND_REASONS` to:
 
@@ -60,7 +60,7 @@ expect([...screen.getByLabelText('Why brands should work with us').children]
 expect(screen.queryByText('About the creator')).not.toBeInTheDocument()
 ```
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 Run:
 
@@ -70,7 +70,7 @@ npm test -- --run src/journey/chapters.test.js src/components/ChapterContent.tes
 
 Expected: FAIL because `BRAND_REASONS`, `brandValue`, and paired-card markup do not exist.
 
-- [ ] **Step 3: Add the model and paired-card markup**
+- [x] **Step 3: Add the model and paired-card markup**
 
 Add `BRAND_REASONS` and this `brandValue` object to the Who We Are chapter:
 
@@ -119,7 +119,7 @@ Return this before the standard chapter markup when `brandValueBeat` is true:
 </article>
 ```
 
-- [ ] **Step 4: Verify GREEN**
+- [x] **Step 4: Verify GREEN**
 
 Run the focused tests again. Expected: all chapter and component tests pass.
 
@@ -137,7 +137,7 @@ Run the focused tests again. Expected: all chapter and component tests pass.
 - Captures: `layout.content.brandCards`, including exact titles, ordered items, and rectangles.
 - Requires: desktop diagonal positions and mobile top-to-bottom order.
 
-- [ ] **Step 1: Write failing visual-QA corpus tests**
+- [x] **Step 1: Write failing visual-QA corpus tests**
 
 Require a new `creator-profile` state at `.24`, paired brand content at `.26`, exact `BRAND_REASONS`, and layout assertions containing:
 
@@ -150,7 +150,7 @@ reasons.rect.bottom>viewport.height*.5
 offer.rect.top<reasons.rect.top
 ```
 
-- [ ] **Step 2: Verify visual-QA tests RED**
+- [x] **Step 2: Verify visual-QA tests RED**
 
 Run:
 
@@ -160,11 +160,11 @@ npm test -- --run scripts/visual-qa.test.js
 
 Expected: FAIL because the creator-profile state and brand-card evidence are absent.
 
-- [ ] **Step 3: Add browser evidence and positioning checks**
+- [x] **Step 3: Add browser evidence and positioning checks**
 
 Import `BRAND_REASONS`, add `.24` creator and `.26` paired-card expectations, and collect each `.brand-value-card` title, list items, and rounded bounding rectangle. Compare exact card data before screenshots. Require diagonal desktop placement and mobile ordered stacking.
 
-- [ ] **Step 4: Add the responsive glass-card styling**
+- [x] **Step 4: Add the responsive glass-card styling**
 
 Add:
 
@@ -192,11 +192,11 @@ Add the mobile override:
 }
 ```
 
-- [ ] **Step 5: Verify focused tests and production captures**
+- [x] **Step 5: Verify focused tests and production captures**
 
 Run the focused unit tests, build, preview, then capture `.24` and `.26` at `1440×900` and `390×844`. Expected: exact card content, diagonal desktop placement, ordered mobile stacking, no clipping/overflow, no audio controls, and no console failures.
 
-- [ ] **Step 6: Complete verification, review, commit, and push**
+- [x] **Step 6: Complete verification, review, commit, and push**
 
 Run:
 

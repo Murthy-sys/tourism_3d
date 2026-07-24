@@ -4,7 +4,37 @@ import { getJourneyState } from '../three/journeyData'
 export default function ChapterContent({chapter,progress,onPlan,onBook}){
   const planFocus=getJourneyState(progress).planFocus
   if(chapter.layout==='drive')return null
-  const creatorBeat=chapter.layout==='operations'&&progress>=.22
+  const isOperations=chapter.layout==='operations'
+  const brandValueBeat=isOperations&&progress>=.25
+  const creatorBeat=isOperations&&progress>=.22&&!brandValueBeat
+  if(brandValueBeat)return <article
+    className="chapter chapter--operations chapter--brand-value"
+    key={`${chapter.id}-brand-value`}
+    aria-label="Brand collaboration value"
+  >
+    <section
+      className="brand-value-card brand-value-card--offer"
+      aria-labelledby={`chapter-${chapter.id}-offer`}
+    >
+      <h1 id={`chapter-${chapter.id}-offer`}>
+        {chapter.brandValue.offer.title}
+      </h1>
+      <ul aria-label="What we offer">
+        {chapter.brandValue.offer.items.map(item=><li key={item}>{item}</li>)}
+      </ul>
+    </section>
+    <section
+      className="brand-value-card brand-value-card--reasons"
+      aria-labelledby={`chapter-${chapter.id}-reasons`}
+    >
+      <h2 id={`chapter-${chapter.id}-reasons`}>
+        {chapter.brandValue.reasons.title}
+      </h2>
+      <ul aria-label="Why brands should work with us">
+        {chapter.brandValue.reasons.items.map(item=><li key={item}>{item}</li>)}
+      </ul>
+    </section>
+  </article>
   const content=creatorBeat?chapter.creator:chapter
   const className=[
     'chapter',

@@ -1,7 +1,11 @@
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import ChapterContent from './ChapterContent'
-import { CHAPTERS } from '../journey/chapters'
+import {
+  BRAND_CAPABILITIES,
+  CHAPTERS,
+} from '../journey/chapters'
+import * as chapterData from '../journey/chapters'
 
 describe('cinematic chapter content',()=>{
   it('does not render company copy during the opening drive',()=>{
@@ -36,6 +40,36 @@ describe('cinematic chapter content',()=>{
       .toBeInTheDocument()
     expect(screen.getByLabelText('Creator coverage').children).toHaveLength(8)
     expect(screen.getByRole('article')).toHaveClass('chapter--creator-card')
+    expect(screen.queryByLabelText('Brand collaboration value'))
+      .not.toBeInTheDocument()
+  })
+
+  it('reveals two prominent brand cards after the creator beat',()=>{
+    const chapter=CHAPTERS.find(({id})=>id==='who-we-are')
+    render(<ChapterContent chapter={chapter} progress={.26}/>)
+    const group=screen.getByLabelText('Brand collaboration value')
+    expect(group).toHaveClass('chapter--brand-value')
+    expect([...screen.getByLabelText('What we offer').children]
+      .map(item=>item.textContent)).toEqual(BRAND_CAPABILITIES)
+    expect([
+      ...screen.getByLabelText('Why brands should work with us').children,
+    ].map(item=>item.textContent)).toEqual(chapterData.BRAND_REASONS)
+    expect(screen.queryByText('About the creator')).not.toBeInTheDocument()
+  })
+
+  it('keeps the operations beat transitions at the approved boundaries',()=>{
+    const chapter=CHAPTERS.find(({id})=>id==='who-we-are')
+    const {rerender}=render(
+      <ChapterContent chapter={chapter} progress={.219999}/>,
+    )
+    expect(screen.getByLabelText('What we do')).toBeInTheDocument()
+    rerender(<ChapterContent chapter={chapter} progress={.22}/>)
+    expect(screen.getByText('About the creator')).toBeInTheDocument()
+    rerender(<ChapterContent chapter={chapter} progress={.249999}/>)
+    expect(screen.getByText('About the creator')).toBeInTheDocument()
+    rerender(<ChapterContent chapter={chapter} progress={.25}/>)
+    expect(screen.getByLabelText('Brand collaboration value'))
+      .toBeInTheDocument()
   })
 
   it('renders three accessible monument plan actions',()=>{

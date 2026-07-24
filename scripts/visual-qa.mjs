@@ -1,7 +1,11 @@
 import { mkdir,rm } from 'node:fs/promises'
 import path from 'node:path'
 import { chromium } from '@playwright/test'
-import {BRAND_CAPABILITIES,CHAPTERS} from '../src/journey/chapters.js'
+import {
+  BRAND_CAPABILITIES,
+  BRAND_REASONS,
+  CHAPTERS,
+} from '../src/journey/chapters.js'
 
 const args=process.argv.slice(2)
 const projectIndex=args.indexOf('--project')
@@ -69,6 +73,19 @@ const states=[
     },
   },
   {
+    name:'creator-profile',
+    progress:.24,
+    phase:'mountain-trek',
+    activeBiome:'mountain',
+    activeTransport:'trekker',
+    content:{
+      title:'Karnataka, experienced deeply.',
+      creatorCard:true,
+      body:WHO_WE_ARE.creator.body,
+      items:WHO_WE_ARE.creator.pillars,
+    },
+  },
+  {
     name:'distant-water-reveal',
     progress:.26,
     phase:'mountain-trek',
@@ -76,10 +93,14 @@ const states=[
     activeTransport:'trekker',
     nextBiome:'water',
     content:{
-      title:'Karnataka, experienced deeply.',
-      creatorCard:true,
-      body:WHO_WE_ARE.creator.body,
-      items:WHO_WE_ARE.creator.pillars,
+      title:'What We Offer',
+      creatorCard:false,
+      body:'',
+      items:[],
+      brandCards:[
+        {title:'What We Offer',items:BRAND_CAPABILITIES},
+        {title:'Why Brands Should Work With Us',items:BRAND_REASONS},
+      ],
     },
   },
   {
@@ -123,6 +144,8 @@ const assertWeight=(weights,key,label)=>{
     throw new Error(`${label} ${key} does not overlap: ${weights[key]}`)
   }
 }
+const rectanglesOverlap=(a,b)=>
+  a.left<b.right&&a.right>b.left&&a.top<b.bottom&&a.bottom>b.top
 let coachWorldMatrix
 const assertSnapshot=(snapshot,state,externalFailures)=>{
   if(!snapshot||typeof snapshot!=='object') throw new Error('Journey QA snapshot is unavailable')
@@ -340,6 +363,42 @@ try{
         document.querySelector('.chapter-counter')
       const rect=overlayElement?.getBoundingClientRect()
       const chapter=document.querySelector('.chapter')
+      const brandCards=chapter
+        ?[...chapter.querySelectorAll('.brand-value-card')].map(card=>{
+          const cardRect=card.getBoundingClientRect()
+           return{
+             title:card.querySelector('h1,h2')?.textContent?.trim()||'',
+             items:[...card.querySelectorAll('li')].map(
+               item=>item.textContent?.trim()||'',
+             ),
+             itemFontSize:parseFloat(
+               getComputedStyle(card.querySelector('li')).fontSize,
+             ),
+             rect:{
+              left:Math.round(cardRect.left),
+              top:Math.round(cardRect.top),
+              right:Math.round(cardRect.right),
+              bottom:Math.round(cardRect.bottom),
+            },
+          }
+         })
+         :[]
+      const controls=[
+        ...document.querySelectorAll(
+          '.edge-controls, .chapter-counter, .scroll-signal',
+        ),
+      ].map(control=>{
+        const controlRect=control.getBoundingClientRect()
+        return{
+          name:control.className,
+          rect:{
+            left:Math.round(controlRect.left),
+            top:Math.round(controlRect.top),
+            right:Math.round(controlRect.right),
+            bottom:Math.round(controlRect.bottom),
+          },
+        }
+      })
       return{
         horizontalOverflow:document.documentElement.scrollWidth>innerWidth,
         content:chapter?{
@@ -351,7 +410,9 @@ try{
               '.operations-proof span, .creator-pillars span',
             ),
           ].map(item=>item.textContent?.trim()||''),
+          brandCards,
         }:null,
+        controls,
         overlay:rect?{
           left:Math.round(rect.left),
           top:Math.round(rect.top),
@@ -385,6 +446,52 @@ try{
         JSON.stringify(state.content.items)
       ){
         throw new Error(`${state.name} content items mismatch`)
+      }
+      if(state.content.brandCards){
+        const actualCards=layout.content.brandCards.map(({title,items})=>({
+          title,
+          items,
+        }))
+        if(
+          JSON.stringify(actualCards)!==
+          JSON.stringify(state.content.brandCards)
+        ){
+          throw new Error(`${state.name} brand card content mismatch`)
+        }
+        for(const card of layout.content.brandCards){
+          if(
+            card.rect.left<0||
+            card.rect.top<0||
+            card.rect.right>viewport.width||
+            card.rect.bottom>viewport.height
+          ){
+            throw new Error(`${requested} brand card is clipped at ${state.name}`)
+          }
+          if(requested==='mobile'&&card.itemFontSize<10){
+            throw new Error(`Mobile brand-card type is too small: ${card.itemFontSize}px`)
+          }
+          for(const control of layout.controls){
+            if(rectanglesOverlap(card.rect,control.rect)){
+              throw new Error(
+                `${state.name} brand card overlaps ${control.name}`,
+              )
+            }
+          }
+        }
+        const [offer,reasons]=layout.content.brandCards
+        if(
+          requested==='desktop'&&!(
+            offer.rect.left<viewport.width*.5&&
+            offer.rect.top<viewport.height*.5&&
+            reasons.rect.right>viewport.width*.5&&
+            reasons.rect.bottom>viewport.height*.5
+          )
+        ){
+          throw new Error('Desktop brand cards lost their diagonal composition')
+        }
+        if(requested==='mobile'&&!(offer.rect.top<reasons.rect.top)){
+          throw new Error('Mobile brand cards are not stacked in reading order')
+        }
       }
     }
     assertSnapshot(snapshot,state,externalFailures)
