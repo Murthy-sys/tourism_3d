@@ -9,11 +9,23 @@ describe('cinematic chapter content',()=>{
     expect(container).toBeEmptyDOMElement()
   })
 
-  it('renders realistic nationwide tourism operations',()=>{
+  it('renders only the approved Who We Are promotion services in order',()=>{
     const chapter=CHAPTERS.find(({id})=>id==='who-we-are')
     render(<ChapterContent chapter={chapter} progress={.19}/>)
-    expect(screen.getByText('Campaign concepts')).toBeInTheDocument()
-    expect(screen.getByText('Audience-ready content')).toBeInTheDocument()
+    const proof=screen.getByLabelText('What we do')
+    expect([...proof.children].map(item=>item.textContent)).toEqual([
+      'Destination Promotions',
+      'Tourism Campaigns',
+      'Hotel & Resort Promotions',
+      'Homestay Promotions',
+      'Adventure Activity Promotions',
+      'Travel Reels',
+      'Professional Photography',
+      'Cinematic Promotional Videos',
+      'Tourism Brand Collaborations',
+    ])
+    expect(screen.queryByText('Campaign concepts')).not.toBeInTheDocument()
+    expect(screen.queryByText('Audience-ready content')).not.toBeInTheDocument()
   })
 
   it('reveals the transparent creator card after the Who We Are beat',()=>{

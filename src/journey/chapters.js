@@ -14,12 +14,15 @@ export const STORIES=[
 export const OPENING_TREK_END=.14
 export const OPENING_DRIVE_END=OPENING_TREK_END
 export const BRAND_CAPABILITIES=[
-  'Campaign concepts',
-  'Cinematic production',
-  'Destination storytelling',
-  'Hospitality features',
-  'Adventure coverage',
-  'Audience-ready content',
+  'Destination Promotions',
+  'Tourism Campaigns',
+  'Hotel & Resort Promotions',
+  'Homestay Promotions',
+  'Adventure Activity Promotions',
+  'Travel Reels',
+  'Professional Photography',
+  'Cinematic Promotional Videos',
+  'Tourism Brand Collaborations',
 ]
 export const CHAPTERS=[
   {id:'home',menuLabel:'Home',title:'The trail is calling.',kicker:'WanderLux',body:'A journey across India begins here.',progressStart:0,progressEnd:OPENING_TREK_END,layout:'drive'},

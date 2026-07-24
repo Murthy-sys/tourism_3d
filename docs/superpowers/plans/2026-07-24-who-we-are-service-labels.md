@@ -32,7 +32,7 @@
 - Produces: the same exported `BRAND_CAPABILITIES` interface containing exactly nine strings.
 - Renders: `.operations-proof[aria-label="What we do"] > span` in array order.
 
-- [ ] **Step 1: Write the failing data and rendered-order tests**
+- [x] **Step 1: Write the failing data and rendered-order tests**
 
 Update the chapter import:
 
@@ -89,7 +89,7 @@ it('renders only the approved Who We Are promotion services in order',()=>{
 })
 ```
 
-- [ ] **Step 2: Run the focused tests and verify RED**
+- [x] **Step 2: Run the focused tests and verify RED**
 
 Run:
 
@@ -99,7 +99,7 @@ npm test -- --run src/journey/chapters.test.js src/components/ChapterContent.tes
 
 Expected: FAIL because `BRAND_CAPABILITIES` still contains the old six labels.
 
-- [ ] **Step 3: Replace the authoritative label array**
+- [x] **Step 3: Replace the authoritative label array**
 
 Replace `BRAND_CAPABILITIES` in `src/journey/chapters.js` with:
 
@@ -119,7 +119,7 @@ export const BRAND_CAPABILITIES=[
 
 Do not change `ChapterContent.jsx`; it already renders this array directly and adds no descriptions or icons.
 
-- [ ] **Step 4: Run the focused tests and verify GREEN**
+- [x] **Step 4: Run the focused tests and verify GREEN**
 
 Run:
 
@@ -129,7 +129,7 @@ npm test -- --run src/journey/chapters.test.js src/components/ChapterContent.tes
 
 Expected: both files pass and the component exposes the exact nine labels in order.
 
-- [ ] **Step 5: Build and run focused desktop/mobile visual QA**
+- [x] **Step 5: Build and run focused desktop/mobile visual QA**
 
 Run:
 
@@ -176,7 +176,7 @@ If either viewport reports clipping, replace only the density declarations with 
 }
 ```
 
-- [ ] **Step 6: Run final verification**
+- [x] **Step 6: Run final verification**
 
 Run:
 
@@ -188,7 +188,7 @@ git diff --check
 
 Expected: all tests pass, the production build exits `0` with only the existing chunk-size advisory, and `git diff --check` prints no errors.
 
-- [ ] **Step 7: Commit and push `main`**
+- [x] **Step 7: Commit and push `main`**
 
 ```bash
 git add src/journey/chapters.js src/journey/chapters.test.js \

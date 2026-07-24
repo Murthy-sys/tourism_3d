@@ -26,7 +26,7 @@ Every approved state verifies:
 
 The two portfolio beats additionally compare the live DOM against the exact source content:
 
-- “Destination stories. Brand impact.” plus the full collaboration-positioning body and all six brand capabilities.
+- “Destination stories. Brand impact.” plus the full collaboration-positioning body and all nine approved promotion services.
 - “Karnataka, experienced deeply.” inside the transparent creator card plus the exact eight requested coverage pillars, in order.
 
 ## Visual acceptance

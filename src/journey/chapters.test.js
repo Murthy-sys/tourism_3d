@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { CHAPTERS, OPENING_DRIVE_END, OPENING_TREK_END, TRAVEL_PLANS, getChapterAtProgress, getProgressForChapter } from './chapters'
+import {
+  BRAND_CAPABILITIES,
+  CHAPTERS,
+  OPENING_DRIVE_END,
+  OPENING_TREK_END,
+  TRAVEL_PLANS,
+  getChapterAtProgress,
+  getProgressForChapter,
+} from './chapters'
 
 describe('journey chapters', () => {
   it('contains the complete approved experience in order', () => {
@@ -55,6 +63,19 @@ describe('journey chapters', () => {
       'Adventure experiences',
     ])
     expect(about.body).not.toMatch(/South Indian/i)
+  })
+  it('lists the approved Who We Are promotion services in order',()=>{
+    expect(BRAND_CAPABILITIES).toEqual([
+      'Destination Promotions',
+      'Tourism Campaigns',
+      'Hotel & Resort Promotions',
+      'Homestay Promotions',
+      'Adventure Activity Promotions',
+      'Travel Reels',
+      'Professional Photography',
+      'Cinematic Promotional Videos',
+      'Tourism Brand Collaborations',
+    ])
   })
   it('contains no customer-facing Himalaya, snow, or ice semantics',()=>{
     expect(JSON.stringify({chapters:CHAPTERS,plans:TRAVEL_PLANS})).not.toMatch(/himalaya|snow|ice/i)
