@@ -7,6 +7,7 @@ import {
   CHAPTERS,
   SOCIAL_MEDIA_METRICS,
   SOCIAL_MEDIA_PROFILE,
+  TREK_PACKAGES,
 } from '../src/journey/chapters.js'
 
 const args=process.argv.slice(2)
@@ -149,6 +150,25 @@ const states=[
         values:SOCIAL_MEDIA_METRICS.map(metric=>metric.display),
         accessibleValues:SOCIAL_MEDIA_METRICS.map(metric=>metric.display),
       },
+    },
+  },
+  {
+    name:'contact-packages',
+    progress:.97,
+    phase:'forest-jeep',
+    activeBiome:'forest',
+    activeTransport:'jeep',
+    content:{
+      title:'Where should we take you next?',
+      creatorCard:false,
+      body:'Tell us what you imagine. We will make the route real.',
+      items:[],
+      packages:TREK_PACKAGES.map(pkg=>({
+        name:pkg.name,
+        price:pkg.priceLabel,
+        duration:pkg.duration,
+        inclusions:pkg.inclusions,
+      })),
     },
   },
 ]
@@ -448,8 +468,36 @@ try{
               bottom:Math.round(cardRect.bottom),
             },
           }
-         })
-         :[]
+          })
+          :[]
+      const packageCards=chapter
+        ?[...chapter.querySelectorAll('.package-card')].map(card=>{
+          const cardRect=card.getBoundingClientRect()
+          return{
+            name:card.querySelector('h2')?.textContent?.trim()||'',
+            price:card.querySelector('.package-card__price')
+              ?.childNodes[0]?.textContent?.trim()||'',
+            duration:card.querySelector('.package-card__duration')
+              ?.textContent?.trim()||'',
+            inclusions:[...card.querySelectorAll('li')]
+              .map(item=>item.textContent?.trim()||''),
+            itemFontSize:parseFloat(
+              getComputedStyle(card.querySelector('li')).fontSize,
+            ),
+            fullyVisible:
+              cardRect.left>=0&&
+              cardRect.top>=0&&
+              cardRect.right<=innerWidth&&
+              cardRect.bottom<=innerHeight,
+            rect:{
+              left:Math.round(cardRect.left),
+              top:Math.round(cardRect.top),
+              right:Math.round(cardRect.right),
+              bottom:Math.round(cardRect.bottom),
+            },
+          }
+        })
+        :[]
       const expectedControls=['edge-controls','chapter-counter','scroll-signal']
       const controls=expectedControls.map(name=>{
         const control=document.querySelector(`.${name}`)
@@ -477,6 +525,7 @@ try{
           ].map(item=>item.textContent?.trim()||''),
           brandCards,
           performance,
+          packageCards,
         }:null,
         controls,
         overlay:rect?{
@@ -595,6 +644,48 @@ try{
             throw new Error(
               `${state.name} performance card overlaps ${control.name}`,
             )
+          }
+        }
+      }
+      if(state.content.packages){
+        const actualPackages=layout.content.packageCards.map(packageCard=>({
+          name:packageCard.name,
+          price:packageCard.price,
+          duration:packageCard.duration,
+          inclusions:packageCard.inclusions,
+        }))
+        if(JSON.stringify(actualPackages)!==JSON.stringify(state.content.packages)){
+          throw new Error(`${state.name} package content mismatch`)
+        }
+        const cardsToInspect=requested==='mobile'
+          ?layout.content.packageCards.filter(packageCard=>packageCard.fullyVisible)
+          :layout.content.packageCards
+        if(
+          requested==='mobile'&&
+          !cardsToInspect.length
+        ){
+          throw new Error(`${state.name} has no fully visible mobile package card`)
+        }
+        for(const packageCard of cardsToInspect){
+          if(
+            packageCard.rect.left<0||
+            packageCard.rect.top<0||
+            packageCard.rect.right>viewport.width||
+            packageCard.rect.bottom>viewport.height
+          ){
+            throw new Error(`${requested} package card is clipped at ${state.name}`)
+          }
+          if(requested==='mobile'&&packageCard.itemFontSize<10){
+            throw new Error(
+              `Mobile package-card type is too small: ${packageCard.itemFontSize}px`,
+            )
+          }
+          for(const control of layout.controls){
+            if(rectanglesOverlap(packageCard.rect,control.rect)){
+              throw new Error(
+                `${state.name} package card overlaps ${control.name}`,
+              )
+            }
           }
         }
       }
