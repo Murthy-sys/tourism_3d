@@ -648,7 +648,7 @@ git diff --check
 Expected: every test passes, the build exits zero with only the existing
 non-blocking bundle-size advisory, and the diff check is empty.
 
-- [ ] **Step 7: Review, commit, and push**
+- [x] **Step 7: Review, commit, and push**
 
 Request independent review against
 `docs/superpowers/specs/2026-07-24-social-media-performance-design.md`.

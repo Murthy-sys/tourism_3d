@@ -1,4 +1,15 @@
-# Active Plan: Bus Trailhead Opening
+# Active Plan: Social Media Performance
+
+Plan: `docs/superpowers/plans/2026-07-24-social-media-performance.md`
+Start commit: `88390af`
+Execution branch: `main`
+
+Task 1: complete (commits 88390af..2146fe4, review clean)
+Task 2: complete (commits 2146fe4..7debc18, review clean after deterministic-animation fix)
+Task 3: complete (commits 7debc18..9e54270, review clean after fail-closed QA hardening)
+Final review: complete at 20b3fbb (visible evidence and attribution fixes approved)
+
+## Archived Previous Plan: Bus Trailhead Opening
 
 Plan: `docs/superpowers/plans/2026-07-24-bus-trailhead-opening.md`
 Start commit: `3b883c0`
