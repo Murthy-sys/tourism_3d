@@ -85,6 +85,36 @@ const createForestMaterials=m=>({
   damp:new THREE.MeshStandardMaterial({color:'#271f18',roughness:.88}),
 })
 
+const createMistMaterial=()=>{
+  const material=new THREE.MeshBasicMaterial({
+    color:'#b8d2be',
+    transparent:true,
+    opacity:.018,
+    depthWrite:false,
+    side:THREE.DoubleSide,
+  })
+  material.userData.edgeFade='all-edges'
+  material.onBeforeCompile=shader=>{
+    shader.vertexShader=shader.vertexShader
+      .replace('#include <common>',`#include <common>
+varying vec2 vMistUv;`)
+      .replace('#include <begin_vertex>',`#include <begin_vertex>
+vMistUv = uv;`)
+    shader.fragmentShader=shader.fragmentShader
+      .replace('#include <common>',`#include <common>
+varying vec2 vMistUv;`)
+      .replace('#include <opaque_fragment>',`float mistEdgeAlpha =
+  smoothstep(0.0, 0.2, vMistUv.x) *
+  smoothstep(0.0, 0.2, 1.0 - vMistUv.x) *
+  smoothstep(0.0, 0.28, vMistUv.y) *
+  smoothstep(0.0, 0.28, 1.0 - vMistUv.y);
+diffuseColor.a *= mistEdgeAlpha;
+#include <opaque_fragment>`)
+  }
+  material.customProgramCacheKey=()=> 'jungle-mist-all-edges'
+  return material
+}
+
 const scaledMesh=(geometry,material,position,scale=[1,1,1],rotation=[0,0,0])=>{
   const object=mesh(geometry,material,position,rotation)
   object.scale.set(...scale)
@@ -288,7 +318,7 @@ export function createJungleWorld(m,quality='desktop'){
       cameraClearance:8.2,
     },
     {
-      start:jeepSightlineEnd.clone().add(new THREE.Vector3(.4,1.7,5.2)),
+      start:jeepSightlineEnd.clone().add(new THREE.Vector3(.4,1.7,5.7)),
       end:jeepSightlineEnd,
       clearance:1.1,
       cameraClearance:8.2,
@@ -402,14 +432,7 @@ export function createJungleWorld(m,quality='desktop'){
   world.add(puddles)
 
   const mist=nameGroup('jungle-mist')
-  mist.visible=false
-  const mistMaterial=new THREE.MeshBasicMaterial({
-    color:'#b8d2be',
-    transparent:true,
-    opacity:.018,
-    depthWrite:false,
-    side:THREE.DoubleSide,
-  })
+  const mistMaterial=createMistMaterial()
   for(let index=0;index<(quality==='mobile'?4:9);index+=1){
     const point=route.getPointAt(.08+index/(quality==='mobile'?4:9)*.86)
     const veil=mesh(new THREE.PlaneGeometry(9,1.7),mistMaterial,[point.x+(index%3-1)*5,1.05,point.z],[0,(hashed(index,162)-.5)*.45,0])
@@ -419,7 +442,6 @@ export function createJungleWorld(m,quality='desktop'){
   world.add(mist)
 
   const shafts=nameGroup('jungle-sun-shafts')
-  shafts.visible=false
   const shaftMaterial=new THREE.MeshBasicMaterial({color:'#f7e4a7',transparent:true,opacity:.025,depthWrite:false,side:THREE.DoubleSide})
   for(let index=0;index<(quality==='mobile'?2:4);index+=1){
     const point=route.getPointAt(.2+index*.2)

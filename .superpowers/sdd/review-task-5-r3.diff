@@ -1,0 +1,1904 @@
+# Review package: 1189f3e..2c0ee55
+
+## Commits
+2c0ee55 Plant trekkers and stage boat at landing
+11319d8 Fix expedition integration review findings
+c906c0e Reorder expedition through mountain water forest
+
+## Files changed
+ src/components/BookingOverlay.jsx      |   2 +-
+ src/components/BookingOverlay.test.jsx |   2 +
+ src/components/ChapterContent.jsx      |   5 +-
+ src/components/ChapterContent.test.jsx |   8 +
+ src/components/JourneyShell.jsx        |  61 +++++++-
+ src/components/JourneyShell.test.jsx   |  41 ++++-
+ src/journey/chapters.js                |  15 +-
+ src/journey/chapters.test.js           |  15 +-
+ src/three/expeditionController.js      | 260 ++++++++++++++++++++++++++++----
+ src/three/expeditionController.test.js | 225 ++++++++++++++++++++++++++--
+ src/three/expeditionVehicles.js        |  15 +-
+ src/three/expeditionVehicles.test.js   |  43 ++++++
+ src/three/hillWorld.js                 |  34 +++--
+ src/three/hillWorld.test.js            |  13 +-
+ src/three/iceWorld.js                  |  16 --
+ src/three/iceWorld.test.js             |   4 -
+ src/three/indiaJourney.js              | 265 +++++++++++++++++++++++++++++----
+ src/three/indiaJourney.test.js         |  38 ++++-
+ src/three/journeyData.js               |  64 ++++----
+ src/three/journeyData.test.js          |  58 +++++---
+ src/three/jungleWorld.js               |   3 +-
+ src/three/trekkingParty.js             |  20 ++-
+ src/three/trekkingParty.test.js        |  15 +-
+ 23 files changed, 1036 insertions(+), 186 deletions(-)
+
+## Diff
+diff --git a/src/components/BookingOverlay.jsx b/src/components/BookingOverlay.jsx
+index dbd62b7..1d75907 100644
+--- a/src/components/BookingOverlay.jsx
++++ b/src/components/BookingOverlay.jsx
+@@ -3,15 +3,15 @@ const blank={name:'',email:'',plan:'',dates:'',travelers:'1',message:''}
+ export default function BookingOverlay({open,initialPlan='',initialDestination='',onClose}){
+   const [form,setForm]=useState({...blank,plan:initialPlan||initialDestination}),[submitted,setSubmitted]=useState(false)
+   useEffect(()=>setForm(f=>({...f,plan:initialPlan||initialDestination||f.plan})),[initialPlan,initialDestination])
+   useEffect(()=>{const key=e=>e.key==='Escape'&&open&&onClose?.();document.addEventListener('keydown',key);return()=>document.removeEventListener('keydown',key)},[open,onClose])
+   if(!open)return null
+   const change=e=>setForm(f=>({...f,[e.target.name]:e.target.value}))
+   return <div className="booking-overlay" role="dialog" aria-modal="true" aria-labelledby="booking-title"><button className="booking-overlay__close" onClick={onClose} aria-label="Close booking">×</button>
+     <div className="booking-overlay__intro"><p>Plan your India journey</p><h2 id="booking-title">From imagination<br/>to itinerary.</h2><span>A travel manager responds within one business day.</span></div>
+     <form onSubmit={e=>{e.preventDefault();setSubmitted(true)}}>{submitted?<div className="booking-overlay__success"><p>Journey request received</p><h3>We’ll take it from here.</h3><button type="button" onClick={()=>{setSubmitted(false);setForm({...blank,plan:initialPlan})}}>Plan another</button></div>:<>
+       <label>Full name<input name="name" value={form.name} onChange={change} required autoFocus/></label><label>Email<input type="email" name="email" value={form.email} onChange={change} required/></label>
+-      <label>Plan or destination<input name="plan" value={form.plan} onChange={change} placeholder="Kerala, Rajasthan, the Himalayas…" required/></label><label>Travel dates<input name="dates" value={form.dates} onChange={change}/></label>
++      <label>Plan or destination<input name="plan" value={form.plan} onChange={change} placeholder="Kerala, Rajasthan, hill country…" required/></label><label>Travel dates<input name="dates" value={form.dates} onChange={change}/></label>
+       <label>Travellers<select name="travelers" value={form.travelers} onChange={change}>{[1,2,3,4,5,'6+'].map(n=><option key={n}>{n}</option>)}</select></label><label>Your journey<textarea name="message" value={form.message} onChange={change} rows="3"/></label>
+       <button className="booking-overlay__submit">Request itinerary</button></>}</form>
+   </div>
+ }
+diff --git a/src/components/BookingOverlay.test.jsx b/src/components/BookingOverlay.test.jsx
+index 6c35876..6f55d00 100644
+--- a/src/components/BookingOverlay.test.jsx
++++ b/src/components/BookingOverlay.test.jsx
+@@ -1,14 +1,16 @@
+ import { fireEvent, render, screen } from '@testing-library/react'
+ import { describe, expect, it, vi } from 'vitest'
+ import BookingOverlay from './BookingOverlay'
+ 
+ describe('BookingOverlay', () => {
+   it('renders a cinematic dialog and closes with Escape', () => {
+     const onClose=vi.fn()
+     render(<BookingOverlay open initialPlan="Heritage India" onClose={onClose}/>)
+     expect(screen.getByRole('dialog')).toHaveAttribute('aria-modal','true')
+     expect(screen.getByDisplayValue('Heritage India')).toBeInTheDocument()
++    expect(screen.getByPlaceholderText(/hill country/i)).toBeInTheDocument()
++    expect(document.body.textContent).not.toMatch(/himalaya|snow|ice/i)
+     fireEvent.keyDown(document,{key:'Escape'})
+     expect(onClose).toHaveBeenCalled()
+   })
+ })
+diff --git a/src/components/ChapterContent.jsx b/src/components/ChapterContent.jsx
+index 5cccdbf..baad9a3 100644
+--- a/src/components/ChapterContent.jsx
++++ b/src/components/ChapterContent.jsx
+@@ -1,12 +1,13 @@
+ import { TRAVEL_PLANS } from '../journey/chapters'
++import { getJourneyState } from '../three/journeyData'
+ 
+ export default function ChapterContent({chapter,progress,onPlan,onBook}){
+-  const local=Math.min(1,Math.max(0,(progress-chapter.progressStart)/(chapter.progressEnd-chapter.progressStart)))
++  const planFocus=getJourneyState(progress).planFocus
+   if(chapter.layout==='drive')return null
+   return <article className={`chapter chapter--${chapter.layout}`} key={chapter.id} aria-labelledby={`chapter-${chapter.id}`}>
+     <p className="chapter__kicker">{chapter.kicker}</p><h1 id={`chapter-${chapter.id}`}>{chapter.title}</h1><p className="chapter__body">{chapter.body}</p>
+     {chapter.layout==='operations'&&<div className="operations-proof" aria-label="What we do"><span>Destination specialists</span><span>Stays & transport</span><span>Verified local partners</span><span>Documents & permits</span><span>24/7 journey support</span><span>Private, group & corporate</span></div>}
+-    {chapter.layout==='monument-plans'&&<div className="monument-plan-actions">{TRAVEL_PLANS.map((p,i)=><button className={Math.min(2,Math.floor(local*3))===i?'active':''} aria-label={`Plan ${p.name} journey`} key={p.id} onClick={()=>onPlan(p)}><span>0{i+1} · {p.style}</span><strong>{p.name}</strong><small>{p.days} · {p.route}</small><b>Plan this journey ↗</b></button>)}</div>}
++    {chapter.layout==='monument-plans'&&<div className="monument-plan-actions">{TRAVEL_PLANS.map((p,i)=><button className={planFocus===i?'active':''} aria-label={`Plan ${p.name} journey`} key={p.id} onClick={()=>onPlan(p)}><span>0{i+1} · {p.style}</span><strong>{p.name}</strong><small>{p.days} · {p.route}</small><b>Plan this journey ↗</b></button>)}</div>}
+     {chapter.layout==='pavilion-contact'&&<div className="contact-finale"><button onClick={onBook}>Plan your India journey</button><a href="mailto:journeys@wanderlux.in">journeys@wanderlux.in</a><p>India specialists · Available worldwide · Support throughout your journey</p></div>}
+   </article>
+ }
+diff --git a/src/components/ChapterContent.test.jsx b/src/components/ChapterContent.test.jsx
+index 165c56f..ffe8426 100644
+--- a/src/components/ChapterContent.test.jsx
++++ b/src/components/ChapterContent.test.jsx
+@@ -14,11 +14,19 @@ describe('cinematic chapter content',()=>{
+     render(<ChapterContent chapter={chapter} progress={.25}/>)
+     expect(screen.getByText('Destination specialists')).toBeInTheDocument()
+     expect(screen.getByText('24/7 journey support')).toBeInTheDocument()
+   })
+ 
+   it('renders three accessible monument plan actions',()=>{
+     const chapter=CHAPTERS.find(({id})=>id==='plans')
+     render(<ChapterContent chapter={chapter} progress={.5} onPlan={vi.fn()}/>)
+     expect(screen.getAllByRole('button',{name:/plan .* journey/i})).toHaveLength(3)
+   })
++
++  it('activates plan overlays at the expedition transport boundaries',()=>{
++    const chapter=CHAPTERS.find(({id})=>id==='plans')
++    const {rerender}=render(<ChapterContent chapter={chapter} progress={.45} onPlan={vi.fn()}/>)
++    expect(screen.getByRole('button',{name:'Plan Heritage India journey'})).toHaveClass('active')
++    rerender(<ChapterContent chapter={chapter} progress={.75} onPlan={vi.fn()}/>)
++    expect(screen.getByRole('button',{name:'Plan Southern Discovery journey'})).toHaveClass('active')
++  })
+ })
+diff --git a/src/components/JourneyShell.jsx b/src/components/JourneyShell.jsx
+index d72c8c9..67ad57f 100644
+--- a/src/components/JourneyShell.jsx
++++ b/src/components/JourneyShell.jsx
+@@ -1,20 +1,75 @@
+ import { useEffect, useMemo, useRef, useState } from 'react'
+ import Hero3D from './Hero3D'
+ import JourneyMenu from './JourneyMenu'
+ import BookingOverlay from './BookingOverlay'
+ import ChapterContent from './ChapterContent'
+ import { CHAPTERS, getChapterAtProgress, getProgressForChapter } from '../journey/chapters'
+ 
++const smootherstep=value=>{
++  const t=Math.min(1,Math.max(0,value))
++  return t*t*t*(t*(t*6-15)+10)
++}
++
+ export default function JourneyShell(){
+-  const track=useRef(null),[progress,setProgress]=useState(0),[menuOpen,setMenuOpen]=useState(false),[booking,setBooking]=useState(false),[plan,setPlan]=useState(''),[fallback,setFallback]=useState(false)
++  const track=useRef(null)
++  const progressRef=useRef(0)
++  const navigation=useRef({active:false,frame:null})
++  const [progress,setProgress]=useState(0)
++  const [menuOpen,setMenuOpen]=useState(false)
++  const [booking,setBooking]=useState(false)
++  const [plan,setPlan]=useState('')
++  const [fallback,setFallback]=useState(false)
+   const reducedMotion=useMemo(()=>window.matchMedia?.('(prefers-reduced-motion: reduce)').matches??false,[])
+-  useEffect(()=>{const update=()=>{if(menuOpen||booking)return;const el=track.current;if(!el)return;const travel=Math.max(1,el.offsetHeight-innerHeight);setProgress(Math.min(1,Math.max(0,-el.getBoundingClientRect().top/travel)))};update();addEventListener('scroll',update,{passive:true});return()=>removeEventListener('scroll',update)},[menuOpen,booking])
++  const updateProgress=value=>{
++    progressRef.current=value
++    setProgress(value)
++  }
++  useEffect(()=>{
++    const update=()=>{
++      if(menuOpen||booking||navigation.current.active) return
++      const element=track.current
++      if(!element) return
++      const travel=Math.max(1,element.offsetHeight-innerHeight)
++      updateProgress(Math.min(1,Math.max(0,-element.getBoundingClientRect().top/travel)))
++    }
++    update()
++    addEventListener('scroll',update,{passive:true})
++    return()=>removeEventListener('scroll',update)
++  },[menuOpen,booking])
++  useEffect(()=>()=>cancelAnimationFrame(navigation.current.frame),[])
+   const chapter=getChapterAtProgress(progress)
+-  const goTo=id=>{const selected=CHAPTERS.find(item=>item.id===id),start=getProgressForChapter(id),p=selected?(start+selected.progressEnd)/2:start,el=track.current;if(!el)return;const travel=el.offsetHeight-innerHeight;scrollTo({top:el.offsetTop+p*travel,behavior:reducedMotion||innerWidth<768?'auto':'smooth'});setProgress(p)}
++  const goTo=id=>{
++    const selected=CHAPTERS.find(item=>item.id===id)
++    const start=getProgressForChapter(id)
++    const destination=selected?(start+selected.progressEnd)/2:start
++    const element=track.current
++    if(!element) return
++    const travel=element.offsetHeight-innerHeight
++    const destinationTop=element.offsetTop+destination*travel
++    const origin=progressRef.current
++    const originTop=scrollY||0
++    const duration=reducedMotion?280:900
++    let startedAt
++    cancelAnimationFrame(navigation.current.frame)
++    navigation.current.active=true
++    const advance=timestamp=>{
++      if(startedAt===undefined) startedAt=timestamp
++      const time=Math.min(1,(timestamp-startedAt)/duration)
++      const blend=smootherstep(time)
++      updateProgress(origin+(destination-origin)*blend)
++      scrollTo({top:originTop+(destinationTop-originTop)*blend,behavior:'auto'})
++      if(time<1){
++        navigation.current.frame=requestAnimationFrame(advance)
++      }else{
++        navigation.current.active=false
++      }
++    }
++    navigation.current.frame=requestAnimationFrame(advance)
++  }
+   const book=p=>{setPlan(p?.name||'');setBooking(true)}
+   return <main className="experience"><section className="experience__track" ref={track}><div className="experience__stage"><div className="experience__sky"/><Hero3D progress={progress} reducedMotion={reducedMotion} onFallback={()=>setFallback(true)}/><div className="experience__grade"/>
+     <ChapterContent chapter={chapter} progress={progress} onPlan={book} onBook={()=>book()}/><div className="chapter-counter">{String(CHAPTERS.indexOf(chapter)+1).padStart(2,'0')} / {String(CHAPTERS.length).padStart(2,'0')}</div><div className="scroll-signal">SCROLL TO TRAVEL<i/></div>
+     {fallback&&<div className="journey-fallback" role="status">Cinematic fallback active.</div>}</div></section>
+     <div className="edge-controls"><JourneyMenu open={menuOpen} onOpen={()=>setMenuOpen(true)} onClose={()=>setMenuOpen(false)} onSelect={goTo} onBook={()=>book()}/></div>
+     <BookingOverlay open={booking} initialPlan={plan} onClose={()=>setBooking(false)}/></main>
+ }
+diff --git a/src/components/JourneyShell.test.jsx b/src/components/JourneyShell.test.jsx
+index c67a34f..95067b9 100644
+--- a/src/components/JourneyShell.test.jsx
++++ b/src/components/JourneyShell.test.jsx
+@@ -1,15 +1,50 @@
+-import { render, screen } from '@testing-library/react'
+-import { describe, expect, it, vi } from 'vitest'
++import { act, fireEvent, render, screen } from '@testing-library/react'
++import { beforeEach, describe, expect, it, vi } from 'vitest'
+ import JourneyShell from './JourneyShell'
+-vi.mock('./Hero3D',()=>({default:()=> <canvas className="journey__canvas"/>}))
++
++const renderProgress=vi.hoisted(()=>vi.fn())
++vi.mock('./Hero3D',()=>({default:({progress})=>{
++  renderProgress(progress)
++  return <canvas className="journey__canvas"/>
++}}))
+ 
+ describe('JourneyShell',()=>{
++  beforeEach(()=>{renderProgress.mockClear()})
++
+   it('renders one immersive journey without conventional sections',()=>{
+     const {container}=render(<JourneyShell/>)
+     expect(screen.getByRole('button',{name:'Open journey menu'})).toBeInTheDocument()
+     expect(screen.queryByRole('button',{name:'Toggle ambient sound'})).not.toBeInTheDocument()
+     expect(screen.queryByRole('heading')).not.toBeInTheDocument()
+     expect(container.querySelector('#services')).not.toBeInTheDocument()
+     expect(container.querySelector('footer')).not.toBeInTheDocument()
+   })
++
++  it('tweens menu navigation through monotonic intermediate progress',()=>{
++    const frames=[]
++    vi.stubGlobal('requestAnimationFrame',vi.fn(callback=>{
++      frames.push(callback)
++      return frames.length
++    }))
++    vi.stubGlobal('cancelAnimationFrame',vi.fn())
++    vi.stubGlobal('scrollTo',vi.fn())
++    render(<JourneyShell/>)
++    fireEvent.click(screen.getByRole('button',{name:'Open journey menu'}))
++    const callsBeforeSelection=renderProgress.mock.calls.length
++    fireEvent.click(screen.getByRole('button',{name:'Contact'}))
++
++    const immediate=renderProgress.mock.calls.slice(callsBeforeSelection).map(([value])=>value)
++    expect(immediate.at(-1)).toBe(0)
++    expect(frames).toHaveLength(1)
++
++    ;[0,360,522,900].forEach(timestamp=>{
++      const frame=frames.shift()
++      act(()=>frame(timestamp))
++    })
++    const traversed=renderProgress.mock.calls.slice(callsBeforeSelection).map(([value])=>value)
++    expect(traversed.at(-1)).toBeCloseTo(.97,6)
++    expect(traversed.some(value=>value>.28&&value<.42)).toBe(true)
++    expect(traversed.some(value=>value>.60&&value<.74)).toBe(true)
++    expect(traversed.every((value,index)=>index===0||value>=traversed[index-1])).toBe(true)
++  })
+ })
+diff --git a/src/journey/chapters.js b/src/journey/chapters.js
+index d86f737..d0c57c5 100644
+--- a/src/journey/chapters.js
++++ b/src/journey/chapters.js
+@@ -1,22 +1,23 @@
+ export const SERVICES=[
+   ['Curated Tours','Hand-built journeys across iconic and lesser-known India.'],['Stay & Transport','Vetted stays and seamless local movement.'],['Travel Documents','Guidance for permits, insurance and documentation.'],['Local Concierge','Certified guides and round-the-clock assistance.'],['Custom Itineraries','Trips shaped around your pace, budget and interests.'],['Groups & Corporate','Retreats and group logistics managed end to end.']
+ ]
+ export const TRAVEL_PLANS=[
+-  {id:'southern-discovery',name:'Southern Discovery',days:'10 days',route:'Kerala · Tamil Nadu · Hampi · Goa',style:'Jungle by jeep'},
++  {id:'mountain-trail',name:'Mountain Trail Expedition',days:'8 days',route:'Munnar · Coorg · Nilgiris',style:'Mountains on foot'},
+   {id:'heritage-india',name:'Heritage India',days:'9 days',route:'Backwaters · Lakes · River country',style:'Water by boat'},
+-  {id:'himalayan-adventure',name:'Himalayan Adventure',days:'8 days',route:'Rishikesh · Manali · Dharamshala',style:'Himalayas on foot'},
++  {id:'southern-discovery',name:'Southern Discovery',days:'10 days',route:'Kerala · Tamil Nadu · Hampi · Goa',style:'Forest by jeep'},
+ ]
+ export const STORIES=[
+   {quote:'Every transfer, stay and local experience felt effortless.',name:'Ananya Rao',trip:'Kerala to Goa'},
+   {quote:'Our heritage route balanced famous landmarks with places we would never have found ourselves.',name:'Kabir Mehta',trip:'Rajasthan & Agra'},
+   {quote:'The team adapted our mountain itinerary as the weather changed.',name:'Priya Menon',trip:'Himachal Pradesh'},
+ ]
+-export const OPENING_DRIVE_END=.18
++export const OPENING_TREK_END=.14
++export const OPENING_DRIVE_END=OPENING_TREK_END
+ export const CHAPTERS=[
+-  {id:'home',menuLabel:'Home',title:'The road is calling.',kicker:'WanderLux',body:'A journey across India begins here.',progressStart:0,progressEnd:OPENING_DRIVE_END,layout:'drive'},
+-  {id:'who-we-are',menuLabel:'Who We Are',title:'Journeys, managed completely.',kicker:'Who we are',body:'We don’t simply book holidays. We design, coordinate and manage journeys across India—from the first conversation to the moment you return home.',progressStart:OPENING_DRIVE_END,progressEnd:.38,layout:'operations'},
+-  {id:'plans',menuLabel:'Plans',title:'Three ways into India.',kicker:'Curated journeys',body:'Choose a direction. We will shape every detail around you.',progressStart:.38,progressEnd:.92,layout:'monument-plans'},
+-  {id:'contact',menuLabel:'Contact',title:'Where should we take you next?',kicker:'Begin a journey',body:'Tell us what you imagine. We will make the route real.',progressStart:.92,progressEnd:1,layout:'pavilion-contact'},
++  {id:'home',menuLabel:'Home',title:'The trail is calling.',kicker:'WanderLux',body:'A journey across India begins here.',progressStart:0,progressEnd:OPENING_TREK_END,layout:'drive'},
++  {id:'who-we-are',menuLabel:'Who We Are',title:'Journeys, managed completely.',kicker:'Who we are',body:'We don’t simply book holidays. We design, coordinate and manage journeys across India—from the first conversation to the moment you return home.',progressStart:OPENING_TREK_END,progressEnd:.28,layout:'operations'},
++  {id:'plans',menuLabel:'Plans',title:'Three expedition chapters.',kicker:'Curated journeys',body:'Choose a direction. We will shape every detail around you.',progressStart:.28,progressEnd:.94,layout:'monument-plans'},
++  {id:'contact',menuLabel:'Contact',title:'Where should we take you next?',kicker:'Begin a journey',body:'Tell us what you imagine. We will make the route real.',progressStart:.94,progressEnd:1,layout:'pavilion-contact'},
+ ]
+ export const getChapterAtProgress=(progress)=>{const p=Math.min(1,Math.max(0,progress));return CHAPTERS.find(c=>p>=c.progressStart&&p<(c.progressEnd))||CHAPTERS.at(-1)}
+ export const getProgressForChapter=(id)=>CHAPTERS.find(c=>c.id===id)?.progressStart??0
+diff --git a/src/journey/chapters.test.js b/src/journey/chapters.test.js
+index 025f23c..cbf6e72 100644
+--- a/src/journey/chapters.test.js
++++ b/src/journey/chapters.test.js
+@@ -1,24 +1,29 @@
+ import { describe, expect, it } from 'vitest'
+-import { CHAPTERS, OPENING_DRIVE_END, TRAVEL_PLANS, getChapterAtProgress, getProgressForChapter } from './chapters'
++import { CHAPTERS, OPENING_DRIVE_END, OPENING_TREK_END, TRAVEL_PLANS, getChapterAtProgress, getProgressForChapter } from './chapters'
+ 
+ describe('journey chapters', () => {
+   it('contains the complete approved experience in order', () => {
+     expect(CHAPTERS.map((chapter) => chapter.id)).toEqual(['home','who-we-are','plans','contact'])
+-    expect(TRAVEL_PLANS.map((plan) => plan.id)).toEqual(['southern-discovery','heritage-india','himalayan-adventure'])
++    expect(TRAVEL_PLANS.map((plan) => plan.id)).toEqual(['mountain-trail','heritage-india','southern-discovery'])
++    expect(TRAVEL_PLANS.map((plan) => plan.style)).toEqual(['Mountains on foot','Water by boat','Forest by jeep'])
+   })
+   it('maps progress and menu targets to stable chapters', () => {
+     expect(getChapterAtProgress(0).id).toBe('home')
+     expect(getChapterAtProgress(1).id).toBe('contact')
+     expect(getProgressForChapter('plans')).toBeGreaterThan(0)
+   })
+-  it('reserves the opening for the Ambassador before company content', () => {
+-    expect(OPENING_DRIVE_END).toBeGreaterThanOrEqual(.16)
++  it('reserves the opening for the mountain party before company content', () => {
++    expect(OPENING_TREK_END).toBeGreaterThanOrEqual(.12)
++    expect(OPENING_DRIVE_END).toBe(OPENING_TREK_END)
+     expect(getChapterAtProgress(.08).layout).toBe('drive')
+-    expect(getChapterAtProgress(OPENING_DRIVE_END + .01).id).toBe('who-we-are')
++    expect(getChapterAtProgress(OPENING_TREK_END + .01).id).toBe('who-we-are')
+   })
+   it('uses the approved nationwide tourism-management message', () => {
+     const about = CHAPTERS.find(({ id }) => id === 'who-we-are')
+     expect(about.body).toMatch(/design, coordinate and manage journeys across India/i)
+     expect(about.body).not.toMatch(/South Indian/i)
+   })
++  it('contains no customer-facing Himalaya, snow, or ice semantics',()=>{
++    expect(JSON.stringify({chapters:CHAPTERS,plans:TRAVEL_PLANS})).not.toMatch(/himalaya|snow|ice/i)
++  })
+ })
+diff --git a/src/three/expeditionController.js b/src/three/expeditionController.js
+index 5a77bd7..cd999ea 100644
+--- a/src/three/expeditionController.js
++++ b/src/three/expeditionController.js
+@@ -1,33 +1,241 @@
+-import { createExpeditionBoat,createExpeditionJeep,createTrekker,updateBoat,updateJeep,updateTrekker } from './expeditionVehicles'
++import * as THREE from 'three'
++import { createExpeditionBoat,createExpeditionJeep,updateBoat,updateJeep } from './expeditionVehicles'
++import { createHillWorld,updateHillWorld } from './hillWorld'
+ import { createJungleWorld } from './jungleWorld'
++import { disposeObject3D } from './primitives'
++import { getBiomeWeights,smootherstep } from './terrain'
++import { createTrekkingParty,updateTrekkingParty } from './trekkingParty'
+ import { createWaterWorld,updateWaterWorld } from './waterWorld'
+-import { createIceWorld,updateIceWorld } from './iceWorld'
+-
+-export const getExpeditionVisibility=({phase})=>({
+-  'ambassador-to-jeep':{worlds:['jungle'],transports:['jeep']},
+-  'jungle-jeep':{worlds:['jungle'],transports:['jeep']},
+-  'jeep-to-boat':{worlds:['jungle','water'],transports:['jeep','boat']},
+-  'water-boat':{worlds:['water'],transports:['boat']},
+-  'boat-to-trek':{worlds:['water','ice'],transports:['boat','trekker']},
+-  'ice-trek':{worlds:['ice'],transports:['trekker']},
+-  contact:{worlds:['ice'],transports:['trekker']},
+-}[phase]||{worlds:[],transports:[]})
+-export const getIceLayerVisibility=(phase,quality)=>({foreground:phase!=='contact'&&quality!=='mobile',midground:phase!=='contact'})
++
++const PHASE_RANGES={
++  'mountain-trek':[0,.28],
++  'trek-to-boat':[.28,.42],
++  'water-boat':[.42,.60],
++  'boat-to-jeep':[.60,.74],
++  'forest-jeep':[.74,.94],
++  contact:[.94,1],
++}
++
++const getStateProgress=state=>{
++  const [start=0,end=1]=PHASE_RANGES[state?.phase]||[]
++  return THREE.MathUtils.lerp(start,end,THREE.MathUtils.clamp(state?.localProgress||0,0,1))
++}
++
++export const getExpeditionTransition=state=>{
++  const handoff=state.phase==='trek-to-boat'||state.phase==='boat-to-jeep'
++    ?smootherstep(0,1,state.localProgress)
++    :0
++  const transports={
++    trekker:state.phase==='mountain-trek'
++      ?1
++      :state.phase==='trek-to-boat'
++        ?1-handoff
++        :0,
++    boat:state.phase==='trek-to-boat'
++      ?handoff
++      :state.phase==='water-boat'
++        ?1
++        :state.phase==='boat-to-jeep'
++          ?1-handoff
++          :0,
++    jeep:state.phase==='boat-to-jeep'
++      ?handoff
++      :state.phase==='forest-jeep'||state.phase==='contact'
++        ?1
++        :0,
++  }
++  return{
++    worlds:getBiomeWeights(getStateProgress(state)),
++    transports,
++    cameraBlend:handoff,
++  }
++}
++
++const collectMaterials=root=>{
++  const materials=new Set()
++  root.traverse(object=>{
++    const values=Array.isArray(object.material)?object.material:[object.material]
++    values.filter(Boolean).forEach(material=>materials.add(material))
++  })
++  return materials
++}
++
++const isolateSharedMaterials=(roots,callerMaterials)=>{
++  const ownership=new Map()
++  roots.forEach(root=>collectMaterials(root).forEach(material=>{
++    ownership.set(material,(ownership.get(material)||0)+1)
++  }))
++  const shared=new Set([
++    ...Object.values(callerMaterials).filter(material=>material?.isMaterial),
++    ...[...ownership].filter(([,count])=>count>1).map(([material])=>material),
++  ])
++  roots.forEach(root=>{
++    const clones=new Map()
++    root.traverse(object=>{
++      if(!object.material) return
++      const values=Array.isArray(object.material)?object.material:[object.material]
++      const isolated=values.map(material=>{
++        if(!shared.has(material)) return material
++        if(!clones.has(material)) clones.set(material,material.clone())
++        return clones.get(material)
++      })
++      object.material=Array.isArray(object.material)?isolated:isolated[0]
++    })
++  })
++}
++
++const createBlendState=root=>{
++  const materials=new Map()
++  const lights=new Map()
++  const shadows=new Map()
++  root.traverse(object=>{
++    const values=Array.isArray(object.material)?object.material:[object.material]
++    values.filter(Boolean).forEach(material=>{
++      if(materials.has(material)) return
++      materials.set(material,{
++        opacity:material.opacity,
++        depthWrite:material.depthWrite,
++      })
++      material.transparent=true
++    })
++    if(object.isLight) lights.set(object,object.intensity)
++    if(object.isMesh) shadows.set(object,object.castShadow)
++  })
++  return{materials,lights,shadows}
++}
++
++const resetBlendState=({materials,lights,shadows})=>{
++  materials.forEach((base,material)=>{
++    material.opacity=base.opacity
++    material.depthWrite=base.depthWrite
++  })
++  lights.forEach((intensity,light)=>{light.intensity=intensity})
++  shadows.forEach((castShadow,object)=>{object.castShadow=castShadow})
++}
++
++const applyBlendWeight=(blendState,weight)=>{
++  blendState.materials.forEach((base,material)=>{
++    material.opacity*=weight
++    material.depthWrite=base.depthWrite&&weight>.999
++  })
++  blendState.lights.forEach((intensity,light)=>{light.intensity=intensity*weight})
++  blendState.shadows.forEach((castShadow,object)=>{
++    object.castShadow=castShadow&&weight>.01
++  })
++}
++
++const routeProgress=(state,transport,partySpan=0)=>{
++  if(transport==='trekker'){
++    const endpoint=1-partySpan
++    return state.phase==='mountain-trek'?state.localProgress*endpoint:endpoint
++  }
++  if(transport==='boat'){
++    if(state.phase==='mountain-trek'||state.phase==='trek-to-boat') return 0
++    if(state.phase==='water-boat') return state.localProgress
++    return 1
++  }
++  if(state.phase==='forest-jeep') return state.localProgress
++  if(state.phase==='contact') return 1
++  return 0
++}
++
++const getDeckSurfaceBounds=deck=>{
++  const bounds=new THREE.Box3()
++  deck.children
++    .filter(child=>child.geometry?.type==='BoxGeometry')
++    .forEach(plank=>bounds.expandByObject(plank))
++  return bounds
++}
++
++const clearanceAlongLateral=(hullBounds,deckBounds,lateral,gap=.24)=>{
++  const thresholds=['x','z'].map(axis=>{
++    const component=lateral[axis]
++    if(Math.abs(component)<1e-6) return Infinity
++    return component>0
++      ?(deckBounds.max[axis]+gap-hullBounds.min[axis])/component
++      :(hullBounds.max[axis]+gap-deckBounds.min[axis])/-component
++  })
++  return Math.max(0,Math.min(...thresholds))
++}
+ 
+ export function createExpeditionController(scene,materials,quality){
+-  const jungle=createJungleWorld(materials,quality),water=createWaterWorld(materials,quality),ice=createIceWorld(materials,quality)
+-  jungle.position.z=-52;water.position.z=-94;ice.position.z=-132
+-  const jeep=createExpeditionJeep(materials),boat=createExpeditionBoat(materials),trekker=createTrekker(materials)
+-  jungle.add(jeep);water.add(boat);ice.add(trekker);scene.add(jungle,water,ice)
+-  const worlds={jungle,water,ice},transports={jeep,boat,trekker}
++  const mountain=createHillWorld(materials,quality)
++  const water=createWaterWorld(materials,quality)
++  const forest=createJungleWorld(materials,quality)
++  const trekker=createTrekkingParty(materials)
++  const boat=createExpeditionBoat(materials)
++  const jeep=createExpeditionJeep(materials)
++  const transportRoot=new THREE.Group()
++  transportRoot.name='expedition-transports'
++  transportRoot.add(trekker,boat,jeep)
++
++  mountain.updateMatrixWorld(true)
++  water.updateMatrixWorld(true)
++  const mountainDeck=mountain.getObjectByName('mountain-landing-deck')
++  const waterDeck=water.getObjectByName('boat-jetty')
++  const mountainDeckSurface=getDeckSurfaceBounds(mountainDeck)
++  const mountainSurfaceHeightAt=(x,z,point)=>
++    x>=mountainDeckSurface.min.x&&x<=mountainDeckSurface.max.x&&
++    z>=mountainDeckSurface.min.z&&z<=mountainDeckSurface.max.z
++      ?mountainDeckSurface.max.y
++      :point.y
++
++  updateBoat(boat,water.userData.route,0,0,true)
++  transportRoot.updateMatrixWorld(true)
++  const hullBounds=new THREE.Box3().setFromObject(boat.getObjectByName('boat-hull'))
++  const startTangent=water.userData.route.getTangentAt(.002).normalize()
++  const dockLateral=new THREE.Vector3(startTangent.z,0,-startTangent.x).normalize()
++  boat.userData.dockLateralOffset=Math.max(
++    clearanceAlongLateral(hullBounds,new THREE.Box3().setFromObject(mountainDeck),dockLateral),
++    clearanceAlongLateral(hullBounds,new THREE.Box3().setFromObject(waterDeck),dockLateral),
++  )
++
++  const worlds={mountain,water,forest}
++  const transports={trekker,boat,jeep}
++  const partySpan=Math.max(...trekker.userData.routeOffsets)
++  const roots=[...Object.values(worlds),...Object.values(transports)]
++  isolateSharedMaterials(roots,materials)
++  const blendStates=new Map(roots.map(root=>[root,createBlendState(root)]))
++
++  Object.values(worlds).forEach(world=>{world.visible=true})
++  scene.add(mountain,water,forest,transportRoot)
++
+   const update=(state,elapsed,reducedMotion)=>{
+-    const visible=getExpeditionVisibility(state);Object.entries(worlds).forEach(([name,world])=>{world.visible=visible.worlds.includes(name)});Object.entries(transports).forEach(([name,transport])=>{transport.visible=visible.transports.includes(name)})
+-    const iceLayers=getIceLayerVisibility(state.phase,quality);ice.getObjectByName('ice-foreground').visible=iceLayers.foreground;ice.getObjectByName('ice-midground').visible=iceLayers.midground
+-    const p=state.localProgress
+-    if(visible.transports.includes('jeep'))updateJeep(jeep,jungle.userData.route,state.phase==='jeep-to-boat'?1:p,elapsed,reducedMotion)
+-    if(visible.transports.includes('boat'))updateBoat(boat,water.userData.route,state.phase==='jeep-to-boat'?Math.min(1,p*.25):state.phase==='boat-to-trek'?1:p,elapsed,reducedMotion)
+-    if(visible.transports.includes('trekker'))updateTrekker(trekker,ice.userData.route,state.phase==='boat-to-trek'?Math.min(1,p*.2):p,elapsed,reducedMotion)
+-    updateWaterWorld(water,elapsed,boat);updateIceWorld(ice,elapsed,trekker)
++    roots.forEach(root=>resetBlendState(blendStates.get(root)))
++    updateTrekkingParty(
++      trekker,
++      mountain.userData.route,
++      routeProgress(state,'trekker',partySpan),
++      elapsed,
++      reducedMotion,
++      mountainSurfaceHeightAt,
++    )
++    updateBoat(boat,water.userData.route,routeProgress(state,'boat'),elapsed,reducedMotion)
++    updateJeep(jeep,forest.userData.route,routeProgress(state,'jeep'),elapsed,reducedMotion)
++    updateHillWorld(mountain,elapsed)
++    updateWaterWorld(water,elapsed,boat)
++
++    const transition=getExpeditionTransition(state)
++    Object.entries(worlds).forEach(([name,world])=>{
++      world.visible=true
++      applyBlendWeight(blendStates.get(world),transition.worlds[name])
++    })
++    Object.entries(transports).forEach(([name,transport])=>{
++      transport.visible=true
++      applyBlendWeight(blendStates.get(transport),transition.transports[name])
++    })
++    return transition
++  }
++
++  let disposed=false
++  const dispose=()=>{
++    if(disposed) return
++    disposed=true
++    ;[mountain,water,forest,transportRoot].forEach(root=>{
++      root.parent?.remove(root)
++      disposeObject3D(root)
++    })
+   }
+-  return{update,worlds,transports,dispose:()=>{scene.remove(jungle,water,ice)}}
++
++  return{update,worlds,transports,transportRoot,dispose}
+ }
+diff --git a/src/three/expeditionController.test.js b/src/three/expeditionController.test.js
+index ac93da6..aae08e1 100644
+--- a/src/three/expeditionController.test.js
++++ b/src/three/expeditionController.test.js
+@@ -1,17 +1,212 @@
+-import { describe,expect,it } from 'vitest'
+-import { getExpeditionVisibility, getIceLayerVisibility } from './expeditionController'
+-
+-describe('expedition visibility',()=>{
+-  it('shows one transport in stable phases and both during handoffs',()=>{
+-    expect(getExpeditionVisibility({phase:'jungle-jeep'}).transports).toEqual(['jeep'])
+-    expect(getExpeditionVisibility({phase:'water-boat'}).transports).toEqual(['boat'])
+-    expect(getExpeditionVisibility({phase:'ice-trek'}).transports).toEqual(['trekker'])
+-    expect(getExpeditionVisibility({phase:'jeep-to-boat'}).transports).toEqual(['jeep','boat'])
+-    expect(getExpeditionVisibility({phase:'boat-to-trek'}).worlds).toEqual(['water','ice'])
+-  })
+-  it('removes only obstructing ice layers for mobile trek and contact',()=>{
+-    expect(getIceLayerVisibility('ice-trek','mobile')).toEqual({foreground:false,midground:true})
+-    expect(getIceLayerVisibility('contact','desktop')).toEqual({foreground:false,midground:false})
+-    expect(getIceLayerVisibility('ice-trek','desktop')).toEqual({foreground:true,midground:true})
++import * as THREE from 'three'
++import { describe,expect,it,vi } from 'vitest'
++import { getExpeditionState } from './journeyData'
++import { createMaterials } from './primitives'
++import { LANDMARKS } from './terrain'
++import { createExpeditionController, getExpeditionTransition } from './expeditionController'
++
++const getBootBounds=member=>{
++  const bounds=new THREE.Box3()
++  member.getObjectByName('boots').userData.parts.forEach(boot=>bounds.expandByObject(boot))
++  return bounds
++}
++
++const getDeckSurfaceBounds=deck=>{
++  const bounds=new THREE.Box3()
++  deck.children
++    .filter(child=>child.geometry?.type==='BoxGeometry')
++    .forEach(plank=>bounds.expandByObject(plank))
++  return bounds
++}
++
++describe('expedition transition',()=>{
++  it('keeps worlds active and adjacent transports overlapping',()=>{
++    const mountainHandoff=getExpeditionTransition(getExpeditionState(.34))
++    expect(Object.keys(mountainHandoff.worlds)).toEqual(['mountain','water','forest'])
++    expect(mountainHandoff.transports.trekker).toBeGreaterThan(.05)
++    expect(mountainHandoff.transports.boat).toBeGreaterThan(.05)
++    const forestHandoff=getExpeditionTransition(getExpeditionState(.68))
++    expect(forestHandoff.transports.boat).toBeGreaterThan(.05)
++    expect(forestHandoff.transports.jeep).toBeGreaterThan(.05)
++  })
++
++  it('uses continuous normalized handoff weights',()=>{
++    const trekStart=getExpeditionTransition(getExpeditionState(.28))
++    const trekMiddle=getExpeditionTransition(getExpeditionState(.35))
++    const trekEnd=getExpeditionTransition(getExpeditionState(.42))
++    expect(trekStart.transports).toEqual({trekker:1,boat:0,jeep:0})
++    expect(trekMiddle.transports.trekker).toBeCloseTo(.5,5)
++    expect(trekMiddle.transports.boat).toBeCloseTo(.5,5)
++    expect(trekEnd.transports).toEqual({trekker:0,boat:1,jeep:0})
++    ;[trekStart,trekMiddle,trekEnd].forEach(({transports})=>{
++      expect(Object.values(transports).reduce((sum,weight)=>sum+weight,0)).toBeCloseTo(1,6)
++    })
++  })
++})
++
++describe('expedition controller integration',()=>{
++  it('constructs all worlds and transports in one shared coordinate space',()=>{
++    const scene=new THREE.Scene()
++    const controller=createExpeditionController(scene,createMaterials(),'mobile')
++    expect(Object.keys(controller.worlds)).toEqual(['mountain','water','forest'])
++    expect(Object.keys(controller.transports)).toEqual(['trekker','boat','jeep'])
++    Object.values(controller.worlds).forEach(world=>{
++      expect(world.position.toArray()).toEqual([0,0,0])
++      expect(world.visible).toBe(true)
++    })
++    expect(controller.transports.trekker.parent).toBe(controller.transportRoot)
++    const mountainRouteEnd=controller.worlds.mountain.userData.route.getPointAt(1)
++    expect(mountainRouteEnd.x).toBeCloseTo(LANDMARKS.mountainLanding[0],8)
++    expect(mountainRouteEnd.z).toBeCloseTo(LANDMARKS.mountainLanding[2],8)
++    expect(controller.worlds.water.userData.route.getPointAt(0).distanceTo(new THREE.Vector3(...LANDMARKS.mountainLanding))).toBeLessThan(.01)
++    expect(controller.worlds.water.userData.route.getPointAt(1).distanceTo(new THREE.Vector3(...LANDMARKS.forestLanding))).toBeLessThan(.01)
++    expect(controller.worlds.forest.userData.route.getPointAt(0).distanceTo(new THREE.Vector3(...LANDMARKS.forestLanding))).toBeLessThan(.01)
++    controller.dispose()
++  })
++
++  it('does not mutate caller-owned shared materials while blending',()=>{
++    const scene=new THREE.Scene()
++    const materials=createMaterials()
++    const before=Object.fromEntries(Object.entries(materials).map(([name,material])=>[
++      name,
++      {opacity:material.opacity,transparent:material.transparent,depthWrite:material.depthWrite},
++    ]))
++    const controller=createExpeditionController(scene,materials,'mobile')
++    controller.update(getExpeditionState(.34),1,false,.016)
++    controller.update(getExpeditionState(.68),2,false,.016)
++    expect(Object.fromEntries(Object.entries(materials).map(([name,material])=>[
++      name,
++      {opacity:material.opacity,transparent:material.transparent,depthWrite:material.depthWrite},
++    ]))).toEqual(before)
++    controller.dispose()
++  })
++
++  it('keeps zero-weight worlds visible without ghost shadow casters',()=>{
++    const scene=new THREE.Scene()
++    const controller=createExpeditionController(scene,createMaterials(),'mobile')
++    const mountainMesh=controller.worlds.mountain.getObjectByProperty('isMesh',true)
++    const forestMesh=controller.worlds.forest.getObjectByProperty('isMesh',true)
++    controller.update(getExpeditionState(0),0,false)
++    expect(controller.worlds.forest.visible).toBe(true)
++    expect(mountainMesh.castShadow).toBe(true)
++    expect(forestMesh.castShadow).toBe(false)
++    controller.update(getExpeditionState(.9),1,false)
++    expect(mountainMesh.castShadow).toBe(false)
++    expect(forestMesh.castShadow).toBe(true)
++    controller.dispose()
++  })
++
++  it('holds the separated party and stages the incoming boat beside the mountain landing',()=>{
++    const scene=new THREE.Scene()
++    const controller=createExpeditionController(scene,createMaterials(),'mobile')
++    controller.update(getExpeditionState(.34),1,false)
++    const members=controller.transports.trekker.userData.members.map(member=>member.position)
++    const landing=new THREE.Vector3(...LANDMARKS.mountainLanding)
++    expect(Math.hypot(members[0].x-landing.x,members[0].z-landing.z)).toBeLessThan(.01)
++    expect(Math.hypot(
++      controller.transports.boat.position.x-landing.x,
++      controller.transports.boat.position.z-landing.z,
++    )).toBeGreaterThan(1)
++    for(let index=1;index<members.length;index+=1){
++      expect(members[index].distanceTo(members[index-1])).toBeGreaterThan(.2)
++    }
++    controller.dispose()
++  })
++
++  it('keeps shared landmarks exact while planting boots and clearing the staged hull',()=>{
++    const scene=new THREE.Scene()
++    const controller=createExpeditionController(scene,createMaterials(),'mobile')
++    controller.update(getExpeditionState(.34),1,true)
++    scene.updateMatrixWorld(true)
++    const landmark=new THREE.Vector3(...LANDMARKS.mountainLanding)
++    const aligned=[
++      controller.worlds.mountain.userData.route.getPointAt(1),
++      controller.worlds.mountain.userData.landing.getWorldPosition(new THREE.Vector3()),
++      controller.worlds.water.userData.route.getPointAt(0),
++      controller.worlds.water.userData.mountainLanding.getWorldPosition(new THREE.Vector3()),
++    ]
++    aligned.forEach(position=>expect(position.distanceTo(landmark)).toBeLessThan(1e-6))
++    const hillDeckObject=controller.worlds.mountain.getObjectByName('mountain-landing-deck')
++    const waterDeckObject=controller.worlds.water.getObjectByName('boat-jetty')
++    const hillDeck=getDeckSurfaceBounds(hillDeckObject)
++    const waterDeck=getDeckSurfaceBounds(waterDeckObject)
++    const hillCenter=hillDeck.getCenter(new THREE.Vector3())
++    expect(Math.hypot(hillCenter.x-landmark.x,hillCenter.z-landmark.z)).toBeLessThan(.02)
++    expect(hillDeck.max.y).toBeCloseTo(waterDeck.max.y,2)
++    const members=controller.transports.trekker.userData.members
++    const guideBoots=getBootBounds(members[0])
++    expect(guideBoots.min.y).toBeCloseTo(hillDeck.max.y,5)
++    members.forEach(member=>{
++      const bootBounds=getBootBounds(member)
++      const rootY=member.getWorldPosition(new THREE.Vector3()).y
++      expect(member.userData.bootBottomOffset).toBeCloseTo(bootBounds.min.y-rootY,5)
++    })
++    const hullBounds=new THREE.Box3().setFromObject(
++      controller.transports.boat.getObjectByName('boat-hull'),
++    )
++    expect(hullBounds.intersectsBox(new THREE.Box3().setFromObject(hillDeckObject))).toBe(false)
++    expect(hullBounds.intersectsBox(new THREE.Box3().setFromObject(waterDeckObject))).toBe(false)
++    controller.dispose()
++  })
++
++  it('continuously merges the docked boat offset onto the authoritative water route',()=>{
++    const scene=new THREE.Scene()
++    const controller=createExpeditionController(scene,createMaterials(),'mobile')
++    const route=controller.worlds.water.userData.route
++    const offsets=[]
++    const positions=[]
++    ;[0,.0001,.04,.08,.12,.16].forEach(localProgress=>{
++      controller.update(getExpeditionState(.42+localProgress*.18),1,true)
++      const point=route.getPointAt(localProgress)
++      const tangent=route.getTangentAt(localProgress).normalize()
++      const lateral=new THREE.Vector3(tangent.z,0,-tangent.x).normalize()
++      offsets.push(controller.transports.boat.position.clone().sub(point).dot(lateral))
++      positions.push(controller.transports.boat.position.clone())
++    })
++    expect(Math.abs(offsets[0])).toBeGreaterThan(1)
++    expect(Math.abs(offsets[1]-offsets[0])).toBeLessThan(.005)
++    expect(positions[1].distanceTo(positions[0])).toBeLessThan(.02)
++    const magnitudes=offsets.map(Math.abs)
++    magnitudes.slice(1).forEach((value,index)=>{
++      expect(value).toBeLessThanOrEqual(magnitudes[index]+1e-9)
++    })
++    expect(offsets[4]).toBeCloseTo(0,6)
++    expect(offsets[5]).toBeCloseTo(0,6)
++    controller.dispose()
++  })
++
++  it('does not create unattached clones from the caller material palette',()=>{
++    const scene=new THREE.Scene()
++    const materials=createMaterials()
++    const clones=[]
++    Object.values(materials).forEach(material=>{
++      const clone=material.clone.bind(material)
++      vi.spyOn(material,'clone').mockImplementation(()=>{
++        const result=clone()
++        clones.push(result)
++        return result
++      })
++    })
++    const controller=createExpeditionController(scene,materials,'mobile')
++    const attached=new Set()
++    scene.traverse(object=>{
++      const objectMaterials=Array.isArray(object.material)?object.material:[object.material]
++      objectMaterials.filter(Boolean).forEach(material=>attached.add(material))
++    })
++    expect(clones.length).toBeGreaterThan(0)
++    expect(clones.every(material=>attached.has(material))).toBe(true)
++    controller.dispose()
++    Object.values(materials).forEach(material=>material.dispose())
++  })
++
++  it('removes and disposes every constructed root',()=>{
++    const scene=new THREE.Scene()
++    const controller=createExpeditionController(scene,createMaterials(),'mobile')
++    const geometry=controller.worlds.mountain.getObjectByProperty('isMesh',true).geometry
++    const dispose=vi.spyOn(geometry,'dispose')
++    controller.dispose()
++    expect(scene.children).not.toContain(controller.worlds.mountain)
++    expect(scene.children).not.toContain(controller.transportRoot)
++    expect(dispose).toHaveBeenCalledOnce()
+   })
+ })
+diff --git a/src/three/expeditionVehicles.js b/src/three/expeditionVehicles.js
+index 410ef82..08e1f21 100644
+--- a/src/three/expeditionVehicles.js
++++ b/src/three/expeditionVehicles.js
+@@ -1,29 +1,34 @@
+ import * as THREE from 'three'
+ import { mesh } from './primitives'
+ 
+ const material=(color,roughness=.55,metalness=.08,extra={})=>new THREE.MeshStandardMaterial({color,roughness,metalness,...extra})
+ const routeUpdate=(object,curve,progress,y=0)=>{const p=THREE.MathUtils.clamp(progress,0,1),point=curve.getPointAt(p),tangent=curve.getTangentAt(Math.min(.999,p+.002));object.position.copy(point);object.position.y+=y;object.rotation.y=Math.atan2(tangent.x,tangent.z);return{p,tangent}}
++const smooth01=value=>{const t=THREE.MathUtils.clamp(value,0,1);return t*t*t*(t*(t*6-15)+10)}
++const BOAT_DOCK_MERGE_END=.12
++const boatLateralScratch=new THREE.Vector3()
+ const traveller=(m)=>{const g=new THREE.Group();g.name='expedition-traveller';g.add(mesh(new THREE.CapsuleGeometry(.16,.36,4,8),m.gold,[0,.38,0]),mesh(new THREE.SphereGeometry(.16,12,9),m.sand,[0,.78,0]),mesh(new THREE.SphereGeometry(.17,12,7,0,Math.PI*2,0,Math.PI/2),m.dark,[0,.86,0]));return g}
+ const wheel=()=>{const g=new THREE.Group();g.add(mesh(new THREE.CylinderGeometry(.38,.38,.22,20),material('#111318',.92),[0,0,0],[0,0,Math.PI/2]),mesh(new THREE.CylinderGeometry(.21,.21,.24,14),material('#9c9d92',.25,.65),[0,0,0],[0,0,Math.PI/2]));return g}
+ 
+ export function createExpeditionJeep(m){
+   const jeep=new THREE.Group();jeep.name='jungle-jeep';const green=material('#374c32',.6,.12),canvas=material('#928063',.82),steel=material('#272b27',.32,.62)
+   jeep.add(mesh(new THREE.BoxGeometry(1.9,.55,3.2),green,[0,.75,0]),mesh(new THREE.BoxGeometry(1.75,.34,1.08),green,[0,1.06,-1.2]),mesh(new THREE.BoxGeometry(1.7,.18,.16),steel,[0,.65,-1.72]))
+   const cage=new THREE.Group();cage.name='jeep-roll-cage';[-.78,.78].forEach(x=>[-.45,.85].forEach(z=>cage.add(mesh(new THREE.CylinderGeometry(.035,.035,1.25,8),steel,[x,1.55,z]))));cage.add(mesh(new THREE.BoxGeometry(1.65,.06,1.45),steel,[0,2.15,.2]),mesh(new THREE.BoxGeometry(1.55,.04,1.3),canvas,[0,2.2,.2]));jeep.add(cage)
+   const wheels=[];[-1.02,1.02].forEach(x=>[-1.12,1.08].forEach(z=>{const w=wheel();w.position.set(x,.55,z);jeep.add(w);wheels.push(w)}))
+   jeep.add(mesh(new THREE.TorusGeometry(.42,.12,10,20),material('#151718',.9),[0,1.1,1.66],[0,Math.PI/2,0]),mesh(new THREE.BoxGeometry(1.4,.18,.45),material('#624b36',.75),[0,1.08,.48]))
+   const person=traveller(m);person.position.set(-.38,1.08,-.12);jeep.add(person)
+-  jeep.userData={wheels,lastProgress:0,traveller:person};return jeep
++  jeep.updateMatrixWorld(true)
++  const tireBottom=Math.min(...wheels.map(candidate=>new THREE.Box3().setFromObject(candidate).min.y))
++  jeep.userData={wheels,lastProgress:0,traveller:person,groundOffset:-tireBottom};return jeep
+ }
+ 
+-export function updateJeep(jeep,curve,progress,elapsed,reducedMotion){const {p}=routeUpdate(jeep,curve,progress,.25+(reducedMotion?0:Math.sin(elapsed*7)*.025));const distance=Math.abs(p-jeep.userData.lastProgress)*curve.getLength();jeep.userData.wheels.forEach(w=>w.rotation.x-=distance/.32);jeep.userData.lastProgress=p}
++export function updateJeep(jeep,curve,progress,elapsed,reducedMotion){const {p}=routeUpdate(jeep,curve,progress,jeep.userData.groundOffset+(reducedMotion?0:Math.sin(elapsed*7)*.025));const distance=Math.abs(p-jeep.userData.lastProgress)*curve.getLength();jeep.userData.wheels.forEach(w=>w.rotation.x-=distance/.32);jeep.userData.lastProgress=p}
+ 
+ const namedMesh=(name,geometry,mat,position=[0,0,0],rotation=[0,0,0])=>{const object=mesh(geometry,mat,position,rotation);object.name=name;return object}
+ 
+ function createBoatOar(side,shaftMat,bladeMat,metalMat){
+   const legacyName=side<0?'boat-oar-port':'boat-oar-starboard'
+   const pivot=new THREE.Group();pivot.name=side<0?'boat-oar-left':'boat-oar-right';pivot.position.set(side*.72,.78,.05);pivot.rotation.order='YXZ';pivot.rotation.z=side<0?-.18:.18
+   const visibleAssembly=new THREE.Group();visibleAssembly.name=legacyName
+   const shaft=namedMesh(`${legacyName}-shaft`,new THREE.CylinderGeometry(.035,.045,2.65,16),shaftMat,[side*1.2,0,0],[0,0,Math.PI/2])
+   const bladeShape=new THREE.Shape();bladeShape.moveTo(-.08,-.42);bladeShape.bezierCurveTo(-.18,-.3,-.19,.22,-.11,.42);bladeShape.bezierCurveTo(-.04,.53,.04,.53,.11,.42);bladeShape.bezierCurveTo(.19,.22,.18,-.3,.08,-.42);bladeShape.closePath()
+   const blade=namedMesh(`${legacyName}-blade`,new THREE.ExtrudeGeometry(bladeShape,{depth:.055,bevelEnabled:true,bevelSize:.025,bevelThickness:.025,bevelSegments:4}),bladeMat,[side*2.55,0,-.03],[Math.PI/2,0,side<0?-Math.PI/2:Math.PI/2])
+@@ -96,21 +101,25 @@ export function createExpeditionBoat(m){
+   boat.add(namedMesh('boat-bow-cap',new THREE.SphereGeometry(.13,20,12),trim,[0,.55,-2.18]),namedMesh('boat-stern-cap',new THREE.SphereGeometry(.11,20,12),trim,[0,.53,2.18]))
+   const port=createBoatOar(-1,shaft,blade,metal),starboard=createBoatOar(1,shaft,blade,metal)
+   boat.add(port,starboard)
+   const person=createBoatRower();boat.add(person)
+   const wakeAnchors=[new THREE.Object3D(),new THREE.Object3D()];wakeAnchors[0].position.set(-.65,.05,1.95);wakeAnchors[1].position.set(.65,.05,1.95);wakeAnchors.forEach(a=>boat.add(a))
+   const wake=createBoatWake();boat.add(wake)
+   boat.userData={wakeAnchors,traveller:person,wake,oars:{port,starboard}};return boat
+ }
+ 
+ export function updateBoat(boat,curve,progress,elapsed,reducedMotion){
+-  const {tangent}=routeUpdate(boat,curve,progress,.12+(reducedMotion?0:Math.sin(elapsed*1.8)*.035));boat.rotation.y+=Math.PI;boat.rotation.z=reducedMotion?0:Math.sin(elapsed*1.3)*.025;boat.rotation.x=reducedMotion?0:Math.sin(elapsed*1.7)*.018
++  const {p,tangent}=routeUpdate(boat,curve,progress,reducedMotion?0:Math.sin(elapsed*1.8)*.035)
++  const dockBlend=1-smooth01(p/BOAT_DOCK_MERGE_END)
++  boatLateralScratch.set(tangent.z,0,-tangent.x).normalize()
++  boat.position.addScaledVector(boatLateralScratch,(boat.userData.dockLateralOffset||0)*dockBlend)
++  boat.rotation.y+=Math.PI;boat.rotation.z=reducedMotion?0:Math.sin(elapsed*1.3)*.025;boat.rotation.x=reducedMotion?0:Math.sin(elapsed*1.7)*.018
+   boat.userData.routeTangent=tangent.clone()
+   const stroke=reducedMotion?0:Math.sin(elapsed*2.8),recovery=reducedMotion?0:Math.cos(elapsed*2.8)
+   const port=boat.getObjectByName('boat-oar-left'),starboard=boat.getObjectByName('boat-oar-right'),rower=boat.getObjectByName('boat-rower')
+   if(port&&starboard){
+     port.rotation.x=-.18+stroke*.42;starboard.rotation.x=port.rotation.x;port.rotation.y=.12+recovery*.08;starboard.rotation.y=-port.rotation.y
+   }
+   if(rower){const torso=rower.userData.torsoPivot,left=rower.userData.leftElbow,right=rower.userData.rightElbow;torso.rotation.x=-.04-stroke*.18;left.rotation.x=.32+recovery*.38;right.rotation.x=left.rotation.x}
+   const wake=boat.userData.wake
+   if(wake&&!reducedMotion){
+     wake.scale.x=1+Math.sin(elapsed*2.1)*.06
+diff --git a/src/three/expeditionVehicles.test.js b/src/three/expeditionVehicles.test.js
+index 61b904a..ce4350c 100644
+--- a/src/three/expeditionVehicles.test.js
++++ b/src/three/expeditionVehicles.test.js
+@@ -69,29 +69,72 @@ describe('expedition transports',()=>{
+     const boat=createExpeditionBoat(createMaterials())
+     const curve=new THREE.CatmullRomCurve3([new THREE.Vector3(0,0,0),new THREE.Vector3(0,0,-8)])
+     updateBoat(boat,curve,.5,.6,false)
+     const wake=boat.getObjectByName('boat-wake')
+     const trails=wake.children.filter(child=>child.name.startsWith('boat-wake-trail'))
+     const ripples=wake.children.filter(child=>child.name.startsWith('boat-wake-ripple'))
+     expect(trails[0].material.opacity).toBeCloseTo(trails[1].material.opacity)
+     ripples.forEach(ripple=>expect(ripple.material.opacity).toBeLessThan(trails[0].material.opacity))
+     disposeObject3D(boat)
+   })
++  it('smoothly merges a staged dock offset onto the route without a starting snap',()=>{
++    const boat=createExpeditionBoat(createMaterials())
++    const curve=new THREE.CatmullRomCurve3([
++      new THREE.Vector3(0,.35,0),
++      new THREE.Vector3(0,.2,-8),
++    ])
++    boat.userData.dockLateralOffset=3.1
++    const offsets=[]
++    const positions=[]
++    ;[0,.0001,.04,.08,.12,.16].forEach(progress=>{
++      updateBoat(boat,curve,progress,0,true)
++      const point=curve.getPointAt(progress)
++      const tangent=curve.getTangentAt(progress).normalize()
++      const lateral=new THREE.Vector3(tangent.z,0,-tangent.x).normalize()
++      offsets.push(boat.position.clone().sub(point).dot(lateral))
++      positions.push(boat.position.clone())
++    })
++    expect(Math.abs(offsets[0])).toBeCloseTo(3.1,5)
++    expect(Math.abs(offsets[1]-offsets[0])).toBeLessThan(.005)
++    expect(positions[1].distanceTo(positions[0])).toBeLessThan(.02)
++    const magnitudes=offsets.map(Math.abs)
++    magnitudes.slice(1).forEach((value,index)=>{
++      expect(value).toBeLessThanOrEqual(magnitudes[index]+1e-9)
++    })
++    expect(offsets[4]).toBeCloseTo(0,6)
++    expect(offsets[5]).toBeCloseTo(0,6)
++    disposeObject3D(boat)
++  })
+   it('creates and animates an articulated trekker',()=>{
+     const trekker=createTrekker(createMaterials())
+     expect(trekker.userData.limbs).toHaveLength(4)
+     expect(trekker.getObjectByName('trekker-backpack')).toBeTruthy()
+     expect(trekker.getObjectByName('trekking-pole')).toBeTruthy()
+     const curve=new THREE.CatmullRomCurve3([new THREE.Vector3(0,0,0),new THREE.Vector3(0,1,-5)])
+     updateTrekker(trekker,curve,.5,1,false)
+     expect(trekker.userData.limbs[0].rotation.x).not.toBe(0)
+     disposeObject3D(trekker)
+   })
+   it('moves jeep and boat along their routes',()=>{
+     const curve=new THREE.CatmullRomCurve3([new THREE.Vector3(0,0,0),new THREE.Vector3(0,0,-8)])
+     const jeep=createExpeditionJeep(createMaterials()),boat=createExpeditionBoat(createMaterials())
+     updateJeep(jeep,curve,.5,1,false);updateBoat(boat,curve,.5,1,false)
+     expect(jeep.position.z).toBeCloseTo(-4,1)
+     expect(boat.position.z).toBeCloseTo(-4,1)
+     disposeObject3D(jeep);disposeObject3D(boat)
+   })
++  it('grounds all four jeep tires on the forest route',()=>{
++    const routeY=.25
++    const curve=new THREE.CatmullRomCurve3([
++      new THREE.Vector3(0,routeY,0),
++      new THREE.Vector3(0,routeY,-8),
++    ])
++    const jeep=createExpeditionJeep(createMaterials())
++    updateJeep(jeep,curve,.5,1,true)
++    jeep.updateMatrixWorld(true)
++    jeep.userData.wheels.forEach(wheel=>{
++      const tireBottom=new THREE.Box3().setFromObject(wheel).min.y
++      expect(Math.abs(tireBottom-routeY)).toBeLessThan(.035)
++    })
++    disposeObject3D(jeep)
++  })
+ })
+diff --git a/src/three/hillWorld.js b/src/three/hillWorld.js
+index d1ac9ce..e71d498 100644
+--- a/src/three/hillWorld.js
++++ b/src/three/hillWorld.js
+@@ -23,30 +23,31 @@ const deterministic=(index,salt=0)=>{
+   const value=Math.sin((index+1)*91.733+salt*37.119)*43758.5453
+   return value-Math.floor(value)
+ }
+ 
+ const routeDistance=(x,z,points)=>points.reduce((distance,point)=>{
+   return Math.min(distance,Math.hypot(x-point.x,z-point.z))
+ },Infinity)
+ 
+ const createRoute=heightAt=>{
+   const [startX,,startZ]=LANDMARKS.mountainStart
+-  const [endX,,endZ]=LANDMARKS.mountainLanding
++  const [endX,endY,endZ]=LANDMARKS.mountainLanding
+   const points=Array.from({length:32},(_,index)=>{
+     const t=index/31
+     const meander=Math.sin(t*Math.PI)*(
+       Math.sin(t*Math.PI*3.4)*1.45+
+       Math.sin(t*Math.PI*7.1)*.34
+     )
+     const x=THREE.MathUtils.lerp(startX,endX,t)+meander
+     const z=THREE.MathUtils.lerp(startZ,endZ,t)
+-    return new THREE.Vector3(x,heightAt(x,z)+.08,z)
++    const y=index===31?endY:heightAt(x,z)+.08
++    return new THREE.Vector3(x,y,z)
+   })
+   return new THREE.CatmullRomCurve3(points,false,'centripetal')
+ }
+ 
+ const createTerrain=(heightAt,quality)=>{
+   const segmentsX=quality==='mobile'?64:112
+   const segmentsZ=quality==='mobile'?76:120
+   const geometry=createTerrainGeometry({
+     width:72,
+     depth:78,
+@@ -320,42 +321,45 @@ const createTrail=(materials,route,heightAt,quality)=>{
+       new THREE.CylinderGeometry(.014,.025,height,5),
+       index%3?materials.leaf2:materials.leaf,
+       [x,heightAt(x,z)+height*.5,z],
+       [Math.sin(index)*.07,0,Math.cos(index)*.07],
+     ))
+   }
+   trail.add(reeds)
+   return trail
+ }
+ 
+-const createLanding=(materials,heightAt)=>{
++const createLanding=materials=>{
+   const landing=namedGroup('mountain-water-landing')
+-  const [x,,z]=LANDMARKS.mountainLanding
+-  landing.position.set(x,heightAt(x,z),z-1)
+-  for(let index=0;index<7;index+=1){
++  landing.position.set(...LANDMARKS.mountainLanding)
++  const deck=namedGroup('mountain-landing-deck')
++  deck.position.y=.18
++  for(let index=-2;index<=2;index+=1){
+     const plank=mesh(
+-      new THREE.BoxGeometry(3.2,.12,.48),
++      new THREE.BoxGeometry(.7,.16,3.2),
+       index%2?materials.wood:material('#5a3d2c',.96),
+-      [0,.18,-index*.46],
++      [index*.72,0,0],
+     )
+     plank.rotation.y=(deterministic(index,81)-.5)*.025
+-    landing.add(plank)
++    plank.name='landing-plank'
++    deck.add(plank)
+   }
+-  ;[-1.36,1.36].forEach(side=>{
+-    ;[0,-2.7].forEach(depth=>{
+-      landing.add(mesh(
+-        new THREE.CylinderGeometry(.065,.09,1.35,8),
++  ;[-1.65,1.65].forEach(side=>{
++    ;[-1.35,1.35].forEach(depth=>{
++      deck.add(mesh(
++        new THREE.CylinderGeometry(.055,.075,1.25,8),
+         materials.wood,
+-        [side,-.38,depth],
++        [side,-.35,depth],
+       ))
+     })
+   })
++  landing.add(deck)
+   return landing
+ }
+ 
+ const createMist=(quality)=>{
+   const mist=namedGroup('hill-mist')
+   const count=quality==='mobile'?4:7
+   for(let index=0;index<count;index+=1){
+     const mistMaterial=new THREE.MeshBasicMaterial({
+       color:index%2?'#d5ddd5':'#c6d4ca',
+       transparent:true,
+@@ -398,21 +402,21 @@ const createWaterGlint=()=>{
+ export function createHillWorld(materials,quality='desktop'){
+   const world=namedGroup('hill-world')
+   const heightAt=sampleMountainHeight
+   const route=createRoute(heightAt)
+   const terrain=createTerrain(heightAt,quality)
+   const ridges=createRidges()
+   const rocks=createRockFaces(materials,heightAt,route.points,quality)
+   const vegetation=createVegetation(materials,heightAt,route.points,quality)
+   const mist=createMist(quality)
+   const trail=createTrail(materials,route,heightAt,quality)
+-  const landing=createLanding(materials,heightAt)
++  const landing=createLanding(materials)
+   const water=createWaterGlint()
+   world.add(terrain,ridges,rocks,vegetation,mist,trail,landing,water)
+ 
+   const warmLight=new THREE.DirectionalLight('#ffe1aa',3.1)
+   warmLight.position.set(-16,24,13)
+   world.add(warmLight)
+ 
+   world.userData={
+     route,
+     heightAt,
+diff --git a/src/three/hillWorld.test.js b/src/three/hillWorld.test.js
+index 9aa6224..34652f6 100644
+--- a/src/three/hillWorld.test.js
++++ b/src/three/hillWorld.test.js
+@@ -1,33 +1,44 @@
+ import { describe, expect, it } from 'vitest'
++import * as THREE from 'three'
+ import { createHillWorld } from './hillWorld'
+ import { updateHillWorld } from './hillWorld'
+ import { createMaterials, disposeObject3D } from './primitives'
++import { LANDMARKS } from './terrain'
+ 
+ describe('hill world',()=>{
+   it('builds a natural mountain opening with a visible water destination',()=>{
+     const world=createHillWorld(createMaterials(),'desktop')
+     ;['hill-terrain','hill-ridges','hill-rock-faces','hill-vegetation','hill-mist','hill-trail','mountain-water-landing','distant-water-glint']
+       .forEach(name=>expect(world.getObjectByName(name)).toBeTruthy())
+     ;['glacier','drifting-snow','ice-foreground','monument']
+       .forEach(name=>expect(world.getObjectByName(name)).toBeFalsy())
+-    expect(world.userData.route.getPoints(24).every(point=>Math.abs(point.y-world.userData.heightAt(point.x,point.z))<.3)).toBe(true)
++    expect(world.userData.route.getPoints(24).slice(0,-1).every(point=>Math.abs(point.y-world.userData.heightAt(point.x,point.z))<.3)).toBe(true)
+     disposeObject3D(world)
+   })
+ 
+   it('uses the requested terrain quality and exposes journey anchors',()=>{
+     const desktop=createHillWorld(createMaterials(),'desktop')
+     const mobile=createHillWorld(createMaterials(),'mobile')
+     expect(desktop.getObjectByName('hill-terrain').geometry.attributes.position.count).toBe((112+1)*(120+1))
+     expect(mobile.getObjectByName('hill-terrain').geometry.attributes.position.count).toBe((64+1)*(76+1))
+     expect(desktop.getObjectByName('hill-terrain').geometry.attributes.color).toBeTruthy()
+     expect(desktop.userData.route.points).toHaveLength(32)
+     expect(desktop.userData.landing).toBe(desktop.getObjectByName('mountain-water-landing'))
+     expect(desktop.userData.distantWaterAnchor.isVector3).toBe(true)
+     const mist=desktop.getObjectByName('hill-mist')
+     const before=mist.children[0].position.x
+     updateHillWorld(desktop,2)
+     expect(mist.children[0].position.x).not.toBe(before)
+     disposeObject3D(desktop)
+     disposeObject3D(mobile)
+   })
++
++  it('aligns the route and landing root to the full 3D mountain landmark',()=>{
++    const world=createHillWorld(createMaterials(),'mobile')
++    world.updateMatrixWorld(true)
++    const landmark=new THREE.Vector3(...LANDMARKS.mountainLanding)
++    expect(world.userData.route.getPointAt(1).distanceTo(landmark)).toBeLessThan(1e-6)
++    expect(world.userData.landing.getWorldPosition(new THREE.Vector3()).distanceTo(landmark)).toBeLessThan(1e-6)
++    disposeObject3D(world)
++  })
+ })
+diff --git a/src/three/iceWorld.js b/src/three/iceWorld.js
+deleted file mode 100644
+index 1ae11fa..0000000
+--- a/src/three/iceWorld.js
++++ /dev/null
+@@ -1,16 +0,0 @@
+-import * as THREE from 'three'
+-import { mesh } from './primitives'
+-const named=name=>{const g=new THREE.Group();g.name=name;return g}
+-const jaggedCone=(radius,height,segments,seed)=>{const geometry=new THREE.ConeGeometry(radius,height,segments,5);const positions=geometry.attributes.position;for(let i=0;i<positions.count;i++){const y=positions.getY(i),factor=1+(Math.sin(i*12.73+seed)*.11)*(1-Math.abs(y)/(height*.55));positions.setX(i,positions.getX(i)*factor);positions.setZ(i,positions.getZ(i)*(2-factor*.82))}geometry.computeVertexNormals();return geometry}
+-const peak=(m,x,z,s=1)=>{const g=new THREE.Group();g.add(mesh(jaggedCone(3.5*s,8*s,9,x+z),new THREE.MeshStandardMaterial({color:'#425066',roughness:.88}),[0,4*s,0]),mesh(jaggedCone(1.8*s,3.3*s,9,x-z),m.snow,[0,7.1*s,0]));g.position.set(x,0,z);return g}
+-export function createIceWorld(m,quality='desktop'){
+-  const world=new THREE.Group();world.name='ice-world';world.add(mesh(new THREE.PlaneGeometry(48,52,18,18),new THREE.MeshStandardMaterial({color:'#dce8ec',roughness:.78}),[0,-.15,0],[-Math.PI/2,0,0]))
+-  const fg=named('ice-foreground'),mid=named('ice-midground'),back=named('ice-background');for(let i=0;i<(quality==='mobile'?7:15);i++){const layer=i<4?fg:i<10?mid:back,z=-4-Math.floor(i/5)*10,x=(i%5-2)*6.3,s=.65+(i%4)*.14;layer.add(peak(m,x,z,s))}world.add(fg,mid,back)
+-  const glacier=named('glacier'),ice=new THREE.MeshPhysicalMaterial({color:'#83cddd',roughness:.16,transmission:.18,transparent:true,opacity:.86});glacier.add(mesh(new THREE.PlaneGeometry(15,34,6,16),ice,[4,.02,1],[-Math.PI/2,0,.16]));for(let i=0;i<7;i++)glacier.add(mesh(new THREE.BoxGeometry(.08,.03,3+(i%3)),m.dark,[1+i*1.1,.05,-13+i*4],[0,i*.12,0]));world.add(glacier)
+-  const trail=named('trek-path'),points=[];for(let i=0;i<18;i++)points.push(new THREE.Vector3(-5+Math.sin(i*.55)*2,.05,15-i*2));const curve=new THREE.CatmullRomCurve3(points);trail.add(mesh(new THREE.TubeGeometry(curve,100,.32,7,false),new THREE.MeshStandardMaterial({color:'#9aa9ac',roughness:1})));world.add(trail)
+-  const camp=named('base-camp');camp.position.set(-7,0,-10);[-1.2,1.2].forEach(x=>camp.add(mesh(new THREE.ConeGeometry(1.25,1.5,4),x<0?m.gold:m.sand,[x,.75,0],[0,Math.PI/4,0])));camp.add(mesh(new THREE.CylinderGeometry(.05,.06,2.2,8),m.wood,[0,1.1,0]),mesh(new THREE.BoxGeometry(2.8,1.3,.1),m.dark,[0,1.3,0]));world.add(camp)
+-  const snow=named('drifting-snow'),count=quality==='mobile'?160:520,positions=new Float32Array(count*3);for(let i=0;i<count;i++){positions[i*3]=(Math.random()-.5)*42;positions[i*3+1]=Math.random()*14;positions[i*3+2]=(Math.random()-.5)*45}const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.BufferAttribute(positions,3));snow.add(new THREE.Points(geo,new THREE.PointsMaterial({color:'#ffffff',size:.07,transparent:true,opacity:.7})));world.add(snow)
+-  const shelter=named('contact-shelter');shelter.position.set(5,0,-18);shelter.add(mesh(new THREE.BoxGeometry(6,2.6,3.5),m.wood,[0,1.3,0]),mesh(new THREE.ConeGeometry(4.2,2,4),m.snow,[0,3.2,0],[0,Math.PI/4,0]),mesh(new THREE.BoxGeometry(3,1.4,.08),ice,[0,1.5,1.76]));world.add(shelter)
+-  world.userData={route:curve,snow,copyAnchor:new THREE.Vector3(-7,2.2,-10)};const cold=new THREE.DirectionalLight('#b7d9ff',4);cold.position.set(-8,14,5);world.add(cold);return world
+-}
+-export function updateIceWorld(world,elapsed){if(world.userData.snow){world.userData.snow.rotation.y=elapsed*.015;world.userData.snow.position.y=Math.sin(elapsed*.4)*.15}}
+diff --git a/src/three/iceWorld.test.js b/src/three/iceWorld.test.js
+deleted file mode 100644
+index 4e1497c..0000000
+--- a/src/three/iceWorld.test.js
++++ /dev/null
+@@ -1,4 +0,0 @@
+-import { describe,expect,it } from 'vitest'
+-import { createIceWorld,updateIceWorld } from './iceWorld'
+-import { createMaterials,disposeObject3D } from './primitives'
+-describe('ice world',()=>{it('contains layered mountains, glacier, trail, camp and snow',()=>{const world=createIceWorld(createMaterials(),'desktop');['ice-foreground','ice-midground','ice-background','glacier','trek-path','base-camp','drifting-snow','contact-shelter'].forEach(name=>expect(world.getObjectByName(name)).toBeTruthy());updateIceWorld(world,1);disposeObject3D(world)})})
+diff --git a/src/three/indiaJourney.js b/src/three/indiaJourney.js
+index 3c0010f..ae02fc5 100644
+--- a/src/three/indiaJourney.js
++++ b/src/three/indiaJourney.js
+@@ -1,35 +1,242 @@
+ import * as THREE from 'three'
+-import { createMaterials, disposeObject3D, mesh } from './primitives'
+-import { createIndiaRegions } from './regions'
+-import { clamp01, getJourneyState } from './journeyData'
+-import { createAmbassador, updateAmbassador } from './ambassador'
+ import { createExpeditionController } from './expeditionController'
++import { clamp01,getJourneyState } from './journeyData'
++import { createMaterials,disposeObject3D } from './primitives'
+ 
+-export const getRenderQuality = (width) => width < 768 ? 'mobile' : 'desktop'
+-export const getMobileTrekCamera=([x,y,z])=>({camera:[x+3,y+2.2,z+8],target:[x,y+.9,z]})
+-export const getWorldVisibility=phase=>({
+-  'vehicle-intro':['south','deccan'],
+-  operations:['deccan','tourism-operations-pavilion'],
+-  plans:[],
+-  contact:[],
+-}[phase]||[])
+-
+-export function createIndiaJourney(canvas,{ reducedMotion=false, onContextLost=()=>{} }={}){
+-  const quality=getRenderQuality(window.innerWidth),scene=new THREE.Scene(),camera=new THREE.PerspectiveCamera(48,1,.1,300)
+-  const renderer=new THREE.WebGLRenderer({canvas,antialias:quality==='desktop',alpha:false,powerPreference:'high-performance'})
+-  renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,quality==='mobile'?1.25:2));renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.18;renderer.shadowMap.enabled=quality==='desktop';renderer.shadowMap.type=THREE.PCFSoftShadowMap
+-  scene.fog=new THREE.Fog('#8fc7c7',20,75);scene.background=new THREE.Color('#8fc7c7')
+-  scene.add(new THREE.HemisphereLight('#ffd9b0','#283c43',2.3));const sun=new THREE.DirectionalLight('#ffb46f',3.4);sun.position.set(-15,18,12);sun.castShadow=quality==='desktop';scene.add(sun)
+-  const materials=createMaterials(),world=createIndiaRegions(materials,quality);scene.add(world)
+-  const journeyGround=mesh(new THREE.PlaneGeometry(70,180),materials.road,[0,-.22,-68],[-Math.PI/2,0,0]);journeyGround.name='journey-ground';scene.add(journeyGround)
+-  const routePoints=[];for(let i=0;i<55;i++)routePoints.push(new THREE.Vector3(Math.sin(i*.5)*2,.08,4-i*2.7));const routeCurve=new THREE.CatmullRomCurve3(routePoints),route=mesh(new THREE.TubeGeometry(routeCurve,220,.045,6,false),materials.gold);route.name='travel-route';scene.add(route)
+-  const traveler=createAmbassador(materials);scene.add(traveler)
++export const getRenderQuality=width=>width<768?'mobile':'desktop'
++export const getWorldVisibility=()=>[]
++export const getDampingFactor=delta=>1-Math.exp(-Math.max(0,delta)*4.5)
++
++const rounded=value=>Number(value.toFixed(6))
++const MOBILE_FRAMING={
++  trekker:{camera:[3,2.2,8],targetY:.9},
++  boat:{camera:[4,2.8,9],targetY:.8},
++  jeep:{camera:[4,3.2,9],targetY:1},
++}
++
++export const getMobileTransportCamera=(transport,[x,y,z])=>{
++  const framing=MOBILE_FRAMING[transport]||MOBILE_FRAMING.trekker
++  return{
++    camera:[
++      rounded(x+framing.camera[0]),
++      rounded(y+framing.camera[1]),
++      rounded(z+framing.camera[2]),
++    ],
++    target:[x,rounded(y+framing.targetY),z],
++  }
++}
++
++export const getTransportWorldPosition=(name,transport,target=new THREE.Vector3())=>{
++  const members=name==='trekker'?transport?.userData?.members:null
++  if(!members?.length) return transport.getWorldPosition(target)
++  transport.updateWorldMatrix(true,true)
++  const memberPosition=new THREE.Vector3()
++  target.set(0,0,0)
++  members.forEach(member=>target.add(member.getWorldPosition(memberPosition)))
++  return target.multiplyScalar(1/members.length)
++}
++
++const ATMOSPHERE={
++  mountain:{
++    background:'#9bbab3',
++    fogNear:24,
++    fogFar:158,
++    exposure:1.14,
++    hemisphereIntensity:2.35,
++    directionalColor:'#ffe0a8',
++  },
++  water:{
++    background:'#79b7c4',
++    fogNear:30,
++    fogFar:184,
++    exposure:1.2,
++    hemisphereIntensity:2.55,
++    directionalColor:'#ffd19a',
++  },
++  forest:{
++    background:'#526f60',
++    fogNear:19,
++    fogFar:136,
++    exposure:1.08,
++    hemisphereIntensity:1.95,
++    directionalColor:'#e8ca82',
++  },
++}
++
++const weightedColor=(weights,key)=>{
++  const color=new THREE.Color(0,0,0)
++  Object.entries(weights).forEach(([biome,weight])=>{
++    const contribution=new THREE.Color(ATMOSPHERE[biome][key]).multiplyScalar(weight)
++    color.add(contribution)
++  })
++  return color
++}
++
++const weightedNumber=(weights,key)=>Object.entries(weights).reduce(
++  (total,[biome,weight])=>total+ATMOSPHERE[biome][key]*weight,
++  0,
++)
++
++export const getAtmosphere=weights=>({
++  background:weightedColor(weights,'background'),
++  fogNear:weightedNumber(weights,'fogNear'),
++  fogFar:weightedNumber(weights,'fogFar'),
++  exposure:weightedNumber(weights,'exposure'),
++  hemisphereIntensity:weightedNumber(weights,'hemisphereIntensity'),
++  directionalColor:weightedColor(weights,'directionalColor'),
++})
++
++export function createIndiaJourney(canvas,{reducedMotion=false,onContextLost=()=>{}}={}){
++  const quality=getRenderQuality(window.innerWidth)
++  const scene=new THREE.Scene()
++  const camera=new THREE.PerspectiveCamera(48,1,.1,420)
++  const renderer=new THREE.WebGLRenderer({
++    canvas,
++    antialias:quality==='desktop',
++    alpha:false,
++    powerPreference:'high-performance',
++  })
++  renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,quality==='mobile'?1.25:2))
++  renderer.outputColorSpace=THREE.SRGBColorSpace
++  renderer.toneMapping=THREE.ACESFilmicToneMapping
++  renderer.shadowMap.enabled=quality==='desktop'
++  renderer.shadowMap.type=THREE.PCFSoftShadowMap
++
++  const initialState=getJourneyState(0)
++  const materials=createMaterials()
+   const expedition=createExpeditionController(scene,materials,quality)
++  const initialTransition=expedition.update(initialState.expedition,0,reducedMotion)
++  const initialAtmosphere=getAtmosphere(initialTransition.worlds)
++  scene.background=initialAtmosphere.background.clone()
++  scene.fog=new THREE.Fog(
++    initialAtmosphere.background,
++    initialAtmosphere.fogNear,
++    initialAtmosphere.fogFar,
++  )
++  renderer.toneMappingExposure=initialAtmosphere.exposure
++
++  const hemisphere=new THREE.HemisphereLight('#ffe0b4','#263b37',initialAtmosphere.hemisphereIntensity)
++  const sun=new THREE.DirectionalLight(initialAtmosphere.directionalColor,3.25)
++  sun.position.set(-15,18,12)
++  sun.castShadow=quality==='desktop'
++  scene.add(hemisphere,sun)
++
++  const cameraTarget=new THREE.Vector3(...initialState.cameraTarget)
++  camera.position.set(...initialState.cameraPosition)
++  camera.lookAt(cameraTarget)
++
++  const resize=()=>{
++    const parent=canvas.parentElement
++    if(!parent) return
++    renderer.setSize(parent.clientWidth,parent.clientHeight,false)
++    camera.aspect=parent.clientWidth/Math.max(1,parent.clientHeight)
++    camera.updateProjectionMatrix()
++  }
++  const resizeObserver=new ResizeObserver(resize)
++  if(canvas.parentElement) resizeObserver.observe(canvas.parentElement)
++  resize()
++  renderer.compile(scene,camera)
++
+   const clock=new THREE.Clock()
+-  let progress=0,pointer={x:0,y:0},raf,paused=false,target=new THREE.Vector3(),lost=false
+-  const resize=()=>{const p=canvas.parentElement;if(!p)return;renderer.setSize(p.clientWidth,p.clientHeight,false);camera.aspect=p.clientWidth/Math.max(1,p.clientHeight);camera.updateProjectionMatrix()}
+-  const ro=new ResizeObserver(resize);if(canvas.parentElement)ro.observe(canvas.parentElement);resize()
+-  const animate=()=>{if(paused||lost)return;const s=getJourneyState(progress),elapsed=clock.getElapsedTime();let p=new THREE.Vector3(...s.cameraPosition),visible=new Set(getWorldVisibility(s.phase));world.children.forEach(group=>{group.visible=visible.has(group.name)});updateAmbassador(traveler,routeCurve,Math.min(progress,.41),elapsed,reducedMotion);const ambassadorVisible=s.expedition.phase==='ambassador'||s.expedition.phase==='ambassador-to-jeep';traveler.visible=ambassadorVisible;route.visible=ambassadorVisible;journeyGround.visible=s.phase==='vehicle-intro'||s.phase==='operations';expedition.update(s.expedition,elapsed,reducedMotion);let t=s.phase==='vehicle-intro'?traveler.position.clone().add(new THREE.Vector3(0,1,0)):new THREE.Vector3(...s.cameraTarget);if(quality==='mobile'&&s.expedition.phase==='ice-trek'){const walker=expedition.transports.trekker.getWorldPosition(new THREE.Vector3()),framing=getMobileTrekCamera(walker.toArray());p=new THREE.Vector3(...framing.camera);t=new THREE.Vector3(...framing.target)}if(!reducedMotion){p.x+=pointer.x*.45;p.y-=pointer.y*.25}camera.position.lerp(p,.055);target.lerp(t,.055);camera.lookAt(target);scene.background.lerp(new THREE.Color(s.palette.sky),.025);scene.fog.color.copy(scene.background);renderer.render(scene,camera);raf=requestAnimationFrame(animate)}
+-  const onLost=e=>{e.preventDefault();lost=true;cancelAnimationFrame(raf);onContextLost()};canvas.addEventListener('webglcontextlost',onLost);animate()
+-  return {setProgress:v=>{progress=clamp01(v)},setPointer:(x,y)=>{pointer={x,y}},setReducedMotion:v=>{reducedMotion=v},pause:()=>{paused=true;cancelAnimationFrame(raf)},resume:()=>{if(paused){paused=false;animate()}},dispose:()=>{cancelAnimationFrame(raf);ro.disconnect();canvas.removeEventListener('webglcontextlost',onLost);disposeObject3D(scene);renderer.dispose()}}
++  const desiredCamera=new THREE.Vector3()
++  const desiredTarget=new THREE.Vector3()
++  const atmosphereColor=new THREE.Color()
++  const directionalColor=new THREE.Color()
++  let progress=0
++  let pointer={x:0,y:0}
++  let frame
++  let paused=false
++  let lost=false
++  let disposed=false
++
++  const animate=()=>{
++    if(paused||lost||disposed) return
++    const delta=Math.min(clock.getDelta(),.1)
++    const elapsed=clock.elapsedTime
++    const state=getJourneyState(progress)
++    const transition=expedition.update(state.expedition,elapsed,reducedMotion)
++    const damping=getDampingFactor(delta)
++    desiredCamera.set(...state.cameraPosition)
++    desiredTarget.set(...state.cameraTarget)
++
++    if(quality==='mobile'){
++      const transport=expedition.transports[state.expedition.activeTransport]
++      const transportPosition=getTransportWorldPosition(
++        state.expedition.activeTransport,
++        transport,
++      )
++      const framing=getMobileTransportCamera(
++        state.expedition.activeTransport,
++        transportPosition.toArray(),
++      )
++      desiredCamera.set(...framing.camera)
++      desiredTarget.set(...framing.target)
++    }
++    if(!reducedMotion){
++      desiredCamera.x+=pointer.x*.45
++      desiredCamera.y-=pointer.y*.25
++    }
++
++    camera.position.lerp(desiredCamera,damping)
++    cameraTarget.lerp(desiredTarget,damping)
++    camera.lookAt(cameraTarget)
++
++    const atmosphere=getAtmosphere(transition.worlds)
++    atmosphereColor.copy(atmosphere.background)
++    scene.background.lerp(atmosphereColor,damping)
++    scene.fog.color.copy(scene.background)
++    scene.fog.near=THREE.MathUtils.lerp(scene.fog.near,atmosphere.fogNear,damping)
++    scene.fog.far=THREE.MathUtils.lerp(scene.fog.far,atmosphere.fogFar,damping)
++    renderer.toneMappingExposure=THREE.MathUtils.lerp(
++      renderer.toneMappingExposure,
++      atmosphere.exposure,
++      damping,
++    )
++    hemisphere.intensity=THREE.MathUtils.lerp(
++      hemisphere.intensity,
++      atmosphere.hemisphereIntensity,
++      damping,
++    )
++    directionalColor.copy(atmosphere.directionalColor)
++    sun.color.lerp(directionalColor,damping)
++
++    renderer.render(scene,camera)
++    frame=requestAnimationFrame(animate)
++  }
++
++  const onLost=event=>{
++    event.preventDefault()
++    lost=true
++    cancelAnimationFrame(frame)
++    onContextLost()
++  }
++  canvas.addEventListener('webglcontextlost',onLost)
++  animate()
++
++  return{
++    setProgress:value=>{progress=clamp01(value)},
++    setPointer:(x,y)=>{pointer={x,y}},
++    setReducedMotion:value=>{reducedMotion=value},
++    pause:()=>{
++      paused=true
++      cancelAnimationFrame(frame)
++    },
++    resume:()=>{
++      if(!paused||lost||disposed) return
++      paused=false
++      clock.getDelta()
++      animate()
++    },
++    dispose:()=>{
++      if(disposed) return
++      disposed=true
++      cancelAnimationFrame(frame)
++      resizeObserver.disconnect()
++      canvas.removeEventListener('webglcontextlost',onLost)
++      expedition.dispose()
++      disposeObject3D(scene)
++      Object.values(materials).forEach(material=>material.dispose())
++      renderer.dispose()
++    },
++  }
+ }
+diff --git a/src/three/indiaJourney.test.js b/src/three/indiaJourney.test.js
+index f7502db..d728f4a 100644
+--- a/src/three/indiaJourney.test.js
++++ b/src/three/indiaJourney.test.js
+@@ -1,17 +1,47 @@
++import * as THREE from 'three'
+ import { describe, expect, it } from 'vitest'
+-import { getMobileTrekCamera, getRenderQuality, getWorldVisibility } from './indiaJourney'
++import {
++  getAtmosphere,
++  getDampingFactor,
++  getMobileTransportCamera,
++  getRenderQuality,
++  getTransportWorldPosition,
++  getWorldVisibility,
++} from './indiaJourney'
+ 
+ describe('renderer quality', () => {
+   it('selects the simplified mobile scene at narrow widths', () => {
+     expect(getRenderQuality(390)).toBe('mobile')
+     expect(getRenderQuality(1440)).toBe('desktop')
+   })
+   it('isolates cinematic architecture from competing legacy regions',()=>{
+-    expect(getWorldVisibility('operations')).toEqual(['deccan','tourism-operations-pavilion'])
++    expect(getWorldVisibility('mountain')).toEqual([])
++    expect(getWorldVisibility('handoff')).toEqual([])
+     expect(getWorldVisibility('plans')).toEqual([])
+     expect(getWorldVisibility('contact')).toEqual([])
+   })
+-  it('frames the mobile trekker from a readable trailing distance',()=>{
+-    expect(getMobileTrekCamera([2,1,-130])).toEqual({camera:[5,3.2,-122],target:[2,1.9,-130]})
++  it('frames the mobile party, boat, and jeep at readable trailing distances',()=>{
++    expect(getMobileTransportCamera('trekker',[2,1,-30])).toEqual({camera:[5,3.2,-22],target:[2,1.9,-30]})
++    expect(getMobileTransportCamera('boat',[-2,.25,-86])).toEqual({camera:[2,3.05,-77],target:[-2,1.05,-86]})
++    expect(getMobileTransportCamera('jeep',[1,.2,-120])).toEqual({camera:[5,3.4,-111],target:[1,1.2,-120]})
++  })
++  it('frames the party around its members instead of its origin',()=>{
++    const party=new THREE.Group()
++    const guide=new THREE.Object3D()
++    const tourist=new THREE.Object3D()
++    guide.position.set(-1,1,-28)
++    tourist.position.set(1,1,-32)
++    party.add(guide,tourist)
++    party.userData.members=[guide,tourist]
++    expect(getTransportWorldPosition('trekker',party).toArray()).toEqual([0,1,-30])
++  })
++  it('uses delta-based damping and biome-weighted atmosphere',()=>{
++    expect(getDampingFactor(0)).toBe(0)
++    expect(getDampingFactor(1/60)).toBeCloseTo(1-Math.exp(-(1/60)*4.5),8)
++    const atmosphere=getAtmosphere({mountain:.5,water:.5,forest:0})
++    expect(atmosphere.fogNear).toBeGreaterThanOrEqual(18)
++    expect(atmosphere.fogFar).toBeGreaterThan(100)
++    expect(atmosphere.exposure).toBeGreaterThan(1)
++    expect(atmosphere.background).toBeInstanceOf(THREE.Color)
+   })
+ })
+diff --git a/src/three/journeyData.js b/src/three/journeyData.js
+index 856dc46..552d61c 100644
+--- a/src/three/journeyData.js
++++ b/src/three/journeyData.js
+@@ -1,62 +1,72 @@
++import { smootherstep } from './terrain'
++
+ const stop = (id, name, kicker, description, region, palette, camera, target) => ({
+   id, name, kicker, description, region, href: '#destinations', palette, camera, target,
+ })
+ 
+ export const JOURNEY_STOPS = [
+   stop('kerala', 'Kerala Backwaters', 'The journey begins in the south', 'Drift through palms, waterways and houseboat country.', 'south', { sky: '#8fc7c7', horizon: '#f4b27b', ground: '#245c4c', accent: '#ffd274' }, [0, 5, 18], [0, 1, 0]),
+   stop('tamil-nadu', 'Tamil Nadu', 'Temple country', 'Enter a skyline shaped by ancient gopurams and living traditions.', 'south', { sky: '#89b9c9', horizon: '#ed9669', ground: '#8b4d35', accent: '#ffcc75' }, [9, 5, 3], [9, 2, -12]),
+   stop('hampi', 'Hampi & the Deccan', 'Stone, story and empire', 'Cross boulder fields and the monumental remains of Vijayanagara.', 'deccan', { sky: '#7998b7', horizon: '#df815e', ground: '#8f4937', accent: '#f5bd69' }, [-8, 6, -16], [-5, 1, -29]),
+   stop('goa', 'Goa Coast', 'Where the road meets the sea', 'Follow palms, bright facades and the Arabian Sea.', 'deccan', { sky: '#74abc4', horizon: '#f1a66f', ground: '#2f6470', accent: '#ffd87a' }, [8, 5, -34], [10, 1, -48]),
+   stop('mumbai', 'Mumbai', 'Gateway to the west', 'Arrive at a harbor shaped by movement, ambition and history.', 'west-north', { sky: '#627f9f', horizon: '#df805f', ground: '#4a4d5e', accent: '#ffc46e' }, [-6, 6, -52], [-4, 2, -66]),
+   stop('rajasthan', 'Rajasthan', 'Fortresses of the desert', 'Travel through ochre dunes, palace walls and desert light.', 'west-north', { sky: '#887993', horizon: '#df7759', ground: '#9e663b', accent: '#ffd078' }, [8, 6, -70], [7, 2, -84]),
+   stop('agra', 'Agra', 'An icon in marble', 'Pause before the symmetry and calm of the Taj Mahal.', 'west-north', { sky: '#8098ad', horizon: '#efa082', ground: '#767b77', accent: '#fff0c8' }, [-5, 5, -88], [-3, 2, -102]),
+   stop('varanasi', 'Varanasi', 'Light along the Ganges', 'Move past river steps, boats and the glow of evening rituals.', 'ganges', { sky: '#5d6684', horizon: '#df704f', ground: '#59454d', accent: '#ffbf59' }, [7, 5, -106], [7, 1, -120]),
+-  stop('himalayas', 'The Himalayas', 'The journey rises', 'Finish above cedar forests beneath snow-lit peaks.', 'himalayas', { sky: '#4f6682', horizon: '#cc8e7c', ground: '#34464a', accent: '#eef8ff' }, [0, 8, -126], [0, 3, -140]),
++  stop('hill-country', 'Forested Hill Country', 'The journey enters the canopy', 'Finish among forested ridges, mist-filled valleys and winding green trails.', 'hill-country', { sky: '#4f6682', horizon: '#cc8e7c', ground: '#34464a', accent: '#eef8ff' }, [0, 8, -126], [0, 3, -140]),
+ ]
+ 
+ export const CAMERA_KEYFRAMES = JOURNEY_STOPS.map(({ camera, target }) => ({ camera, target }))
+ export const clamp01 = (value) => Math.min(1, Math.max(0, Number.isFinite(value) ? value : 0))
+ const lerp = (a, b, t) => a + (b - a) * t
+ const lerp3 = (a, b, t) => a.map((value, index) => lerp(value, b[index], t))
+ const CINEMATIC_KEYFRAMES=[
+-  {p:0,camera:[5,3.2,15],target:[0,1,4]},
+-  {p:.08,camera:[4,2.8,1],target:[0,1,-8]},
+-  {p:.18,camera:[-10,5,-10],target:[0,1.7,-24]},
+-  {p:.25,camera:[-11,5.2,-12],target:[0,1.7,-24]},
+-  {p:.38,camera:[8,6,-32],target:[0,2,-50]},
+-  {p:.48,camera:[0,3.4,-41],target:[0,1.5,-53]},
+-  {p:.57,camera:[7,4.5,-54],target:[0,1,-67]},
+-  {p:.62,camera:[-10,5,-76],target:[0,1,-89]},
+-  {p:.66,camera:[3,2.8,-84],target:[0,1,-94]},
+-  {p:.70,camera:[-7,4.5,-92],target:[0,1,-106]},
+-  {p:.75,camera:[9,7,-113],target:[-2,2,-126]},
+-  {p:.82,camera:[-4,3.2,-122],target:[-2,2,-132]},
+-  {p:.92,camera:[8,6,-137],target:[5,2,-150]},
+-  {p:1,camera:[-6,6,-136],target:[5,2,-150]},
++  {p:0,camera:[5,7,20],target:[0,5.9,12]},
++  {p:.18,camera:[8,5.5,-14],target:[0,2,-24]},
++  {p:.28,camera:[9,4.8,-25],target:[2,1,-34]},
++  {p:.35,camera:[7,4.2,-27],target:[2,1,-34]},
++  {p:.42,camera:[-4,4,-27],target:[2,1,-34]},
++  {p:.52,camera:[8,3,-51],target:[0,1,-59]},
++  {p:.60,camera:[-8,4,-78],target:[-2,1,-86]},
++  {p:.67,camera:[5,3.5,-78],target:[-2,1,-86]},
++  {p:.74,camera:[7,4,-82],target:[-2,1,-86]},
++  {p:.84,camera:[8,4,-105],target:[0,1,-114]},
++  {p:.94,camera:[8,5,-124],target:[1,1,-132]},
++  {p:1,camera:[8,5,-124],target:[1,1,-132]},
+ ]
+-const cinematicState=value=>{const nextIndex=Math.max(1,CINEMATIC_KEYFRAMES.findIndex(k=>value<=k.p)),a=CINEMATIC_KEYFRAMES[nextIndex-1],b=CINEMATIC_KEYFRAMES[nextIndex],t=(value-a.p)/Math.max(.0001,b.p-a.p);return{cameraPosition:lerp3(a.camera,b.camera,t),cameraTarget:lerp3(a.target,b.target,t)}}
++const cinematicState=value=>{
++  const found=CINEMATIC_KEYFRAMES.findIndex(keyframe=>value<=keyframe.p)
++  const nextIndex=Math.max(1,found<0?CINEMATIC_KEYFRAMES.length-1:found)
++  const a=CINEMATIC_KEYFRAMES[nextIndex-1]
++  const b=CINEMATIC_KEYFRAMES[nextIndex]
++  const t=smootherstep(a.p,b.p,value)
++  return{cameraPosition:lerp3(a.camera,b.camera,t),cameraTarget:lerp3(a.target,b.target,t)}
++}
+ 
+ export function getExpeditionState(progress){
+   const p=clamp01(progress)
+-  if(p<.38)return{phase:'ambassador',activeTransport:'ambassador',handoff:null,localProgress:p/.38}
+-  if(p<.41)return{phase:'ambassador-to-jeep',activeTransport:'ambassador',handoff:'ambassador-to-jeep',localProgress:(p-.38)/.03}
+-  if(p<.57)return{phase:'jungle-jeep',activeTransport:'jeep',handoff:null,localProgress:(p-.41)/.16}
+-  if(p<.62)return{phase:'jeep-to-boat',activeTransport:'jeep',handoff:'jeep-to-boat',localProgress:(p-.57)/.05}
+-  if(p<.70)return{phase:'water-boat',activeTransport:'boat',handoff:null,localProgress:(p-.62)/.08}
+-  if(p<.75)return{phase:'boat-to-trek',activeTransport:'boat',handoff:'boat-to-trek',localProgress:(p-.70)/.05}
+-  if(p<.92)return{phase:'ice-trek',activeTransport:'trekker',handoff:null,localProgress:(p-.75)/.17}
+-  return{phase:'contact',activeTransport:'trekker',handoff:null,localProgress:(p-.92)/.08}
++  if(p<.28)return{phase:'mountain-trek',biome:'mountain',activeTransport:'trekker',localProgress:p/.28}
++  if(p<.42)return{phase:'trek-to-boat',biome:'mountain-water',activeTransport:'trekker',localProgress:(p-.28)/.14}
++  if(p<.60)return{phase:'water-boat',biome:'water',activeTransport:'boat',localProgress:(p-.42)/.18}
++  if(p<.74)return{phase:'boat-to-jeep',biome:'water-forest',activeTransport:'boat',localProgress:(p-.60)/.14}
++  if(p<.94)return{phase:'forest-jeep',biome:'forest',activeTransport:'jeep',localProgress:(p-.74)/.20}
++  return{phase:'contact',biome:'forest',activeTransport:'jeep',localProgress:(p-.94)/.06}
+ }
+ 
+ export function getJourneyState(progress) {
+   const value = clamp01(progress)
+   const scaled = value * (JOURNEY_STOPS.length - 1)
+   const activeIndex = Math.min(Math.floor(scaled), JOURNEY_STOPS.length - 1)
+   const nextIndex = Math.min(activeIndex + 1, JOURNEY_STOPS.length - 1)
+   const localProgress = nextIndex === activeIndex ? 1 : scaled - activeIndex
+   const current = JOURNEY_STOPS[activeIndex]
+   const next = JOURNEY_STOPS[nextIndex]
+-  const expedition=getExpeditionState(value),phase=value<.18?'vehicle-intro':value<.38?'operations':value<.92?'plans':'contact'
+-  const planFocus=value<.62?0:value<.75?1:2
+-  return { activeIndex, activeStop: current, localProgress, phase, planFocus:phase==='plans'?planFocus:null, vehicleVisible:true, contentVisible:value>=.18, expedition, ...cinematicState(value), palette: current.palette }
++  const expedition=getExpeditionState(value)
++  const phase=expedition.phase==='contact'
++    ?'contact'
++    :expedition.biome.includes('-')
++      ?'handoff'
++      :expedition.biome
++  const planFocus=value<.42?0:value<.74?1:2
++  return { activeIndex, activeStop: current, localProgress, phase, planFocus, contentVisible:true, expedition, ...cinematicState(value), palette: current.palette }
+ }
+diff --git a/src/three/journeyData.test.js b/src/three/journeyData.test.js
+index 651ebba..33e0e6d 100644
+--- a/src/three/journeyData.test.js
++++ b/src/three/journeyData.test.js
+@@ -1,56 +1,78 @@
+ import { describe, expect, it } from 'vitest'
+ import { JOURNEY_STOPS, clamp01, getExpeditionState, getJourneyState } from './journeyData'
++import { LANDMARKS } from './terrain'
+ 
+ describe('India journey data', () => {
+   it('runs south to north through every approved tourism stop', () => {
+     expect(JOURNEY_STOPS.map((stop) => stop.id)).toEqual([
+       'kerala', 'tamil-nadu', 'hampi', 'goa', 'mumbai',
+-      'rajasthan', 'agra', 'varanasi', 'himalayas',
++      'rajasthan', 'agra', 'varanasi', 'hill-country',
+     ])
+   })
+ 
+   it('clamps progress and returns stable endpoint states', () => {
+     expect(clamp01(-2)).toBe(0)
+     expect(clamp01(3)).toBe(1)
+     expect(getJourneyState(-1).activeStop.id).toBe('kerala')
+-    expect(getJourneyState(2).activeStop.id).toBe('himalayas')
++    expect(getJourneyState(2).activeStop.id).toBe('hill-country')
+   })
+ 
+   it('interpolates finite camera coordinates', () => {
+     const state = getJourneyState(0.55)
+     expect([...state.cameraPosition, ...state.cameraTarget].every(Number.isFinite)).toBe(true)
+     expect(state.localProgress).toBeGreaterThanOrEqual(0)
+     expect(state.localProgress).toBeLessThanOrEqual(1)
+   })
+ 
+-  it('keeps the opening camera focused on the moving Ambassador', () => {
++  it('opens on the mountain trek with the four-person party visible', () => {
+     const opening=getJourneyState(.08)
+-    expect(opening.phase).toBe('vehicle-intro')
+-    expect(opening.vehicleVisible).toBe(true)
+-    expect(opening.contentVisible).toBe(false)
++    expect(opening.phase).toBe('mountain')
++    expect(opening.expedition.activeTransport).toBe('trekker')
++    expect(opening.contentVisible).toBe(true)
+   })
+ 
+   it('exposes the three plan focus states in journey order', () => {
+-    expect([.48,.66,.82].map(p=>getJourneyState(p).planFocus)).toEqual([0,1,2])
++    expect([.34,.5,.82].map(p=>getJourneyState(p).planFocus)).toEqual([0,1,2])
+   })
+ 
+-  it('frames the operations pavilion and each expedition world deliberately',()=>{
+-    expect(getJourneyState(.25).cameraTarget[2]).toBeCloseTo(-24,0)
+-    expect(getJourneyState(.48).cameraTarget[2]).toBeCloseTo(-53,0)
+-    expect(getJourneyState(.66).cameraTarget[2]).toBeCloseTo(-94,0)
+-    expect(getJourneyState(.82).cameraTarget[2]).toBeCloseTo(-132,0)
++  it('frames both physical landings before, during, and after each handoff',()=>{
++    const mountainLanding=new Set([.28,.35,.42].map(progress=>Math.round(getJourneyState(progress).cameraTarget[2])))
++    const forestLanding=new Set([.60,.67,.74].map(progress=>Math.round(getJourneyState(progress).cameraTarget[2])))
++    expect([...mountainLanding].every(z=>Math.abs(z-LANDMARKS.mountainLanding[2])<=8)).toBe(true)
++    expect([...forestLanding].every(z=>Math.abs(z-LANDMARKS.forestLanding[2])<=8)).toBe(true)
+   })
+-  it('moves through Ambassador, jeep, boat and trekking phases',()=>{
+-    expect([.1,.34,.43,.55,.64,.78,.9].map(p=>getExpeditionState(p).activeTransport)).toEqual(['ambassador','ambassador','jeep','jeep','boat','trekker','trekker'])
+-    expect(getExpeditionState(.39).handoff).toBe('ambassador-to-jeep')
+-    expect(getExpeditionState(.60).handoff).toBe('jeep-to-boat')
+-    expect(getExpeditionState(.72).handoff).toBe('boat-to-trek')
++
++  it('uses the required biome and transport order',()=>{
++    expect([.05,.5,.9].map(p=>getExpeditionState(p).activeTransport)).toEqual(['trekker','boat','jeep'])
++    expect([.05,.5,.9].map(p=>getExpeditionState(p).biome)).toEqual(['mountain','water','forest'])
++    expect(JSON.stringify(getExpeditionState(.5))).not.toMatch(/ambassador|monument|ice/i)
++  })
++
++  it('contains no active Himalaya, snow, or ice semantics',()=>{
++    expect(JSON.stringify(JOURNEY_STOPS)).not.toMatch(/himalaya|snow|ice/i)
++    expect(JSON.stringify(getJourneyState(1))).not.toMatch(/himalaya|snow|ice/i)
++  })
++
++  it('uses the full landing ranges for both handoffs',()=>{
++    expect(getExpeditionState(.34)).toEqual({
++      phase:'trek-to-boat',
++      biome:'mountain-water',
++      activeTransport:'trekker',
++      localProgress:(.34-.28)/.14,
++    })
++    expect(getExpeditionState(.68)).toEqual({
++      phase:'boat-to-jeep',
++      biome:'water-forest',
++      activeTransport:'boat',
++      localProgress:(.68-.60)/.14,
++    })
+   })
++
+   it('keeps each expedition transport close enough to read clearly',()=>{
+-    ;[.48,.66,.82].forEach(progress=>{
++    ;[.16,.5,.82].forEach(progress=>{
+       const {cameraPosition,cameraTarget}=getJourneyState(progress)
+       const distance=Math.hypot(...cameraPosition.map((value,index)=>value-cameraTarget[index]))
+       expect(distance).toBeLessThan(15)
+     })
+   })
+ })
+diff --git a/src/three/jungleWorld.js b/src/three/jungleWorld.js
+index 2e99f03..0b619d2 100644
+--- a/src/three/jungleWorld.js
++++ b/src/three/jungleWorld.js
+@@ -1,18 +1,19 @@
+ import * as THREE from 'three'
+ import { mesh } from './primitives'
+ import { LANDMARKS } from './terrain'
+ 
+ const ROUTE_CLEARANCE=1.4
+ const nameGroup=name=>{const group=new THREE.Group();group.name=name;return group}
++const JUNGLE_PALETTE_KEYS=['leaf','leaf2','stone','water','wood','sand','dark']
+ const cloneMaterialPalette=materials=>Object.fromEntries(
+-  Object.entries(materials).map(([name,material])=>[name,material.clone()]),
++  JUNGLE_PALETTE_KEYS.map(name=>[name,materials[name].clone()]),
+ )
+ const hashed=(index,salt=0)=>{
+   const value=Math.sin((index+1)*127.1+(salt+1)*311.7)*43758.5453123
+   return value-Math.floor(value)
+ }
+ 
+ const distanceToRoute=(route,x,z)=>{
+   let closest=Infinity
+   for(let index=0;index<=1200;index+=1){
+     const point=route.getPointAt(index/1200)
+diff --git a/src/three/trekkingParty.js b/src/three/trekkingParty.js
+index 61a764e..c55abc9 100644
+--- a/src/three/trekkingParty.js
++++ b/src/three/trekkingParty.js
+@@ -45,20 +45,22 @@ const palettes=[
+     trousers:'#77684f',
+     pack:'#b99462',
+     mat:'#33595a',
+     skin:'#c28560',
+     hair:'#392820',
+   },
+ ]
+ 
+ const phases=[0,1.37,2.91,4.42]
+ const routeOffsets=[0,.055,.11,.165]
++const bootBoundsScratch=new THREE.Box3()
++const rootPositionScratch=new THREE.Vector3()
+ 
+ const namedMesh=(name,geometry,meshMaterial,position=[0,0,0],rotation=[0,0,0])=>{
+   const object=mesh(geometry,meshMaterial,position,rotation)
+   object.name=name
+   return object
+ }
+ 
+ const createArm=(side,jacket,skin)=>{
+   const arm=new THREE.Group()
+   arm.name=side<0?'left-arm':'right-arm'
+@@ -290,53 +292,63 @@ const createMember=(palette,index,materials)=>{
+   root.role=palette.role
+   root.phase=phases[index]
+   root.routeOffset=routeOffsets[index]
+   root.userData={
+     role:root.role,
+     phase:root.phase,
+     routeOffset:root.routeOffset,
+     torso,
+     arms:[leftArm,rightArm],
+     legs:[left.leg,right.leg],
++    bootMeshes:[left.boot,right.boot],
+     backpack,
+     pole,
+   }
+   return root
+ }
+ 
+ export function createTrekkingParty(materials){
+   const party=new THREE.Group()
+   party.name='trekking-party'
+   const members=palettes.map((palette,index)=>createMember(palette,index,materials))
+   members.forEach(member=>party.add(member))
+   party.userData={members,phases:[...phases],routeOffsets:[...routeOffsets]}
+   return party
+ }
+ 
+-export function updateTrekkingParty(party,curve,progress,elapsed,reducedMotion,heightAt){
++export function updateTrekkingParty(party,curve,progress,elapsed,reducedMotion,surfaceHeightAt){
+   if(!party?.userData?.members||!curve) return
+-  const terrainHeight=typeof heightAt==='function'
+-    ?heightAt
++  const contactHeight=typeof surfaceHeightAt==='function'
++    ?surfaceHeightAt
+     :(x,z,point)=>point.y
+   const partySpan=Math.max(...party.userData.members.map(member=>member.routeOffset))
+   party.userData.members.forEach(member=>{
+     const routeProgress=THREE.MathUtils.clamp(progress+partySpan-member.routeOffset,0,1)
+     const point=curve.getPointAt(routeProgress)
+     const tangent=curve.getTangentAt(Math.min(.9999,routeProgress+.0005))
+-    member.position.set(point.x,terrainHeight(point.x,point.z,point),point.z)
++    const surfaceY=contactHeight(point.x,point.z,point)
++    member.position.set(point.x,surfaceY,point.z)
+     member.rotation.y=Math.atan2(tangent.x,tangent.z)
+ 
+     const phase=elapsed*5.2+member.phase
+     const swing=Math.sin(phase)*.58
+     const secondary=reducedMotion?0:Math.sin(phase*.5)
+     const [leftArm,rightArm]=member.userData.arms
+     const [leftLeg,rightLeg]=member.userData.legs
+     leftArm.rotation.x=swing*.72
+     rightArm.rotation.x=-swing*.72
+     leftLeg.rotation.x=-swing
+     rightLeg.rotation.x=swing
+     member.userData.pole.rotation.x=-swing*.34
+     member.userData.torso.rotation.z=secondary*.018
+     member.userData.torso.rotation.x=reducedMotion?0:Math.abs(Math.sin(phase))*.018
+     member.userData.backpack.rotation.z=reducedMotion?0:secondary*-.012
++
++    member.updateWorldMatrix(true,true)
++    const rootY=member.getWorldPosition(rootPositionScratch).y
++    bootBoundsScratch.makeEmpty()
++    member.userData.bootMeshes.forEach(boot=>bootBoundsScratch.expandByObject(boot))
++    const bootBottomOffset=bootBoundsScratch.min.y-rootY
++    member.userData.bootBottomOffset=bootBottomOffset
++    member.position.y=surfaceY-bootBottomOffset
+   })
+ }
+diff --git a/src/three/trekkingParty.test.js b/src/three/trekkingParty.test.js
+index 4439da0..08524f4 100644
+--- a/src/three/trekkingParty.test.js
++++ b/src/three/trekkingParty.test.js
+@@ -1,44 +1,55 @@
+ import { describe, expect, it } from 'vitest'
+ import { createTrekkingParty } from './trekkingParty'
+ import { updateTrekkingParty } from './trekkingParty'
+ import * as THREE from 'three'
+ import { createMaterials, disposeObject3D } from './primitives'
+ 
++const getBootBounds=member=>{
++  const bounds=new THREE.Box3()
++  member.getObjectByName('boots').userData.parts.forEach(boot=>bounds.expandByObject(boot))
++  return bounds
++}
++
+ describe('trekking party',()=>{
+   it('creates one guide and three independently phased tourists',()=>{
+     const materials=createMaterials()
+     const party=createTrekkingParty(materials)
+     expect(party.userData.members).toHaveLength(4)
+     expect(party.userData.members.filter(member=>member.role==='guide')).toHaveLength(1)
+     expect(party.userData.members.filter(member=>member.role==='tourist')).toHaveLength(3)
+     expect(new Set(party.userData.members.map(member=>member.phase)).size).toBe(4)
+     expect(party.getObjectByName('walking-pole-shaft').material).toBe(materials.wood)
+     expect(party.getObjectByName('boot').material).toBe(materials.dark)
+     disposeObject3D(party)
+   })
+ 
+-  it('plants articulated members on the route with exact spacing',()=>{
++  it('plants the actual articulated boot bottoms on the route surface',()=>{
+     const party=createTrekkingParty(createMaterials())
+     expect(party.userData.members.map(member=>member.phase)).toEqual([0,1.37,2.91,4.42])
+     expect(party.userData.members.map(member=>member.routeOffset)).toEqual([0,.055,.11,.165])
+     ;['head','hair','torso','trousers','boots','backpack','straps','roll-mat','arms','legs','walking-pole']
+       .forEach(name=>expect(party.userData.members[0].getObjectByName(name)).toBeTruthy())
+     const curve=new THREE.CatmullRomCurve3([
+       new THREE.Vector3(0,8,2),
+       new THREE.Vector3(2,6,-2),
+       new THREE.Vector3(3,4,-6),
+     ])
+     const heightAt=(x,z)=>1+x*.1-z*.02
+     updateTrekkingParty(party,curve,.6,1.25,true,heightAt)
++    party.updateMatrixWorld(true)
+     party.userData.members.forEach(member=>{
+-      expect(member.position.y).toBeCloseTo(heightAt(member.position.x,member.position.z))
++      const contactHeight=heightAt(member.position.x,member.position.z)
++      const rootY=member.getWorldPosition(new THREE.Vector3()).y
++      const bootBounds=getBootBounds(member)
++      expect(bootBounds.min.y).toBeCloseTo(contactHeight,5)
++      expect(member.userData.bootBottomOffset).toBeCloseTo(bootBounds.min.y-rootY,5)
+       expect(member.userData.torso.rotation.z).toBe(0)
+     })
+     disposeObject3D(party)
+   })
+ 
+   it('keeps the guide-led party separated on the route from the journey start',()=>{
+     const party=createTrekkingParty(createMaterials())
+     const curve=new THREE.CatmullRomCurve3([
+       new THREE.Vector3(0,2,2),
+       new THREE.Vector3(1,1,0),

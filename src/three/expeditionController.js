@@ -96,6 +96,7 @@ const createBlendState=root=>{
         opacity:material.opacity,
         transparent:material.transparent,
         depthWrite:material.depthWrite,
+        alphaHash:material.alphaHash,
       })
     })
     if(object.isLight) lights.set(object,object.intensity)
@@ -112,15 +113,30 @@ const resetBlendState=({materials,lights,shadows})=>{
       material.needsUpdate=true
     }
     material.depthWrite=base.depthWrite
+    if(material.alphaHash!==base.alphaHash){
+      material.alphaHash=base.alphaHash
+      material.needsUpdate=true
+    }
   })
   lights.forEach((intensity,light)=>{light.intensity=intensity})
   shadows.forEach((castShadow,object)=>{object.castShadow=castShadow})
 }
 
-const applyPresenceWeight=(blendState,weight)=>{
+const applyPresenceWeight=(blendState,weight,transport)=>{
+  blendState.materials.forEach((base,material)=>{
+    if(transport||base.transparent) material.opacity*=weight
+    if(transport){
+      const transparent=base.transparent||weight<1
+      if(material.transparent!==transparent){
+        material.transparent=transparent
+        material.needsUpdate=true
+      }
+      material.depthWrite=weight<1?false:base.depthWrite
+    }
+  })
   blendState.lights.forEach((intensity,light)=>{light.intensity=intensity*weight})
   blendState.shadows.forEach((castShadow,object)=>{
-    object.castShadow=castShadow&&weight>.01
+    object.castShadow=castShadow&&(transport?weight===1:weight>0)
   })
 }
 
@@ -243,13 +259,13 @@ export function createExpeditionController(scene,materials,quality){
     const transition=getExpeditionTransition(state)
     Object.entries(worlds).forEach(([name,world])=>{
       const weight=transition.worlds[name]
-      world.visible=weight>.01
-      applyPresenceWeight(blendStates.get(world),weight)
+      world.visible=true
+      applyPresenceWeight(blendStates.get(world),weight,false)
     })
     Object.entries(transports).forEach(([name,transport])=>{
       const weight=transition.transports[name]
-      transport.visible=weight>.01
-      applyPresenceWeight(blendStates.get(transport),weight)
+      transport.visible=true
+      applyPresenceWeight(blendStates.get(transport),weight,true)
     })
     return transition
   }

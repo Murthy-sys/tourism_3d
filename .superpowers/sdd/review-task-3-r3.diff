@@ -1,0 +1,891 @@
+# Review package: 3aaf5a9..f1d23c0
+
+## Commits
+f1d23c0 Keep boat wake animation symmetric
+5311f00 Fix reflective water corridor review findings
+919e51d Build realistic reflective water corridor
+
+## Files changed
+ .superpowers/sdd/task-3-report.md    | 141 +++++++++++++
+ src/three/expeditionVehicles.js      |  59 +++++-
+ src/three/expeditionVehicles.test.js |  39 +++-
+ src/three/waterWorld.js              | 389 +++++++++++++++++++++++++++++++++--
+ src/three/waterWorld.test.js         | 118 ++++++++++-
+ 5 files changed, 720 insertions(+), 26 deletions(-)
+
+## Diff
+diff --git a/.superpowers/sdd/task-3-report.md b/.superpowers/sdd/task-3-report.md
+new file mode 100644
+index 0000000..cce385c
+--- /dev/null
++++ b/.superpowers/sdd/task-3-report.md
+@@ -0,0 +1,141 @@
++# Task 3 report
++
++## Status
++
++Implemented and committed.
++
++## Files
++
++- `src/three/waterWorld.js`
++- `src/three/waterWorld.test.js`
++- `src/three/expeditionVehicles.js`
++- `src/three/expeditionVehicles.test.js`
++
++## Commit
++
++`919e51d` — `Build realistic reflective water corridor`
++
++## TDD and verification
++
++- RED: `npm test -- src/three/waterWorld.test.js src/three/expeditionVehicles.test.js`
++  - Exit 1.
++  - The new water test failed because the layered corridor objects were absent.
++  - The new boat test failed because `boat-oar-left`, `boat-oar-right`, and the boat-owned wake were absent.
++- GREEN (fresh final run): `npm test -- src/three/waterWorld.test.js src/three/expeditionVehicles.test.js`
++  - Exit 0.
++  - 4 test files passed, 19 tests passed, 0 failed.
++  - Vitest also discovered the corresponding tests under `.worktrees/continuous-landscape`.
++- Build: `npm run build`
++  - Exit 0.
++  - 53 modules transformed; production bundle built successfully.
++  - Vite emitted its non-blocking chunk-size warning for the 695.99 kB JavaScript bundle.
++- Diff validation: `git diff --cached --check`
++  - Exit 0.
++
++## Implementation summary
++
++- Replaced the rectangular water plane with a curved route from `LANDMARKS.mountainLanding` to `LANDMARKS.forestLanding`.
++- Added dark depth, physical reflective surface, independent reflection, shallows, irregular banks, bank shadows, wet stones, foam, reeds, and animated wave vertices.
++- Added route-aligned mountain and forest landings plus three overlapping dark-green forest silhouette bands.
++- Exposed `route`, `mountainLanding`, `forestLanding`, `surfaceMaterials`, and `forestSightline` through water `userData`.
++- Preserved the teal articulated rowboat and legacy port/starboard names while adding left/right oar names, a boat-owned visible wake, corrected forward alignment, route-tangent wake alignment, and independent oar/ripple/water animation frequencies.
++
++## Self-review
++
++- Confirmed route endpoints match the two shared landmarks within the specified tolerance.
++- Confirmed required object names are reachable from the scene graph.
++- Confirmed all exposed surface materials have roughness below `.45`, and the main surface uses the requested physical material values.
++- Confirmed existing hull color, rower, blade, wake-anchor, rowing animation, and transport movement tests remain green.
++- Confirmed only the four Task 3 implementation/test files were included in the commit.
++
++## Concerns
++
++- The focused Vitest command also discovers tests inside `.worktrees/continuous-landscape` because the repository test configuration does not exclude `.worktrees`; all discovered tests passed.
++- The production build retains the existing Vite bundle-size warning; Task 3 does not alter bundling strategy.
++
++## Review-fix verification
++
++### Focused tests
++
++Command: `npm test -- src/three/waterWorld.test.js src/three/expeditionVehicles.test.js`
++
++```text
++> wanderlux-tourism@1.0.0 test
++> vitest run src/three/waterWorld.test.js src/three/expeditionVehicles.test.js
++
++
++ RUN  v2.1.9 /Users/apple/Desktop/tourist-management
++
++ ✓ .worktrees/continuous-landscape/src/three/expeditionVehicles.test.js (5 tests) 66ms
++ ✓ src/three/expeditionVehicles.test.js (7 tests) 95ms
++ ✓ src/three/waterWorld.test.js (8 tests) 185ms
++ ✓ .worktrees/continuous-landscape/src/three/waterWorld.test.js (6 tests) 190ms
++
++ Test Files  4 passed (4)
++      Tests  26 passed (26)
++   Start at  11:02:13
++   Duration  751ms (transform 86ms, setup 294ms, collect 207ms, tests 536ms, environment 928ms, prepare 153ms)
++```
++
++Exit code: `0`
++
++### Production build
++
++Command: `npm run build`
++
++```text
++> wanderlux-tourism@1.0.0 build
++> vite build
++
++vite v5.4.21 building for production...
++transforming...
++✓ 53 modules transformed.
++rendering chunks...
++computing gzip size...
++dist/index.html                   0.90 kB │ gzip:   0.50 kB
++dist/assets/index-Cb7CXXl5.css   29.32 kB │ gzip:   6.60 kB
++dist/assets/index-CuS_jbFP.js   696.51 kB │ gzip: 194.04 kB
++
++(!) Some chunks are larger than 500 kB after minification. Consider:
++- Using dynamic import() to code-split the application
++- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
++- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
++✓ built in 1.00s
++```
++
++Exit code: `0`
++
++### Review fixes covered
++
++- Both river-bank meshes now compute upward-facing normals.
++- Water uses seven vertices across each station, depth-colored from deep center to shallow edges, with cross-width wave phase and recomputed 2D normals.
++- The physical surface injects explicit Fresnel terrain/sky reflection into the Three.js physical shader.
++- The corridor narrows by approximately 2.70 units per side into the forest inlet.
++- Visible mountain and forest deck bounds are centered on their shared landmarks.
++- The boat-owned wake is the only wake in the combined water scene.
++- Left/right animated oar groups and port/starboard compatibility groups all contain visible oar geometry.
++- Every animated foam and boat-wake child owns its material, preventing opacity coupling.
++
++## Wake-symmetry follow-up verification
++
++Command: `npm test -- src/three/waterWorld.test.js src/three/expeditionVehicles.test.js`
++
++```text
++> wanderlux-tourism@1.0.0 test
++> vitest run src/three/waterWorld.test.js src/three/expeditionVehicles.test.js
++
++
++ RUN  v2.1.9 /Users/apple/Desktop/tourist-management
++
++ ✓ .worktrees/continuous-landscape/src/three/expeditionVehicles.test.js (5 tests) 58ms
++ ✓ src/three/expeditionVehicles.test.js (8 tests) 98ms
++ ✓ src/three/waterWorld.test.js (8 tests) 156ms
++ ✓ .worktrees/continuous-landscape/src/three/waterWorld.test.js (6 tests) 173ms
++
++ Test Files  4 passed (4)
++      Tests  27 passed (27)
++   Start at  11:05:28
++   Duration  652ms (transform 81ms, setup 269ms, collect 190ms, tests 485ms, environment 836ms, prepare 140ms)
++```
++
++Exit code: `0`
+diff --git a/src/three/expeditionVehicles.js b/src/three/expeditionVehicles.js
+index b8e7fc0..410ef82 100644
+--- a/src/three/expeditionVehicles.js
++++ b/src/three/expeditionVehicles.js
+@@ -14,26 +14,53 @@ export function createExpeditionJeep(m){
+   jeep.add(mesh(new THREE.TorusGeometry(.42,.12,10,20),material('#151718',.9),[0,1.1,1.66],[0,Math.PI/2,0]),mesh(new THREE.BoxGeometry(1.4,.18,.45),material('#624b36',.75),[0,1.08,.48]))
+   const person=traveller(m);person.position.set(-.38,1.08,-.12);jeep.add(person)
+   jeep.userData={wheels,lastProgress:0,traveller:person};return jeep
+ }
+ 
+ export function updateJeep(jeep,curve,progress,elapsed,reducedMotion){const {p}=routeUpdate(jeep,curve,progress,.25+(reducedMotion?0:Math.sin(elapsed*7)*.025));const distance=Math.abs(p-jeep.userData.lastProgress)*curve.getLength();jeep.userData.wheels.forEach(w=>w.rotation.x-=distance/.32);jeep.userData.lastProgress=p}
+ 
+ const namedMesh=(name,geometry,mat,position=[0,0,0],rotation=[0,0,0])=>{const object=mesh(geometry,mat,position,rotation);object.name=name;return object}
+ 
+ function createBoatOar(side,shaftMat,bladeMat,metalMat){
+-  const pivot=new THREE.Group();pivot.name=side<0?'boat-oar-port':'boat-oar-starboard';pivot.position.set(side*.72,.78,.05);pivot.rotation.order='YXZ';pivot.rotation.z=side<0?-.18:.18
+-  const shaft=namedMesh(`${pivot.name}-shaft`,new THREE.CylinderGeometry(.035,.045,2.65,16),shaftMat,[side*1.2,0,0],[0,0,Math.PI/2])
++  const legacyName=side<0?'boat-oar-port':'boat-oar-starboard'
++  const pivot=new THREE.Group();pivot.name=side<0?'boat-oar-left':'boat-oar-right';pivot.position.set(side*.72,.78,.05);pivot.rotation.order='YXZ';pivot.rotation.z=side<0?-.18:.18
++  const visibleAssembly=new THREE.Group();visibleAssembly.name=legacyName
++  const shaft=namedMesh(`${legacyName}-shaft`,new THREE.CylinderGeometry(.035,.045,2.65,16),shaftMat,[side*1.2,0,0],[0,0,Math.PI/2])
+   const bladeShape=new THREE.Shape();bladeShape.moveTo(-.08,-.42);bladeShape.bezierCurveTo(-.18,-.3,-.19,.22,-.11,.42);bladeShape.bezierCurveTo(-.04,.53,.04,.53,.11,.42);bladeShape.bezierCurveTo(.19,.22,.18,-.3,.08,-.42);bladeShape.closePath()
+-  const blade=namedMesh(`${pivot.name}-blade`,new THREE.ExtrudeGeometry(bladeShape,{depth:.055,bevelEnabled:true,bevelSize:.025,bevelThickness:.025,bevelSegments:4}),bladeMat,[side*2.55,0,-.03],[Math.PI/2,0,side<0?-Math.PI/2:Math.PI/2])
+-  const collar=namedMesh(`${pivot.name}-collar`,new THREE.CylinderGeometry(.07,.07,.16,16),metalMat,[0,0,0],[Math.PI/2,0,0])
+-  pivot.add(shaft,blade,collar);return pivot
++  const blade=namedMesh(`${legacyName}-blade`,new THREE.ExtrudeGeometry(bladeShape,{depth:.055,bevelEnabled:true,bevelSize:.025,bevelThickness:.025,bevelSegments:4}),bladeMat,[side*2.55,0,-.03],[Math.PI/2,0,side<0?-Math.PI/2:Math.PI/2])
++  const collar=namedMesh(`${legacyName}-collar`,new THREE.CylinderGeometry(.07,.07,.16,16),metalMat,[0,0,0],[Math.PI/2,0,0])
++  visibleAssembly.add(shaft,blade,collar);pivot.add(visibleAssembly);return pivot
++}
++
++function createBoatWake(){
++  const wake=new THREE.Group();wake.name='boat-wake';wake.position.y=.08
++  const createWakeMaterial=opacity=>new THREE.MeshBasicMaterial({color:'#d7f3ec',transparent:true,opacity,depthWrite:false,side:THREE.DoubleSide})
++  ;[-1,1].forEach(side=>{
++    const trail=namedMesh(
++      `boat-wake-trail-${side<0?'left':'right'}`,
++      new THREE.TubeGeometry(new THREE.CatmullRomCurve3([
++        new THREE.Vector3(side*.48,0,1.72),
++        new THREE.Vector3(side*.9,0,2.8),
++        new THREE.Vector3(side*1.45,0,4.5),
++      ]),28,.027,5,false),
++      createWakeMaterial(.38),
++    )
++    trail.userData.baseOpacity=.38
++    wake.add(trail)
++  })
++  ;[2.05,2.8,3.65].forEach((z,index)=>{
++    const wash=namedMesh(`boat-wake-ripple-${index+1}`,new THREE.RingGeometry(.52+index*.28,.58+index*.3,28),createWakeMaterial(.2),[0,.01,z],[-Math.PI/2,0,0])
++    wash.scale.x=1.7
++    wash.userData.baseOpacity=.2
++    wake.add(wash)
++  })
++  return wake
+ }
+ 
+ function createBoatRower(){
+   const root=new THREE.Group();root.name='boat-rower';root.position.set(0,.32,.22);root.rotation.y=Math.PI;root.scale.setScalar(.86)
+   const skin=material('#9b5d42',.62),shirt=material('#e86524',.54),shorts=material('#273039',.78),hair=material('#2a1a15',.92),shoe=material('#ece8dc',.66),eye=material('#151718',.72)
+   const torsoPivot=new THREE.Group();torsoPivot.name='boat-rower-torso-pivot';torsoPivot.position.set(0,.58,0)
+   const torso=namedMesh('boat-rower-torso',new THREE.CapsuleGeometry(.25,.58,10,24),shirt,[0,.28,0]);torso.scale.set(1,.98,.72);torsoPivot.add(torso)
+   const neck=namedMesh('boat-rower-neck',new THREE.CylinderGeometry(.075,.085,.16,16),skin,[0,.69,0]);const head=namedMesh('boat-rower-head',new THREE.SphereGeometry(.2,28,20),skin,[0,.91,0]);head.scale.set(.88,1.08,.9)
+   const hairCap=namedMesh('boat-rower-hair',new THREE.SphereGeometry(.205,24,12,0,Math.PI*2,0,Math.PI/2),hair,[0,1.01,0])
+   const beard=namedMesh('boat-rower-beard',new THREE.SphereGeometry(.15,20,12,0,Math.PI*2,Math.PI*.38,Math.PI*.5),hair,[0,.84,-.12],[Math.PI,0,0]);beard.scale.set(.85,.8,.42)
+@@ -60,31 +87,43 @@ export function createExpeditionBoat(m){
+   const hullMat=new THREE.MeshPhysicalMaterial({color:'#176f70',roughness:.24,metalness:.12,clearcoat:.72,clearcoatRoughness:.2}),innerMat=material('#0b4e52',.38,.08),trim=material('#72b7ad',.3,.18),wood=material('#73513a',.66),metal=material('#c6d4d0',.2,.72),shaft=material('#269a9b',.32,.16),blade=material('#f2a229',.38,.08)
+   const shape=new THREE.Shape();shape.moveTo(-1.28,.08);shape.bezierCurveTo(-1.16,-.36,-.92,-.72,-.56,-.78);shape.lineTo(.56,-.78);shape.bezierCurveTo(.92,-.72,1.16,-.36,1.28,.08);shape.lineTo(.98,.32);shape.bezierCurveTo(.52,.18,-.52,.18,-.98,.32);shape.closePath()
+   const hull=namedMesh('boat-hull',new THREE.ExtrudeGeometry(shape,{depth:4.55,bevelEnabled:true,bevelSize:.1,bevelThickness:.1,bevelSegments:5,curveSegments:20}),hullMat,[0,-.02,-2.28]);hull.scale.set(.65,.72,.92);boat.add(hull)
+   const interior=namedMesh('boat-interior',new THREE.BoxGeometry(1.58,.1,3.45),innerMat,[0,.39,0]);boat.add(interior)
+   ;[-1,1].forEach(side=>{
+     boat.add(namedMesh(`boat-gunwale-${side<0?'port':'starboard'}`,new THREE.CapsuleGeometry(.055,4.18,8,18),trim,[side*.91,.55,0],[Math.PI/2,0,0]))
+     for(let z=-1.45;z<=1.45;z+=.58){const rib=namedMesh('boat-rib',new THREE.CapsuleGeometry(.025,1.55,5,10),trim,[0,.47,z],[0,0,Math.PI/2]);rib.scale.y=.95;boat.add(rib)}
+   })
+   ;[-.72,.18,.98].forEach((z,i)=>boat.add(namedMesh(`boat-bench-${i+1}`,new THREE.BoxGeometry(1.58,.1,.4),wood,[0,.58,z])))
+   boat.add(namedMesh('boat-bow-cap',new THREE.SphereGeometry(.13,20,12),trim,[0,.55,-2.18]),namedMesh('boat-stern-cap',new THREE.SphereGeometry(.11,20,12),trim,[0,.53,2.18]))
+-  const port=createBoatOar(-1,shaft,blade,metal),starboard=createBoatOar(1,shaft,blade,metal);boat.add(port,starboard)
++  const port=createBoatOar(-1,shaft,blade,metal),starboard=createBoatOar(1,shaft,blade,metal)
++  boat.add(port,starboard)
+   const person=createBoatRower();boat.add(person)
+-  const wakeAnchors=[new THREE.Object3D(),new THREE.Object3D()];wakeAnchors[0].position.set(-.65,.05,1.95);wakeAnchors[1].position.set(.65,.05,1.95);wakeAnchors.forEach(a=>boat.add(a));boat.userData={wakeAnchors,traveller:person};return boat
++  const wakeAnchors=[new THREE.Object3D(),new THREE.Object3D()];wakeAnchors[0].position.set(-.65,.05,1.95);wakeAnchors[1].position.set(.65,.05,1.95);wakeAnchors.forEach(a=>boat.add(a))
++  const wake=createBoatWake();boat.add(wake)
++  boat.userData={wakeAnchors,traveller:person,wake,oars:{port,starboard}};return boat
+ }
+ 
+ export function updateBoat(boat,curve,progress,elapsed,reducedMotion){
+-  routeUpdate(boat,curve,progress,.12+(reducedMotion?0:Math.sin(elapsed*1.8)*.035));boat.rotation.z=reducedMotion?0:Math.sin(elapsed*1.3)*.025;boat.rotation.x=reducedMotion?0:Math.sin(elapsed*1.7)*.018
++  const {tangent}=routeUpdate(boat,curve,progress,.12+(reducedMotion?0:Math.sin(elapsed*1.8)*.035));boat.rotation.y+=Math.PI;boat.rotation.z=reducedMotion?0:Math.sin(elapsed*1.3)*.025;boat.rotation.x=reducedMotion?0:Math.sin(elapsed*1.7)*.018
++  boat.userData.routeTangent=tangent.clone()
+   const stroke=reducedMotion?0:Math.sin(elapsed*2.8),recovery=reducedMotion?0:Math.cos(elapsed*2.8)
+-  const port=boat.getObjectByName('boat-oar-port'),starboard=boat.getObjectByName('boat-oar-starboard'),rower=boat.getObjectByName('boat-rower')
+-  if(port&&starboard){port.rotation.x=-.18+stroke*.42;starboard.rotation.x=port.rotation.x;port.rotation.y=.12+recovery*.08;starboard.rotation.y=-port.rotation.y}
++  const port=boat.getObjectByName('boat-oar-left'),starboard=boat.getObjectByName('boat-oar-right'),rower=boat.getObjectByName('boat-rower')
++  if(port&&starboard){
++    port.rotation.x=-.18+stroke*.42;starboard.rotation.x=port.rotation.x;port.rotation.y=.12+recovery*.08;starboard.rotation.y=-port.rotation.y
++  }
+   if(rower){const torso=rower.userData.torsoPivot,left=rower.userData.leftElbow,right=rower.userData.rightElbow;torso.rotation.x=-.04-stroke*.18;left.rotation.x=.32+recovery*.38;right.rotation.x=left.rotation.x}
++  const wake=boat.userData.wake
++  if(wake&&!reducedMotion){
++    wake.scale.x=1+Math.sin(elapsed*2.1)*.06
++    const wakePulse=Math.sin(elapsed*2.6)*.05
++    wake.children.forEach(child=>{child.material.opacity=child.userData.baseOpacity+wakePulse})
++  }
+ }
+ 
+ export function createTrekker(m){
+   const root=new THREE.Group();root.name='ice-trekker';const coat=material('#d38832',.75),dark=material('#272c31',.85),skin=m.sand
+   root.add(mesh(new THREE.CapsuleGeometry(.18,.48,5,10),coat,[0,1.15,0]),mesh(new THREE.SphereGeometry(.18,12,9),skin,[0,1.68,0]),mesh(new THREE.SphereGeometry(.19,12,7,0,Math.PI*2,0,Math.PI/2),dark,[0,1.78,0]))
+   const limbs=[];[[-.2,1.35],[.2,1.35],[-.13,.72],[.13,.72]].forEach(([x,y],i)=>{const limb=new THREE.Group();limb.position.set(x,y,0);limb.add(mesh(new THREE.CylinderGeometry(i<2?.045:.06,i<2?.05:.07,i<2?.65:.75,8),i<2?coat:dark,[0,-(i<2?.28:.34),0]));root.add(limb);limbs.push(limb)})
+   const pack=mesh(new THREE.BoxGeometry(.55,.7,.28),material('#46614b',.82),[0,1.22,.23]);pack.name='trekker-backpack';root.add(pack)
+   const pole=mesh(new THREE.CylinderGeometry(.018,.025,1.65,8),material('#8b704c',.62),[.48,.72,-.08],[0,0,-.18]);pole.name='trekking-pole';root.add(pole)
+   root.userData={limbs,pole};return root
+ }
+diff --git a/src/three/expeditionVehicles.test.js b/src/three/expeditionVehicles.test.js
+index 48f7c2f..61b904a 100644
+--- a/src/three/expeditionVehicles.test.js
++++ b/src/three/expeditionVehicles.test.js
+@@ -1,15 +1,21 @@
+ import { describe, expect, it } from 'vitest'
+ import * as THREE from 'three'
+ import { createMaterials, disposeObject3D } from './primitives'
+ import { createExpeditionBoat, createExpeditionJeep, createTrekker, updateBoat, updateJeep, updateTrekker } from './expeditionVehicles'
+ 
++const meshCount=object=>{
++  let count=0
++  object.traverse(child=>{if(child.isMesh) count+=1})
++  return count
++}
++
+ describe('expedition transports',()=>{
+   it('creates a detailed jungle jeep with traveller and four wheels',()=>{
+     const jeep=createExpeditionJeep(createMaterials())
+     expect(jeep.name).toBe('jungle-jeep')
+     expect(jeep.userData.wheels).toHaveLength(4)
+     expect(jeep.getObjectByName('jeep-roll-cage')).toBeTruthy()
+     expect(jeep.getObjectByName('expedition-traveller')).toBeTruthy()
+     disposeObject3D(jeep)
+   })
+   it('creates a reference-matched teal rowboat with articulated rower and oars',()=>{
+@@ -20,36 +26,63 @@ describe('expedition transports',()=>{
+     expect(boat.getObjectByName('boat-rower')).toBeTruthy()
+     expect(boat.getObjectByName('boat-rower-torso').material.color.getHexString()).toBe('e86524')
+     expect(boat.getObjectByName('boat-oar-port')).toBeTruthy()
+     expect(boat.getObjectByName('boat-oar-starboard')).toBeTruthy()
+     expect(boat.getObjectByName('boat-oar-port-blade').material.color.getHexString()).toBe('f2a229')
+     const hullSize=new THREE.Box3().setFromObject(boat.getObjectByName('boat-hull')).getSize(new THREE.Vector3())
+     expect(hullSize.z).toBeGreaterThan(hullSize.x*2)
+     expect(boat.getObjectByName('boat-rower').position.y).toBeLessThan(.5)
+     disposeObject3D(boat)
+   })
++  it('keeps the articulated boat and visible wake',()=>{
++    const boat=createExpeditionBoat(createMaterials())
++    expect(boat.getObjectByName('boat-rower')).toBeTruthy()
++    expect(boat.getObjectByName('boat-oar-left')).toBeTruthy()
++    expect(boat.getObjectByName('boat-oar-right')).toBeTruthy()
++    expect(boat.getObjectByName('boat-wake')).toBeTruthy()
++    disposeObject3D(boat)
++  })
+   it('animates the rower and both oars as one rowing stroke',()=>{
+     const boat=createExpeditionBoat(createMaterials())
+     const curve=new THREE.CatmullRomCurve3([new THREE.Vector3(0,0,0),new THREE.Vector3(0,0,-8)])
+     updateBoat(boat,curve,.4,0,false)
+     const first={
+-      port:boat.getObjectByName('boat-oar-port').rotation.x,
++      left:boat.getObjectByName('boat-oar-left').rotation.x,
+       torso:boat.getObjectByName('boat-rower-torso-pivot').rotation.x,
+       elbow:boat.getObjectByName('boat-rower-left-elbow').rotation.x,
+     }
+     updateBoat(boat,curve,.5,.72,false)
+-    expect(boat.getObjectByName('boat-oar-port').rotation.x).not.toBe(first.port)
+-    expect(boat.getObjectByName('boat-oar-starboard').rotation.x).toBeCloseTo(boat.getObjectByName('boat-oar-port').rotation.x)
++    expect(boat.getObjectByName('boat-oar-left').rotation.x).not.toBe(first.left)
++    expect(boat.getObjectByName('boat-oar-right').rotation.x).toBeCloseTo(boat.getObjectByName('boat-oar-left').rotation.x)
+     expect(boat.getObjectByName('boat-rower-torso-pivot').rotation.x).not.toBe(first.torso)
+     expect(boat.getObjectByName('boat-rower-left-elbow').rotation.x).not.toBe(first.elbow)
+     disposeObject3D(boat)
+   })
++  it('keeps both modern and compatibility oar groups attached to visible geometry',()=>{
++    const boat=createExpeditionBoat(createMaterials())
++    ;['boat-oar-left','boat-oar-right','boat-oar-port','boat-oar-starboard']
++      .forEach(name=>expect(meshCount(boat.getObjectByName(name))).toBeGreaterThan(0))
++    const wake=boat.getObjectByName('boat-wake')
++    expect(new Set(wake.children.map(child=>child.material)).size).toBe(wake.children.length)
++    disposeObject3D(boat)
++  })
++  it('keeps the two wake trails symmetric and subtler ripples behind them',()=>{
++    const boat=createExpeditionBoat(createMaterials())
++    const curve=new THREE.CatmullRomCurve3([new THREE.Vector3(0,0,0),new THREE.Vector3(0,0,-8)])
++    updateBoat(boat,curve,.5,.6,false)
++    const wake=boat.getObjectByName('boat-wake')
++    const trails=wake.children.filter(child=>child.name.startsWith('boat-wake-trail'))
++    const ripples=wake.children.filter(child=>child.name.startsWith('boat-wake-ripple'))
++    expect(trails[0].material.opacity).toBeCloseTo(trails[1].material.opacity)
++    ripples.forEach(ripple=>expect(ripple.material.opacity).toBeLessThan(trails[0].material.opacity))
++    disposeObject3D(boat)
++  })
+   it('creates and animates an articulated trekker',()=>{
+     const trekker=createTrekker(createMaterials())
+     expect(trekker.userData.limbs).toHaveLength(4)
+     expect(trekker.getObjectByName('trekker-backpack')).toBeTruthy()
+     expect(trekker.getObjectByName('trekking-pole')).toBeTruthy()
+     const curve=new THREE.CatmullRomCurve3([new THREE.Vector3(0,0,0),new THREE.Vector3(0,1,-5)])
+     updateTrekker(trekker,curve,.5,1,false)
+     expect(trekker.userData.limbs[0].rotation.x).not.toBe(0)
+     disposeObject3D(trekker)
+   })
+diff --git a/src/three/waterWorld.js b/src/three/waterWorld.js
+index f802b93..c895d3d 100644
+--- a/src/three/waterWorld.js
++++ b/src/three/waterWorld.js
+@@ -1,15 +1,380 @@
+ import * as THREE from 'three'
+ import { createTree,mesh } from './primitives'
+-const named=name=>{const g=new THREE.Group();g.name=name;return g}
++import { LANDMARKS } from './terrain'
++
++const named=name=>{
++  const group=new THREE.Group()
++  group.name=name
++  return group
++}
++
++const smooth01=value=>{
++  const t=THREE.MathUtils.clamp(value,0,1)
++  return t*t*(3-2*t)
++}
++
++const waterHalfWidth=t=>{
++  const inlet=smooth01((t-.58)/.42)
++  return 6.55+Math.sin(t*Math.PI*2.4)*.42+Math.sin(t*Math.PI*5.1)*.16-inlet*3.05
++}
++
++const sampleFrame=(curve,t)=>{
++  const point=curve.getPointAt(t)
++  const tangent=curve.getTangentAt(THREE.MathUtils.clamp(t,0,1)).normalize()
++  const lateral=new THREE.Vector3(tangent.z,0,-tangent.x).normalize()
++  return{point,tangent,lateral}
++}
++
++const createRibbonGeometry=(curve,segments,halfWidthAt,y=0,crossSectionSegments=6)=>{
++  const positions=[],colors=[],indices=[]
++  const deep=new THREE.Color('#0a5868'),light=new THREE.Color('#43a7a9'),color=new THREE.Color()
++  for(let index=0;index<=segments;index+=1){
++    const t=index/segments,{point,lateral}=sampleFrame(curve,t),halfWidth=halfWidthAt(t)
++    for(let column=0;column<=crossSectionSegments;column+=1){
++      const side=column/crossSectionSegments*2-1
++      positions.push(point.x+lateral.x*halfWidth*side,y,point.z+lateral.z*halfWidth*side)
++      color.copy(deep).lerp(light,.08+Math.abs(side)*.82+.08*Math.sin(t*Math.PI))
++      colors.push(color.r,color.g,color.b)
++    }
++    if(index<segments){
++      const columns=crossSectionSegments+1
++      for(let column=0;column<crossSectionSegments;column+=1){
++        const offset=index*columns+column,next=offset+columns
++        indices.push(offset,next,offset+1,offset+1,next,next+1)
++      }
++    }
++  }
++  const geometry=new THREE.BufferGeometry()
++  geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3))
++  geometry.setAttribute('color',new THREE.Float32BufferAttribute(colors,3))
++  geometry.setIndex(indices)
++  geometry.userData={
++    routeSegments:segments,
++    crossSectionSegments,
++    crossSectionColumns:crossSectionSegments+1,
++  }
++  geometry.computeVertexNormals()
++  return geometry
++}
++
++const createBankGeometry=(curve,segments,side)=>{
++  const positions=[],colors=[],indices=[]
++  const wet=new THREE.Color('#273f37'),dry=new THREE.Color('#566044'),color=new THREE.Color()
++  for(let index=0;index<=segments;index+=1){
++    const t=index/segments,{point,lateral}=sampleFrame(curve,t)
++    const inner=waterHalfWidth(t)-.18
++    const outer=inner+5.4+Math.sin(index*1.73+side)*1.2+Math.sin(index*.43)*.65
++    ;[inner,outer].forEach((distance,column)=>{
++      positions.push(
++        point.x+lateral.x*distance*side,
++        column===0?.07:.2+Math.sin(index*.91+side)*.08,
++        point.z+lateral.z*distance*side,
++      )
++      color.copy(wet).lerp(dry,column*.78)
++      colors.push(color.r,color.g,color.b)
++    })
++    if(index<segments){
++      const offset=index*2
++      if(side<0) indices.push(offset,offset+1,offset+2,offset+1,offset+3,offset+2)
++      else indices.push(offset,offset+2,offset+1,offset+1,offset+2,offset+3)
++    }
++  }
++  const geometry=new THREE.BufferGeometry()
++  geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3))
++  geometry.setAttribute('color',new THREE.Float32BufferAttribute(colors,3))
++  geometry.setIndex(indices)
++  geometry.computeVertexNormals()
++  return geometry
++}
++
++const offsetCurve=(route,offset,start=0,end=1,points=28)=>new THREE.CatmullRomCurve3(
++  Array.from({length:points},(_,index)=>{
++    const t=THREE.MathUtils.lerp(start,end,index/(points-1))
++    const {point,lateral}=sampleFrame(route,t)
++    return point.clone().addScaledVector(lateral,offset(t))
++  }),
++)
++
++const createLanding=(name,route,t,m)=>{
++  const {point,tangent}=sampleFrame(route,t)
++  const landing=named(name)
++  landing.position.copy(point)
++  landing.rotation.y=Math.atan2(tangent.x,tangent.z)
++  const deck=named(name==='mountain-water-landing'?'boat-jetty':'forest-jetty')
++  deck.position.set(0,.18,0)
++  for(let index=-2;index<=2;index+=1){
++    const plank=mesh(new THREE.BoxGeometry(.7,.16,3.2),m.wood,[index*.72,0,0])
++    plank.rotation.y=(index%2)*.018
++    deck.add(plank)
++  }
++  ;[-1.65,1.65].forEach(x=>[-1.35,1.35].forEach(z=>{
++    deck.add(mesh(new THREE.CylinderGeometry(.055,.075,1.25,8),m.wood,[x,-.35,z]))
++  }))
++  landing.add(deck)
++  return landing
++}
++
++const rememberWaveBase=layer=>{
++  const position=layer.geometry.attributes.position
++  layer.userData.baseY=new Float32Array(position.count)
++  for(let index=0;index<position.count;index+=1) layer.userData.baseY[index]=position.getY(index)
++  return layer
++}
++
++const animateWaveVertices=(layer,elapsed,frequency,amplitude,phase)=>{
++  const position=layer.geometry.attributes.position
++  const columns=layer.geometry.userData.crossSectionColumns||2
++  for(let index=0;index<position.count;index+=1){
++    const baseY=layer.userData.baseY[index]
++    const across=(index%columns)/(columns-1)*2-1
++    position.setY(index,baseY+
++      Math.sin(elapsed*frequency+position.getX(index)*.31+position.getZ(index)*.17+across*1.7+phase)*amplitude+
++      Math.cos(elapsed*frequency*.61-position.getZ(index)*.23-across*.9)*amplitude*.42)
++  }
++  position.needsUpdate=true
++  layer.geometry.computeVertexNormals()
++}
++
++const addScenicReflection=material=>{
++  material.userData.reflectionMode='fresnel-sky-terrain'
++  material.onBeforeCompile=shader=>{
++    shader.uniforms.reflectedSkyColor={value:new THREE.Color('#b9e6e0')}
++    shader.uniforms.reflectedTerrainColor={value:new THREE.Color('#244f42')}
++    shader.fragmentShader=shader.fragmentShader
++      .replace('#include <common>',`#include <common>
++uniform vec3 reflectedSkyColor;
++uniform vec3 reflectedTerrainColor;`)
++      .replace('#include <opaque_fragment>',`
++float reflectionFresnel = pow(1.0 - clamp(dot(normalize(normal), normalize(vViewPosition)), 0.0, 1.0), 3.0);
++vec3 scenicReflection = mix(reflectedTerrainColor, reflectedSkyColor, clamp(normal.y * 0.5 + 0.5, 0.0, 1.0));
++outgoingLight = mix(outgoingLight, scenicReflection, 0.12 + reflectionFresnel * 0.38);
++#include <opaque_fragment>`)
++  }
++  material.customProgramCacheKey=()=>material.userData.reflectionMode
++  return material
++}
++
++const createForestSightline=(m,route,quality)=>{
++  const forest=named('distant-forest-silhouette')
++  const count=quality==='mobile'?9:15
++  ;[
++    {offset:-5,z:-4,color:'#173b32',scale:.78},
++    {offset:0,z:-6,color:'#204b3b',scale:1},
++    {offset:5,z:-8,color:'#2b5b43',scale:1.18},
++  ].forEach((bandConfig,bandIndex)=>{
++    const band=named(`forest-silhouette-band-${bandIndex+1}`)
++    const material=new THREE.MeshStandardMaterial({color:bandConfig.color,roughness:.94})
++    for(let index=0;index<count;index+=1){
++      const t=index/(count-1),{point,lateral}=sampleFrame(route,1)
++      const spread=(t-.5)*22+bandConfig.offset
++      const height=(2.4+(index%4)*.55)*bandConfig.scale
++      const crown=mesh(
++        new THREE.IcosahedronGeometry(1.55+(index%3)*.28,1),
++        material,
++        [point.x+lateral.x*spread,height+bandIndex*.45,point.z+lateral.z*spread+bandConfig.z],
++      )
++      crown.scale.set(1.15,height*.42,.72)
++      band.add(crown)
++    }
++    forest.add(band)
++  })
++  const forestLandingPoint=route.getPointAt(1)
++  for(let index=0;index<(quality==='mobile'?5:10);index+=1){
++    forest.add(createTree(
++      m,
++      forestLandingPoint.x-8+index*1.8,
++      forestLandingPoint.z-2-(index%3)*1.2,
++      .8+(index%4)*.14,
++    ))
++  }
++  return forest
++}
++
+ export function createWaterWorld(m,quality='desktop'){
+-  const world=new THREE.Group();world.name='water-world'
+-  const waterMat=new THREE.MeshStandardMaterial({color:'#317c8d',roughness:.3,metalness:.1,transparent:true,opacity:.9});const water=mesh(new THREE.PlaneGeometry(52,48,32,32),waterMat,[0,.01,0],[-Math.PI/2,0,0]);water.name='reflective-water';world.add(water)
+-  const shore=named('water-shoreline');[-1,1].forEach(side=>{shore.add(mesh(new THREE.PlaneGeometry(16,48,8,8),new THREE.MeshStandardMaterial({color:'#6a7744',roughness:.92}),[side*18,-.08,0],[-Math.PI/2,0,0]));for(let i=0;i<(quality==='mobile'?5:12);i++)shore.add(createTree(m,side*(10+(i%3)*2.2),-18+i*3.4,.65+(i%3)*.1))});world.add(shore)
+-  const jetty=named('boat-jetty');jetty.position.set(-7,.3,-12);for(let i=0;i<8;i++)jetty.add(mesh(new THREE.BoxGeometry(1.3,.16,2.2),m.wood,[i*.9,0,0]));[-1,1].forEach(z=>{for(let i=0;i<5;i++)jetty.add(mesh(new THREE.CylinderGeometry(.05,.07,1.7,8),m.wood,[i*1.7,.65,z*.9]))});world.add(jetty)
+-  const rocks=named('water-rocks');for(let i=0;i<(quality==='mobile'?7:16);i++)rocks.add(mesh(new THREE.DodecahedronGeometry(.5+(i%4)*.24,1),m.stone,[(i%2?-1:1)*(7+(i%5)*1.8),.25,-15+(i%8)*4]));world.add(rocks)
+-  const reeds=named('water-reeds');for(let i=0;i<(quality==='mobile'?12:30);i++)reeds.add(mesh(new THREE.CylinderGeometry(.018,.025,.9+(i%3)*.18,5),m.leaf2,[(i%2?-1:1)*(8+(i%6)*.4),.45,-17+(i%12)*3]));world.add(reeds)
+-  const wake=named('boat-wake'),wakeMat=new THREE.MeshBasicMaterial({color:'#d8f4ed',transparent:true,opacity:.38,depthWrite:false});[-1,1].forEach(x=>wake.add(mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3([new THREE.Vector3(0,0,0),new THREE.Vector3(x*.8,0,2),new THREE.Vector3(x*1.8,0,5)]),30,.035,5,false),wakeMat)));world.add(wake)
+-  const route=new THREE.CatmullRomCurve3([new THREE.Vector3(-7,.1,13),new THREE.Vector3(-3,.1,4),new THREE.Vector3(3,.1,-5),new THREE.Vector3(0,.1,-18)]);world.userData={route,water,wake,copyAnchor:new THREE.Vector3(-7,2,-12)}
+-  const sun=new THREE.DirectionalLight('#ffd399',3.2);sun.position.set(-8,12,6);world.add(sun);return world
+-}
+-export function updateWaterWorld(world,elapsed,boat){const water=world.userData.water;water.position.y=.02+Math.sin(elapsed*1.4)*.018;if(boat&&world.userData.wake){world.userData.wake.position.copy(boat.position);world.userData.wake.rotation.y=boat.rotation.y}}
++  const world=named('water-world')
++  const route=new THREE.CatmullRomCurve3([
++    new THREE.Vector3(...LANDMARKS.mountainLanding),
++    new THREE.Vector3(6.4,.2,-45),
++    new THREE.Vector3(-4.8,.18,-58),
++    new THREE.Vector3(4.2,.2,-72),
++    new THREE.Vector3(...LANDMARKS.forestLanding),
++  ],false,'catmullrom',.42)
++  const segments=quality==='mobile'?40:76
++
++  const depthMaterial=new THREE.MeshStandardMaterial({
++    color:'#063b4b',
++    roughness:.78,
++    metalness:.04,
++    vertexColors:true,
++  })
++  const depth=mesh(createRibbonGeometry(route,segments,t=>waterHalfWidth(t)+.28,-.28),depthMaterial)
++  depth.name='water-depth-layer'
++  depth.receiveShadow=true
++  world.add(depth)
++
++  const surfaceMaterial=addScenicReflection(new THREE.MeshPhysicalMaterial({
++    color:'#ffffff',
++    roughness:.18,
++    metalness:.05,
++    transmission:.12,
++    clearcoat:1,
++    clearcoatRoughness:.1,
++    transparent:true,
++    opacity:.88,
++    vertexColors:true,
++    side:THREE.DoubleSide,
++  }))
++  const water=rememberWaveBase(mesh(createRibbonGeometry(route,segments,waterHalfWidth,.01),surfaceMaterial))
++  water.name='reflective-water'
++  water.receiveShadow=true
++  world.add(water)
++
++  const reflectionMaterial=new THREE.MeshPhysicalMaterial({
++    color:'#a8e7df',
++    roughness:.12,
++    metalness:.16,
++    transmission:.04,
++    clearcoat:1,
++    transparent:true,
++    opacity:.2,
++    vertexColors:true,
++    depthWrite:false,
++    blending:THREE.NormalBlending,
++  })
++  const reflection=rememberWaveBase(mesh(createRibbonGeometry(route,segments,t=>waterHalfWidth(t)*.84,.055),reflectionMaterial))
++  reflection.name='water-reflection-layer'
++  reflection.renderOrder=2
++  world.add(reflection)
++
++  const shallows=named('water-shallows')
++  const shallowsMaterial=new THREE.MeshPhysicalMaterial({
++    color:'#91d5bd',
++    roughness:.3,
++    metalness:.02,
++    transmission:.08,
++    clearcoat:.62,
++    transparent:true,
++    opacity:.46,
++    depthWrite:false,
++  })
++  ;[-1,1].forEach(side=>{
++    const shallow=mesh(
++      createRibbonGeometry(
++        offsetCurve(route,t=>side*(waterHalfWidth(t)-.72)),
++        Math.round(segments*.72),
++        ()=>.82,
++        .075,
++      ),
++      shallowsMaterial,
++    )
++    shallow.name=side<0?'left-water-shallows':'right-water-shallows'
++    shallows.add(shallow)
++  })
++  world.add(shallows)
++
++  const banks=named('curved-river-banks')
++  banks.add(
++    mesh(createBankGeometry(route,segments,-1),new THREE.MeshStandardMaterial({vertexColors:true,roughness:.96})),
++    mesh(createBankGeometry(route,segments,1),new THREE.MeshStandardMaterial({vertexColors:true,roughness:.96})),
++  )
++  banks.children[0].name='left-river-bank'
++  banks.children[1].name='right-river-bank'
++  const shoreline=named('water-shoreline')
++  shoreline.add(banks)
++  world.add(shoreline)
++
++  const bankShadows=named('water-bank-shadows')
++  const shadowMaterial=new THREE.MeshBasicMaterial({color:'#092f35',transparent:true,opacity:.42,depthWrite:false})
++  ;[-1,1].forEach(side=>{
++    const shadowCurve=offsetCurve(route,t=>side*(waterHalfWidth(t)-.05))
++    bankShadows.add(mesh(new THREE.TubeGeometry(shadowCurve,segments,.18,6,false),shadowMaterial))
++  })
++  world.add(bankShadows)
++
++  const foam=named('water-foam-accents')
++  const createFoamMaterial=()=>new THREE.MeshBasicMaterial({color:'#d9f4e8',transparent:true,opacity:.5,depthWrite:false})
++  ;[-1,1].forEach(side=>{
++    const foamCurve=offsetCurve(route,t=>side*(waterHalfWidth(t)-.42),.03,.97,24)
++    foam.add(mesh(new THREE.TubeGeometry(foamCurve,segments,.025,5,false),createFoamMaterial()))
++  })
++  for(let index=0;index<(quality==='mobile'?5:11);index+=1){
++    const t=.08+index/(quality==='mobile'?6:12)*.84,{point,lateral}=sampleFrame(route,t)
++    const ripple=mesh(new THREE.RingGeometry(.2,.26,18),createFoamMaterial(),[
++      point.x+lateral.x*(index%2?2.5:-2.8),
++      .11,
++      point.z+lateral.z*(index%2?2.5:-2.8),
++    ],[-Math.PI/2,0,index*.37])
++    foam.add(ripple)
++  }
++  world.add(foam)
++
++  const rocks=named('water-rocks')
++  const wetStoneMaterial=new THREE.MeshPhysicalMaterial({color:'#304c48',roughness:.36,metalness:.08,clearcoat:.68})
++  for(let index=0;index<(quality==='mobile'?8:18);index+=1){
++    const t=.03+index/(quality==='mobile'?8:18)*.94,{point,lateral}=sampleFrame(route,t)
++    const side=index%2?-1:1,distance=waterHalfWidth(t)-.32+(index%3)*.42
++    const rock=mesh(
++      new THREE.DodecahedronGeometry(.34+(index%4)*.13,1),
++      wetStoneMaterial,
++      [point.x+lateral.x*distance*side,.18,point.z+lateral.z*distance*side],
++    )
++    rock.scale.y=.55
++    rocks.add(rock)
++  }
++  world.add(rocks)
++
++  const reeds=named('water-reeds')
++  for(let index=0;index<(quality==='mobile'?16:38);index+=1){
++    const t=.04+index/(quality==='mobile'?16:38)*.92,{point,lateral}=sampleFrame(route,t)
++    const side=index%2?-1:1,distance=waterHalfWidth(t)+.35+(index%4)*.17
++    const reed=mesh(
++      new THREE.CylinderGeometry(.018,.027,.72+(index%4)*.17,5),
++      m.leaf2,
++      [point.x+lateral.x*distance*side,.4,point.z+lateral.z*distance*side],
++    )
++    reed.rotation.z=side*(.04+(index%3)*.025)
++    reeds.add(reed)
++  }
++  world.add(reeds)
++
++  const mountainLanding=createLanding('mountain-water-landing',route,0,m)
++  const forestLanding=createLanding('forest-water-landing',route,1,m)
++  world.add(mountainLanding,forestLanding)
++
++  const forestSightline=createForestSightline(m,route,quality)
++  world.add(forestSightline)
++
++  const sun=new THREE.DirectionalLight('#ffd399',3.2)
++  sun.position.set(-8,12,6)
++  world.add(sun)
++  world.userData={
++    route,
++    water,
++    reflection,
++    wake:null,
++    mountainLanding,
++    forestLanding,
++    surfaceMaterials:[surfaceMaterial,reflectionMaterial,shallowsMaterial],
++    forestSightline,
++    copyAnchor:mountainLanding.position.clone().add(new THREE.Vector3(-5,2,-2)),
++  }
++  return world
++}
++
++export function updateWaterWorld(world,elapsed,boat){
++  const {water,reflection}=world.userData
++  animateWaveVertices(water,elapsed,1.43,.035,0)
++  animateWaveVertices(reflection,elapsed,2.17,.018,1.2)
++  water.position.y=.012+Math.sin(elapsed*1.11)*.012
++  reflection.position.y=.016+Math.sin(elapsed*1.83+.7)*.008
++  const shallows=world.getObjectByName('water-shallows')
++  if(shallows) shallows.position.y=Math.sin(elapsed*.82)*.009
++  const foam=world.getObjectByName('water-foam-accents')
++  if(foam) foam.children.forEach((accent,index)=>{
++    accent.material.opacity=.34+.16*Math.sin(elapsed*(1.2+(index%3)*.17)+index*.8)
++  })
++  if(boat){
++    const boatWake=boat.getObjectByName('boat-wake')
++    if(boatWake) world.userData.wake=boatWake
++  }
++}
+diff --git a/src/three/waterWorld.test.js b/src/three/waterWorld.test.js
+index 1c3f14b..5d8588f 100644
+--- a/src/three/waterWorld.test.js
++++ b/src/three/waterWorld.test.js
+@@ -1,4 +1,120 @@
+ import { describe,expect,it } from 'vitest'
++import * as THREE from 'three'
+ import { createMaterials,disposeObject3D } from './primitives'
++import { LANDMARKS } from './terrain'
++import { createExpeditionBoat,updateBoat } from './expeditionVehicles'
+ import { createWaterWorld,updateWaterWorld } from './waterWorld'
+-describe('water world',()=>{it('contains water, shoreline, jetty, rocks and wake',()=>{const world=createWaterWorld(createMaterials(),'desktop');['reflective-water','water-shoreline','boat-jetty','water-rocks','water-reeds','boat-wake'].forEach(name=>expect(world.getObjectByName(name)).toBeTruthy());updateWaterWorld(world,1);expect(world.getObjectByName('reflective-water').position.y).not.toBe(0);disposeObject3D(world)})})
++
++const averageNormalY=object=>{
++  const normals=object.geometry.getAttribute('normal')
++  let total=0
++  for(let index=0;index<normals.count;index+=1) total+=normals.getY(index)
++  return total/normals.count
++}
++
++const rowWidth=(water,row)=>{
++  const position=water.geometry.getAttribute('position')
++  const columns=water.geometry.userData.crossSectionColumns||2
++  const offset=row*columns
++  return new THREE.Vector3().fromBufferAttribute(position,offset)
++    .distanceTo(new THREE.Vector3().fromBufferAttribute(position,offset+columns-1))
++}
++
++describe('water world',()=>{
++  it('contains water, shoreline, jetty, rocks and reeds',()=>{
++    const world=createWaterWorld(createMaterials(),'desktop')
++    ;['reflective-water','water-shoreline','boat-jetty','water-rocks','water-reeds'].forEach(name=>expect(world.getObjectByName(name)).toBeTruthy())
++    updateWaterWorld(world,1)
++    expect(world.getObjectByName('reflective-water').position.y).not.toBe(0)
++    disposeObject3D(world)
++  })
++
++  it('creates a shaped reflective corridor with two aligned landings',()=>{
++    const water=createWaterWorld(createMaterials(),'desktop')
++    ;['water-depth-layer','water-reflection-layer','water-shallows','curved-river-banks','mountain-water-landing','forest-water-landing','distant-forest-silhouette']
++      .forEach(name=>expect(water.getObjectByName(name)).toBeTruthy())
++    expect(water.userData.route.getPointAt(0).distanceTo(new THREE.Vector3(...LANDMARKS.mountainLanding))).toBeLessThan(2)
++    expect(water.userData.route.getPointAt(1).distanceTo(new THREE.Vector3(...LANDMARKS.forestLanding))).toBeLessThan(2)
++    expect(water.userData.mountainLanding).toBe(water.getObjectByName('mountain-water-landing'))
++    expect(water.userData.forestLanding).toBe(water.getObjectByName('forest-water-landing'))
++    expect(water.userData.forestSightline).toBe(water.getObjectByName('distant-forest-silhouette'))
++    expect(water.userData.surfaceMaterials.every(material=>material.roughness<.45)).toBe(true)
++    disposeObject3D(water)
++  })
++
++  it('renders both curved banks with upward-facing normals',()=>{
++    const water=createWaterWorld(createMaterials(),'desktop')
++    expect(averageNormalY(water.getObjectByName('left-river-bank'))).toBeGreaterThan(.5)
++    expect(averageNormalY(water.getObjectByName('right-river-bank'))).toBeGreaterThan(.5)
++    disposeObject3D(water)
++  })
++
++  it('uses a colored cross-water mesh whose animated normals vary in two dimensions',()=>{
++    const water=createWaterWorld(createMaterials(),'desktop')
++    const surface=water.getObjectByName('reflective-water'),geometry=surface.geometry
++    expect(geometry.userData.crossSectionSegments).toBeGreaterThanOrEqual(4)
++    const columns=geometry.userData.crossSectionColumns,row=Math.floor(geometry.userData.routeSegments/2)
++    const colors=geometry.getAttribute('color'),edge=row*columns,center=edge+Math.floor(columns/2)
++    expect(Math.abs(colors.getZ(center)-colors.getZ(edge))).toBeGreaterThan(.05)
++    updateWaterWorld(water,.83)
++    const normals=geometry.getAttribute('normal')
++    const edgeNormal=new THREE.Vector3().fromBufferAttribute(normals,edge)
++    const centerNormal=new THREE.Vector3().fromBufferAttribute(normals,center)
++    expect(edgeNormal.distanceTo(centerNormal)).toBeGreaterThan(.005)
++    disposeObject3D(water)
++  })
++
++  it('adds a Fresnel terrain-and-sky reflection contribution to the physical surface',()=>{
++    const water=createWaterWorld(createMaterials(),'desktop')
++    const material=water.getObjectByName('reflective-water').material
++    expect(material.userData.reflectionMode).toBe('fresnel-sky-terrain')
++    const shader={uniforms:{},fragmentShader:'#include <common>\n#include <opaque_fragment>'}
++    material.onBeforeCompile(shader)
++    expect(shader.uniforms.reflectedSkyColor.value).toBeInstanceOf(THREE.Color)
++    expect(shader.uniforms.reflectedTerrainColor.value).toBeInstanceOf(THREE.Color)
++    expect(shader.fragmentShader).toContain('reflectionFresnel')
++    disposeObject3D(water)
++  })
++
++  it('narrows the water into the forest inlet',()=>{
++    const water=createWaterWorld(createMaterials(),'desktop')
++    const surface=water.getObjectByName('reflective-water')
++    const rows=surface.geometry.userData.routeSegments||76
++    const start=rowWidth(surface,0),middle=rowWidth(surface,Math.floor(rows/2)),end=rowWidth(surface,rows)
++    expect(end).toBeLessThan(start)
++    expect(end).toBeLessThan(middle)
++    disposeObject3D(water)
++  })
++
++  it('centers the visible landing decks on their shared terrain landmarks',()=>{
++    const water=createWaterWorld(createMaterials(),'desktop')
++    water.updateMatrixWorld(true)
++    ;[
++      ['boat-jetty',LANDMARKS.mountainLanding],
++      ['forest-jetty',LANDMARKS.forestLanding],
++    ].forEach(([name,coordinates])=>{
++      const center=new THREE.Box3().setFromObject(water.getObjectByName(name)).getCenter(new THREE.Vector3())
++      const landmark=new THREE.Vector3(...coordinates)
++      expect(new THREE.Vector2(center.x,center.z).distanceTo(new THREE.Vector2(landmark.x,landmark.z))).toBeLessThan(.2)
++    })
++    disposeObject3D(water)
++  })
++
++  it('hands wake ownership to the boat and keeps animated materials independent',()=>{
++    const materials=createMaterials(),water=createWaterWorld(materials,'desktop'),boat=createExpeditionBoat(materials)
++    water.add(boat)
++    const attachedWakes=[]
++    water.traverse(object=>{if(object.name==='boat-wake') attachedWakes.push(object)})
++    expect(attachedWakes).toEqual([boat.getObjectByName('boat-wake')])
++    updateBoat(boat,water.userData.route,.45,.6,false)
++    updateWaterWorld(water,.6,boat)
++    const wakes=[]
++    water.traverse(object=>{if(object.name==='boat-wake') wakes.push(object)})
++    expect(wakes).toEqual([boat.getObjectByName('boat-wake')])
++    expect(water.userData.wake).toBe(wakes[0])
++    const foam=water.getObjectByName('water-foam-accents')
++    expect(new Set(foam.children.map(child=>child.material)).size).toBe(foam.children.length)
++    expect(new Set(wakes[0].children.map(child=>child.material)).size).toBe(wakes[0].children.length)
++    disposeObject3D(water)
++  })
++})

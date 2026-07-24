@@ -57,6 +57,8 @@ describe('jungle world',()=>{
     const world=createJungleWorld(createMaterials(),'desktop')
     ;['jungle-foreground','jungle-midground','jungle-background','forest-track','jungle-mist','ranger-outpost','jungle-rocks','jungle-puddles']
       .forEach(name=>expect(world.getObjectByName(name)).toBeTruthy())
+    expect(world.getObjectByName('jungle-mist').visible).toBe(true)
+    expect(world.getObjectByName('jungle-sun-shafts').visible).toBe(true)
     disposeObject3D(world)
   })
 
@@ -219,19 +221,33 @@ describe('jungle world',()=>{
     disposeObject3D(world)
   })
 
-  it('keeps every sun shaft outside the forest camera approach bubble',()=>{
+  it('keeps sparse atmosphere in the finale frustum without entering the route or camera bubble',()=>{
     const world=createJungleWorld(createMaterials(),'desktop')
     world.updateMatrixWorld(true)
-    const camera=new THREE.Vector3(...getJourneyState(.84).cameraPosition)
+    const state=getJourneyState(.84)
+    const camera=new THREE.Vector3(...state.cameraPosition)
+    const view=new THREE.PerspectiveCamera(60,1440/900,.1,420)
+    view.position.copy(camera)
+    view.lookAt(new THREE.Vector3(...state.cameraTarget))
+    view.updateMatrixWorld(true)
+    view.updateProjectionMatrix()
+    const frustum=new THREE.Frustum().setFromProjectionMatrix(
+      new THREE.Matrix4().multiplyMatrices(view.projectionMatrix,view.matrixWorldInverse),
+    )
+    const mist=world.getObjectByName('jungle-mist').children
     const shafts=[]
     world.traverse(object=>{
       if(object.name.startsWith('jungle-sun-shaft-')) shafts.push(object)
     })
     expect(shafts).toHaveLength(4)
+    expect(mist.some(veil=>frustum.intersectsBox(new THREE.Box3().setFromObject(veil)))).toBe(true)
+    expect(shafts.some(shaft=>frustum.intersectsBox(new THREE.Box3().setFromObject(shaft)))).toBe(true)
     shafts.forEach(shaft=>{
       const bounds=new THREE.Box3().setFromObject(shaft)
       const center=bounds.getCenter(new THREE.Vector3())
       const size=bounds.getSize(new THREE.Vector3())
+      expect(distanceToSegmentXZ(center,world.userData.route.getPointAt(0),world.userData.route.getPointAt(1))
+        -Math.hypot(size.x,size.z)/2).toBeGreaterThanOrEqual(1.4)
       expect(Math.hypot(center.x-camera.x,center.z-camera.z)-Math.max(size.x,size.z)/2)
         .toBeGreaterThanOrEqual(4.5)
     })
@@ -245,8 +261,17 @@ describe('jungle world',()=>{
     expect(mist.children.every(veil=>
       veil.material.transparent&&
       veil.material.opacity<=.02&&
+      veil.material.userData.edgeFade==='all-edges'&&
       veil.geometry.parameters.width<=10
     )).toBe(true)
+    const shader={
+      vertexShader:'#include <common>\n#include <begin_vertex>',
+      fragmentShader:'#include <common>\n#include <opaque_fragment>',
+    }
+    mist.children[0].material.onBeforeCompile(shader)
+    expect(shader.fragmentShader).toContain('mistEdgeAlpha')
+    expect(shader.vertexShader).toContain('vMistUv')
+    expect(shader.vertexShader).not.toContain('attribute vec2 uv;')
     disposeObject3D(world)
   })
 

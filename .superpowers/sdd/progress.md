@@ -1,0 +1,6 @@
+Task 1: complete (commits 87000e0..629a911, review clean)
+Task 2: complete (commits 629a911..3aaf5a9, review clean after fixes)
+Task 3: complete (commits 3aaf5a9..f1d23c0, review clean after fixes)
+Task 4: complete (commits f1d23c0..1189f3e, review clean after fixes)
+Task 5: complete (commits 1189f3e..2c0ee55, review clean after fixes)
+Task 6: complete (commits 2c0ee55..b3eaa05, review clean after fixes)
