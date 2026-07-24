@@ -118,6 +118,43 @@ describe('renderer quality', () => {
       },
     })
   })
+  it('keeps all four production boat occupants visible at the distant forest reveal',()=>{
+    const scene=new THREE.Scene()
+    const materials=createMaterials()
+    const controller=createExpeditionController(scene,materials,'desktop')
+    const state=getJourneyState(.59)
+    const transition=controller.update(state.expedition,0,true)
+    const transport=controller.transports.boat
+    const transportPosition=getTransportWorldPosition(
+      'boat',
+      transport,
+    ).toArray()
+    const frame=getResolvedCameraFrame({
+      quality:'desktop',
+      progress:.59,
+      state,
+      transportPosition,
+    })
+    const camera=new THREE.PerspectiveCamera(48,1440/900,.1,420)
+    camera.position.set(...frame.camera)
+    camera.lookAt(...frame.target)
+    const snapshot=getJourneyQASnapshot({
+      state,
+      transition,
+      renderedWorlds:{mountain:false,water:true,forest:true},
+      transports:controller.transports,
+      scenery:controller.scenery,
+      camera,
+      cameraJump:0,
+    })
+    controller.dispose()
+    Object.values(materials).forEach(material=>material.dispose())
+    expect(snapshot.visibleMembers).toEqual({guides:1,tourists:3})
+    expect(snapshot.opening.fullyFramedMembers).toEqual({
+      guides:1,
+      tourists:3,
+    })
+  })
   it('frames the party around its members instead of its origin',()=>{
     const party=new THREE.Group()
     const guide=new THREE.Object3D()

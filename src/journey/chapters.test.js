@@ -31,9 +31,14 @@ describe('journey chapters', () => {
       ['contact',.94,1],
     ])
   })
-  it('uses the approved nationwide tourism-management message', () => {
+  it('positions Sanchari Kannadiga as a nationwide brand-collaboration partner', () => {
     const about = CHAPTERS.find(({ id }) => id === 'who-we-are')
-    expect(about.body).toMatch(/design, coordinate and manage journeys across India/i)
+    expect(`${about.title} ${about.body}`).toMatch(/Sanchari Kannadiga/i)
+    expect(about.body).toMatch(/tourism boards/i)
+    expect(about.body).toMatch(/hotels|resorts/i)
+    expect(about.body).toMatch(/travel companies|adventure brands/i)
+    expect(about.body).toMatch(/government tourism departments/i)
+    expect(about.body).toMatch(/brand collaborations/i)
     expect(about.body).not.toMatch(/South Indian/i)
   })
   it('contains no customer-facing Himalaya, snow, or ice semantics',()=>{

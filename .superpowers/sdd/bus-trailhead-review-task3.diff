@@ -1,0 +1,311 @@
+# Review package: 7c003c5..d9e6c00
+
+## Commits
+d9e6c00 Connect trailhead to mountain route
+
+## Files changed
+ src/three/hillWorld.js      | 102 +++++++++++++++++++++++++++++++++++---------
+ src/three/hillWorld.test.js |  47 ++++++++++++++++++--
+ src/three/trekkingParty.js  |   7 +++
+ 3 files changed, 133 insertions(+), 23 deletions(-)
+
+## Diff
+diff --git a/src/three/hillWorld.js b/src/three/hillWorld.js
+index 56b3f66..02b2ed1 100644
+--- a/src/three/hillWorld.js
++++ b/src/three/hillWorld.js
+@@ -1,12 +1,14 @@
+ import * as THREE from 'three'
+ import { mesh } from './primitives'
++import {createTrailhead} from './trailhead'
++import {TRAILHEAD_STANDING_POSES} from './trekkingParty'
+ import {
+   LANDMARKS,
+   createTerrainGeometry,
+   sampleMountainHeight,
+   sampleMountainSlope,
+ } from './terrain'
+ 
+ const namedGroup=name=>{
+   const group=new THREE.Group()
+   group.name=name
+@@ -21,43 +23,95 @@ const material=(color,roughness=.9,extra={})=>new THREE.MeshStandardMaterial({
+ 
+ const deterministic=(index,salt=0)=>{
+   const value=Math.sin((index+1)*91.733+salt*37.119)*43758.5453
+   return value-Math.floor(value)
+ }
+ 
+ const routeDistance=(x,z,points)=>points.reduce((distance,point)=>{
+   return Math.min(distance,Math.hypot(x-point.x,z-point.z))
+ },Infinity)
+ 
++const appendSegment=(points,from,to,count,heightAt,amplitude,frequency)=>{
++  for(let index=1;index<count;index+=1){
++    const t=index/(count-1)
++    const x=THREE.MathUtils.lerp(from[0],to[0],t)+
++      Math.sin(t*Math.PI)*Math.sin(t*Math.PI*frequency)*amplitude
++    const z=THREE.MathUtils.lerp(from[2],to[2],t)
++    const endpoint=index===count-1
++    const y=endpoint?to[1]:heightAt(x,z)+.08
++    points.push(new THREE.Vector3(x,y,z))
++  }
++}
++
++const closestProgress=(route,landmark)=>{
++  const target=new THREE.Vector3(...landmark)
++  let closest=0
++  let distance=Infinity
++  for(let index=0;index<=4096;index+=1){
++    const progress=index/4096
++    const candidate=route.getPointAt(progress)
++    const nextDistance=candidate.distanceToSquared(target)
++    if(nextDistance<distance){
++      closest=progress
++      distance=nextDistance
++    }
++  }
++  return closest
++}
++
+ const createRoute=heightAt=>{
+-  const [startX,,startZ]=LANDMARKS.mountainStart
+-  const [endX,endY,endZ]=LANDMARKS.mountainLanding
+-  const points=Array.from({length:32},(_,index)=>{
+-    const t=index/31
+-    const meander=Math.sin(t*Math.PI)*(
+-      Math.sin(t*Math.PI*3.4)*1.45+
+-      Math.sin(t*Math.PI*7.1)*.34
+-    )
+-    const x=THREE.MathUtils.lerp(startX,endX,t)+meander
+-    const z=THREE.MathUtils.lerp(startZ,endZ,t)
+-    const y=index===31?endY:heightAt(x,z)+.08
+-    return new THREE.Vector3(x,y,z)
+-  })
+-  return new THREE.CatmullRomCurve3(points,false,'centripetal')
++  const points=[new THREE.Vector3(...LANDMARKS.trailheadStart)]
++  appendSegment(
++    points,
++    LANDMARKS.trailheadStart,
++    LANDMARKS.mountainEntry,
++    14,
++    heightAt,
++    .28,
++    1.4,
++  )
++  appendSegment(
++    points,
++    LANDMARKS.mountainEntry,
++    LANDMARKS.mountainStart,
++    10,
++    heightAt,
++    .42,
++    1.8,
++  )
++  appendSegment(
++    points,
++    LANDMARKS.mountainStart,
++    LANDMARKS.mountainLanding,
++    32,
++    heightAt,
++    1.45,
++    3.4,
++  )
++  const route=new THREE.CatmullRomCurve3(points,false,'centripetal')
++  return{
++    route,
++    routeProgress:{
++      trailheadStart:0,
++      mountainEntry:closestProgress(route,LANDMARKS.mountainEntry),
++      mountainStart:closestProgress(route,LANDMARKS.mountainStart),
++      mountainLanding:1,
++    },
++  }
+ }
+ 
+ const createTerrain=(heightAt,quality)=>{
+-  const segmentsX=quality==='mobile'?64:112
+-  const segmentsZ=quality==='mobile'?76:120
++  const segmentsX=quality==='mobile'?72:128
++  const segmentsZ=quality==='mobile'?104:160
+   const geometry=createTerrainGeometry({
+-    width:72,
+-    depth:78,
++    width:84,
++    depth:104,
+     segmentsX,
+     segmentsZ,
+     heightAt,
+   })
+   const position=geometry.attributes.position
+   const colors=new Float32Array(position.count*3)
+   const grass=new THREE.Color('#49683c')
+   const soil=new THREE.Color('#6b5841')
+   const rock=new THREE.Color('#59615e')
+   const color=new THREE.Color()
+@@ -421,38 +475,46 @@ const createWaterGlint=()=>{
+     [-Math.PI/2,0,0],
+   )
+   water.name='distant-water-glint'
+   water.receiveShadow=false
+   return water
+ }
+ 
+ export function createHillWorld(materials,quality='desktop'){
+   const world=namedGroup('hill-world')
+   const heightAt=sampleMountainHeight
+-  const route=createRoute(heightAt)
++  const {route,routeProgress}=createRoute(heightAt)
+   const terrain=createTerrain(heightAt,quality)
+   const ridges=createRidges()
+   const rocks=createRockFaces(materials,heightAt,route.points,quality)
+   const vegetation=createVegetation(materials,heightAt,route.points,quality)
+   const mist=createMist(quality)
+   const trail=createTrail(materials,route,heightAt,quality)
++  const trailhead=createTrailhead(materials,{
++    quality,
++    heightAt,
++    route,
++    standingPoses:TRAILHEAD_STANDING_POSES,
++  })
+   const landing=createLanding(materials)
+   const water=createWaterGlint()
+-  world.add(terrain,ridges,rocks,vegetation,mist,trail,landing,water)
++  world.add(terrain,ridges,rocks,vegetation,mist,trail,trailhead,landing,water)
+ 
+   const warmLight=new THREE.DirectionalLight('#ffe1aa',3.1)
+   warmLight.position.set(-16,24,13)
+   world.add(warmLight)
+ 
+   world.userData={
+     route,
++    routeProgress,
+     heightAt,
++    trailhead,
+     landing,
+     distantWaterAnchor:new THREE.Vector3(2,.4,-51),
+     mist,
+     water,
+   }
+   return world
+ }
+ 
+ export function updateHillWorld(world,elapsed){
+   const {mist,water}=world.userData
+diff --git a/src/three/hillWorld.test.js b/src/three/hillWorld.test.js
+index 604800e..7432ee0 100644
+--- a/src/three/hillWorld.test.js
++++ b/src/three/hillWorld.test.js
+@@ -41,43 +41,84 @@ describe('hill world',()=>{
+       .forEach(name=>expect(world.getObjectByName(name)).toBeTruthy())
+     ;['glacier','drifting-snow','ice-foreground','monument']
+       .forEach(name=>expect(world.getObjectByName(name)).toBeFalsy())
+     expect(world.userData.route.getPoints(24).slice(0,-1).every(point=>Math.abs(point.y-world.userData.heightAt(point.x,point.z))<.3)).toBe(true)
+     disposeObject3D(world)
+   })
+ 
+   it('uses the requested terrain quality and exposes journey anchors',()=>{
+     const desktop=createHillWorld(createMaterials(),'desktop')
+     const mobile=createHillWorld(createMaterials(),'mobile')
+-    expect(desktop.getObjectByName('hill-terrain').geometry.attributes.position.count).toBe((112+1)*(120+1))
+-    expect(mobile.getObjectByName('hill-terrain').geometry.attributes.position.count).toBe((64+1)*(76+1))
+     expect(desktop.getObjectByName('hill-terrain').geometry.attributes.color).toBeTruthy()
+     expect(desktop.getObjectByName('hill-terrain').material.userData.surfaceDetail)
+       .toBe('multiscale-color-noise')
+     expect(desktop.getObjectByName('hill-terrain').geometry.userData.colorVariation)
+       .toBeGreaterThan(.08)
+-    expect(desktop.userData.route.points).toHaveLength(32)
+     expect(desktop.userData.landing).toBe(desktop.getObjectByName('mountain-water-landing'))
+     expect(desktop.userData.distantWaterAnchor.isVector3).toBe(true)
+     const mist=desktop.getObjectByName('hill-mist')
+     expect(mist.children.every(pocket=>
+       pocket.material.transparent&&
+       pocket.material.opacity<=.025&&
+       pocket.geometry.parameters.width<=12
+     )).toBe(true)
+     const before=mist.children[0].position.x
+     updateHillWorld(desktop,2)
+     expect(mist.children[0].position.x).not.toBe(before)
+     disposeObject3D(desktop)
+     disposeObject3D(mobile)
+   })
+ 
++  it('extends one continuous grounded route through every mountain landmark',()=>{
++    const world=createHillWorld(createMaterials(),'desktop')
++    const {route,routeProgress,heightAt}=world.userData
++    expect(routeProgress).toEqual({
++      trailheadStart:0,
++      mountainEntry:expect.any(Number),
++      mountainStart:expect.any(Number),
++      mountainLanding:1,
++    })
++    expect(routeProgress.mountainEntry).toBeGreaterThan(0)
++    expect(routeProgress.mountainStart).toBeGreaterThan(routeProgress.mountainEntry)
++    expect(routeProgress.mountainStart).toBeLessThan(1)
++    Object.entries(routeProgress).forEach(([name,progress])=>{
++      const landmark=new THREE.Vector3(...LANDMARKS[name])
++      expect(route.getPointAt(progress).distanceTo(landmark)).toBeLessThan(.08)
++    })
++    route.getSpacedPoints(120).slice(0,-1).forEach(point=>{
++      expect(Math.abs(point.y-heightAt(point.x,point.z))).toBeLessThan(.3)
++    })
++    disposeObject3D(world)
++  })
++
++  it('composes the natural trailhead and expanded terrain at both quality levels',()=>{
++    const desktop=createHillWorld(createMaterials(),'desktop')
++    const mobile=createHillWorld(createMaterials(),'mobile')
++    expect(desktop.userData.trailhead).toBe(desktop.getObjectByName('trailhead'))
++    expect(desktop.getObjectByName('hill-terrain').geometry.attributes.position.count)
++      .toBe((128+1)*(160+1))
++    expect(mobile.getObjectByName('hill-terrain').geometry.attributes.position.count)
++      .toBe((72+1)*(104+1))
++    ;[
++      'trailhead-gravel',
++      'trailhead-tire-marks',
++      'trailhead-damp-patches',
++      'hill-trail',
++      'mountain-water-landing',
++    ].forEach(name=>{
++      expect(desktop.getObjectByName(name)).toBeTruthy()
++      expect(mobile.getObjectByName(name)).toBeTruthy()
++    })
++    disposeObject3D(desktop)
++    disposeObject3D(mobile)
++  })
++
+   it('aligns the route and landing root to the full 3D mountain landmark',()=>{
+     const world=createHillWorld(createMaterials(),'mobile')
+     world.updateMatrixWorld(true)
+     const landmark=new THREE.Vector3(...LANDMARKS.mountainLanding)
+     expect(world.userData.route.getPointAt(1).distanceTo(landmark)).toBeLessThan(1e-6)
+     expect(world.userData.landing.getWorldPosition(new THREE.Vector3()).distanceTo(landmark)).toBeLessThan(1e-6)
+     disposeObject3D(world)
+   })
+ 
+   it('keeps foreground rocks subordinate to the trekking party and landscape',()=>{
+diff --git a/src/three/trekkingParty.js b/src/three/trekkingParty.js
+index c55abc9..d60ad67 100644
+--- a/src/three/trekkingParty.js
++++ b/src/three/trekkingParty.js
+@@ -1,13 +1,20 @@
+ import * as THREE from 'three'
+ import { mesh } from './primitives'
+ 
++export const TRAILHEAD_STANDING_POSES=Object.freeze([
++  Object.freeze({role:'guide',position:Object.freeze([3.2,.35,33.7]),heading:-3.04}),
++  Object.freeze({role:'tourist',position:Object.freeze([1.8,.35,36.5]),heading:-2.35}),
++  Object.freeze({role:'tourist',position:Object.freeze([3.2,.35,36.7]),heading:2.65}),
++  Object.freeze({role:'tourist',position:Object.freeze([2.4,.35,38]),heading:-2.7}),
++])
++
+ const material=(color,roughness=.78)=>new THREE.MeshStandardMaterial({
+   color,
+   roughness,
+   metalness:.015,
+ })
+ 
+ const palettes=[
+   {
+     role:'guide',
+     jacket:'#49643f',

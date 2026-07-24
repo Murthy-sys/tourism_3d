@@ -1,0 +1,517 @@
+# Review package: d9e6c00..ce33d03
+
+## Commits
+ce33d03 Stage coach-side trekking departure
+
+## Files changed
+ src/three/expeditionController.js      | 53 ++++++++++++++++++++++-
+ src/three/expeditionController.test.js | 77 +++++++++++++++++++++++++++++++++
+ src/three/trekkingParty.js             | 61 ++++++++++++++++++++------
+ src/three/trekkingParty.test.js        | 78 +++++++++++++++++++++++++++++++++-
+ 4 files changed, 251 insertions(+), 18 deletions(-)
+
+## Diff
+diff --git a/src/three/expeditionController.js b/src/three/expeditionController.js
+index ac34003..6c8a8bb 100644
+--- a/src/three/expeditionController.js
++++ b/src/three/expeditionController.js
+@@ -1,33 +1,59 @@
+ import * as THREE from 'three'
+ import { createExpeditionBoat,createExpeditionJeep,updateBoat,updateJeep } from './expeditionVehicles'
+ import { createHillWorld,updateHillWorld } from './hillWorld'
+ import { createJungleWorld } from './jungleWorld'
+ import { disposeObject3D } from './primitives'
+ import { getBiomeWeights,smootherstep } from './terrain'
++import { createTourCoach } from './tourCoach'
+ import { createTrekkingParty,updateTrekkingParty } from './trekkingParty'
+ import { createWaterWorld,updateWaterWorld } from './waterWorld'
+ 
+ const PHASE_RANGES={
+   'mountain-trek':[0,.28],
+   'trek-to-boat':[.28,.42],
+   'water-boat':[.42,.60],
+   'boat-to-jeep':[.60,.74],
+   'forest-jeep':[.74,.94],
+   contact:[.94,1],
+ }
+ 
+ const getStateProgress=state=>{
+   const [start=0,end=1]=PHASE_RANGES[state?.phase]||[]
+   return THREE.MathUtils.lerp(start,end,THREE.MathUtils.clamp(state?.localProgress||0,0,1))
+ }
+ 
++export const getOpeningDepartureWeight=state=>
++  smootherstep(.045,.12,getStateProgress(state))
++
++export const getOpeningTrekState=(state,routeLandmarks,partySpan)=>{
++  const progress=getStateProgress(state)
++  const departureWeight=getOpeningDepartureWeight(state)
++  const entryTail=Math.max(
++    routeLandmarks.trailheadStart,
++    routeLandmarks.mountainEntry-partySpan,
++  )
++  const landingTail=1-partySpan
++  const routeProgress=progress<=.12
++    ?THREE.MathUtils.lerp(
++      routeLandmarks.trailheadStart,
++      entryTail,
++      departureWeight,
++    )
++    :THREE.MathUtils.lerp(
++      entryTail,
++      landingTail,
++      smootherstep(.12,.28,progress),
++    )
++  return{departureWeight,routeProgress}
++}
++
+ export const getExpeditionTransition=state=>{
+   const handoff=state.phase==='trek-to-boat'||state.phase==='boat-to-jeep'
+     ?smootherstep(0,1,state.localProgress)
+     :0
+   const transports={
+     trekker:state.phase==='mountain-trek'
+       ?1
+       :state.phase==='trek-to-boat'
+         ?1-handoff
+         :0,
+@@ -38,20 +64,21 @@ export const getExpeditionTransition=state=>{
+         :state.phase==='boat-to-jeep'
+           ?1-handoff
+           :0,
+     jeep:state.phase==='boat-to-jeep'
+       ?handoff
+       :state.phase==='forest-jeep'||state.phase==='contact'
+         ?1
+         :0,
+   }
+   return{
++    opening:{departureWeight:getOpeningDepartureWeight(state)},
+     worlds:getBiomeWeights(getStateProgress(state)),
+     transports,
+     cameraBlend:handoff,
+   }
+ }
+ 
+ const collectMaterials=root=>{
+   const materials=new Set()
+   root.traverse(object=>{
+     const values=Array.isArray(object.material)?object.material:[object.material]
+@@ -174,20 +201,26 @@ const clearanceAlongLateral=(hullBounds,deckBounds,lateral,gap=.24)=>{
+     if(Math.abs(component)<1e-6) return Infinity
+     return component>0
+       ?(deckBounds.max[axis]+gap-hullBounds.min[axis])/component
+       :(hullBounds.max[axis]+gap-deckBounds.min[axis])/-component
+   })
+   return Math.max(0,Math.min(...thresholds))
+ }
+ 
+ export function createExpeditionController(scene,materials,quality){
+   const mountain=createHillWorld(materials,quality)
++  const coach=createTourCoach(quality)
++  const coachPose=mountain.userData.trailhead.userData.coachPose
++  coach.position.copy(coachPose.position)
++  coach.rotation.y=coachPose.heading
++  mountain.userData.trailhead.add(coach)
++  mountain.userData.coach=coach
+   const water=createWaterWorld(materials,quality)
+   const forest=createJungleWorld(materials,quality)
+   const trekker=createTrekkingParty(materials)
+   const boat=createExpeditionBoat(materials)
+   const jeep=createExpeditionJeep(materials)
+   const transportRoot=new THREE.Group()
+   transportRoot.name='expedition-transports'
+   transportRoot.add(trekker,boat,jeep)
+ 
+   mountain.updateMatrixWorld(true)
+@@ -230,27 +263,36 @@ export function createExpeditionController(scene,materials,quality){
+   const partySpan=Math.max(...trekker.userData.routeOffsets)
+   const roots=[...Object.values(worlds),...Object.values(transports)]
+   isolateSharedMaterials(roots,materials)
+   const blendStates=new Map(roots.map(root=>[root,createBlendState(root)]))
+ 
+   Object.values(worlds).forEach(world=>{world.visible=true})
+   scene.add(mountain,water,forest,transportRoot)
+ 
+   const update=(state,elapsed,reducedMotion)=>{
+     roots.forEach(root=>resetBlendState(blendStates.get(root)))
++    const opening=getOpeningTrekState(
++      state,
++      mountain.userData.routeProgress,
++      partySpan,
++    )
+     updateTrekkingParty(
+       trekker,
+       mountain.userData.route,
+-      routeProgress(state,'trekker',partySpan),
++      opening.routeProgress,
+       elapsed,
+       reducedMotion,
+       mountainSurfaceHeightAt,
++      {
++        departureWeight:opening.departureWeight,
++        standingPoses:trekker.userData.standingPoses,
++      },
+     )
+     updateBoat(boat,water.userData.route,routeProgress(state,'boat'),elapsed,reducedMotion)
+     updateJeep(
+       jeep,
+       forest.userData.route,
+       routeProgress(state,'jeep',partySpan,jeep.userData.shoreStageProgress),
+       elapsed,
+       reducedMotion,
+     )
+     updateHillWorld(mountain,elapsed)
+@@ -273,12 +315,19 @@ export function createExpeditionController(scene,materials,quality){
+   let disposed=false
+   const dispose=()=>{
+     if(disposed) return
+     disposed=true
+     ;[mountain,water,forest,transportRoot].forEach(root=>{
+       root.parent?.remove(root)
+       disposeObject3D(root)
+     })
+   }
+ 
+-  return{update,worlds,transports,transportRoot,dispose}
++  return{
++    update,
++    worlds,
++    transports,
++    transportRoot,
++    scenery:{coach},
++    dispose,
++  }
+ }
+diff --git a/src/three/expeditionController.test.js b/src/three/expeditionController.test.js
+index c8fcee6..7bfdb43 100644
+--- a/src/three/expeditionController.test.js
++++ b/src/three/expeditionController.test.js
+@@ -38,20 +38,97 @@ describe('expedition transition',()=>{
+     expect(trekMiddle.transports.trekker).toBeCloseTo(.5,5)
+     expect(trekMiddle.transports.boat).toBeCloseTo(.5,5)
+     expect(trekEnd.transports).toEqual({trekker:0,boat:1,jeep:0})
+     ;[trekStart,trekMiddle,trekEnd].forEach(({transports})=>{
+       expect(Object.values(transports).reduce((sum,weight)=>sum+weight,0)).toBeCloseTo(1,6)
+     })
+   })
+ })
+ 
+ describe('expedition controller integration',()=>{
++  it('maps the opening beats into one monotonic mountain-route departure',()=>{
++    const scene=new THREE.Scene()
++    const controller=createExpeditionController(scene,createMaterials(),'mobile')
++    const weights=[]
++    const guidePositions=[]
++    ;[0,.045,.08,.12,.2,.28].forEach(progress=>{
++      const transition=controller.update(getExpeditionState(progress),1,true)
++      weights.push(transition.opening.departureWeight)
++      guidePositions.push(
++        controller.transports.trekker.userData.members[0].position.clone(),
++      )
++    })
++    expect(weights.slice(0,2)).toEqual([0,0])
++    expect(weights[2]).toBeCloseTo(.4376849383,8)
++    expect(weights.slice(3)).toEqual([1,1,1])
++    weights.slice(1).forEach((weight,index)=>
++      expect(weight).toBeGreaterThanOrEqual(weights[index])
++    )
++    guidePositions.slice(1).forEach((position,index)=>
++      expect(position.z).toBeLessThanOrEqual(guidePositions[index].z+.01)
++    )
++    controller.dispose()
++  })
++
++  it('mounts one stationary coach as mountain scenery and never as a transport',()=>{
++    const scene=new THREE.Scene()
++    const controller=createExpeditionController(scene,createMaterials(),'desktop')
++    expect(Object.keys(controller.transports)).toEqual(['trekker','boat','jeep'])
++    expect(Object.keys(controller.worlds)).toEqual(['mountain','water','forest'])
++    expect(Object.keys(getExpeditionTransition(getExpeditionState(.08)).transports))
++      .toEqual(['trekker','boat','jeep'])
++    const coach=controller.scenery.coach
++    expect(coach.parent).toBe(controller.worlds.mountain.userData.trailhead)
++    scene.updateMatrixWorld(true)
++    const initial=coach.matrixWorld.clone()
++    ;[0,.08,.12,.28,.5,.84,1].forEach(progress=>{
++      controller.update(getExpeditionState(progress),progress*10,true)
++      scene.updateMatrixWorld(true)
++      expect(coach.parent).toBe(controller.worlds.mountain.userData.trailhead)
++      expect(coach.matrixWorld.equals(initial)).toBe(true)
++    })
++    controller.dispose()
++  })
++
++  it('plants the staged party beside the coach without intersections',()=>{
++    const scene=new THREE.Scene()
++    const controller=createExpeditionController(scene,createMaterials(),'desktop')
++    controller.update(getExpeditionState(0),0,true)
++    scene.updateMatrixWorld(true)
++    const coachBounds=new THREE.Box3().setFromObject(controller.scenery.coach)
++    controller.worlds.mountain.userData.route.getSpacedPoints(120)
++      .slice(0,32)
++      .forEach(point=>expect(coachBounds.distanceToPoint(point)).toBeGreaterThan(.35))
++    const positions=new Set()
++    controller.transports.trekker.userData.members.forEach(member=>{
++      const bounds=new THREE.Box3().setFromObject(member)
++      expect(bounds.intersectsBox(coachBounds)).toBe(false)
++      expect(getBootBounds(member).min.y).toBeCloseTo(
++        controller.worlds.mountain.userData.heightAt(member.position.x,member.position.z),
++        2,
++      )
++      positions.add(`${member.position.x.toFixed(3)}:${member.position.z.toFixed(3)}`)
++    })
++    expect(positions.size).toBe(4)
++    controller.dispose()
++  })
++
++  it('disposes coach geometry once and remains idempotent',()=>{
++    const scene=new THREE.Scene()
++    const controller=createExpeditionController(scene,createMaterials(),'mobile')
++    const shell=controller.scenery.coach.getObjectByName('tour-coach-shell')
++    const dispose=vi.spyOn(shell.geometry,'dispose')
++    controller.dispose()
++    controller.dispose()
++    expect(dispose).toHaveBeenCalledTimes(1)
++  })
++
+   it('constructs all worlds and transports in one shared coordinate space',()=>{
+     const scene=new THREE.Scene()
+     const controller=createExpeditionController(scene,createMaterials(),'mobile')
+     expect(Object.keys(controller.worlds)).toEqual(['mountain','water','forest'])
+     expect(Object.keys(controller.transports)).toEqual(['trekker','boat','jeep'])
+     Object.values(controller.worlds).forEach(world=>{
+       expect(world.position.toArray()).toEqual([0,0,0])
+       expect(world.visible).toBe(true)
+     })
+     expect(controller.transports.trekker.parent).toBe(controller.transportRoot)
+diff --git a/src/three/trekkingParty.js b/src/three/trekkingParty.js
+index d60ad67..6dcc5ae 100644
+--- a/src/three/trekkingParty.js
++++ b/src/three/trekkingParty.js
+@@ -54,20 +54,22 @@ const palettes=[
+     mat:'#33595a',
+     skin:'#c28560',
+     hair:'#392820',
+   },
+ ]
+ 
+ const phases=[0,1.37,2.91,4.42]
+ const routeOffsets=[0,.055,.11,.165]
+ const bootBoundsScratch=new THREE.Box3()
+ const rootPositionScratch=new THREE.Vector3()
++const lerpHeading=(from,to,weight)=>
++  from+Math.atan2(Math.sin(to-from),Math.cos(to-from))*weight
+ 
+ const namedMesh=(name,geometry,meshMaterial,position=[0,0,0],rotation=[0,0,0])=>{
+   const object=mesh(geometry,meshMaterial,position,rotation)
+   object.name=name
+   return object
+ }
+ 
+ const createArm=(side,jacket,skin)=>{
+   const arm=new THREE.Group()
+   arm.name=side<0?'left-arm':'right-arm'
+@@ -311,51 +313,82 @@ const createMember=(palette,index,materials)=>{
+     pole,
+   }
+   return root
+ }
+ 
+ export function createTrekkingParty(materials){
+   const party=new THREE.Group()
+   party.name='trekking-party'
+   const members=palettes.map((palette,index)=>createMember(palette,index,materials))
+   members.forEach(member=>party.add(member))
+-  party.userData={members,phases:[...phases],routeOffsets:[...routeOffsets]}
++  party.userData={
++    members,
++    phases:[...phases],
++    routeOffsets:[...routeOffsets],
++    standingPoses:TRAILHEAD_STANDING_POSES.map(pose=>({
++      role:pose.role,
++      position:[...pose.position],
++      heading:pose.heading,
++    })),
++    departureWeight:1,
++  }
+   return party
+ }
+ 
+-export function updateTrekkingParty(party,curve,progress,elapsed,reducedMotion,surfaceHeightAt){
++export function updateTrekkingParty(
++  party,
++  curve,
++  progress,
++  elapsed,
++  reducedMotion,
++  surfaceHeightAt,
++  {
++    departureWeight=1,
++    standingPoses=party?.userData?.standingPoses||TRAILHEAD_STANDING_POSES,
++  }={},
++){
+   if(!party?.userData?.members||!curve) return
+   const contactHeight=typeof surfaceHeightAt==='function'
+     ?surfaceHeightAt
+     :(x,z,point)=>point.y
++  const weight=THREE.MathUtils.clamp(departureWeight,0,1)
+   const partySpan=Math.max(...party.userData.members.map(member=>member.routeOffset))
+-  party.userData.members.forEach(member=>{
++  party.userData.departureWeight=weight
++
++  party.userData.members.forEach((member,index)=>{
+     const routeProgress=THREE.MathUtils.clamp(progress+partySpan-member.routeOffset,0,1)
+-    const point=curve.getPointAt(routeProgress)
++    const routePoint=curve.getPointAt(routeProgress)
+     const tangent=curve.getTangentAt(Math.min(.9999,routeProgress+.0005))
+-    const surfaceY=contactHeight(point.x,point.z,point)
+-    member.position.set(point.x,surfaceY,point.z)
+-    member.rotation.y=Math.atan2(tangent.x,tangent.z)
++    const routeHeading=Math.atan2(tangent.x,tangent.z)
++    const standing=standingPoses[index]
++    const standingPoint=new THREE.Vector3(...standing.position)
++    member.position.lerpVectors(standingPoint,routePoint,weight)
++    const surfaceY=contactHeight(member.position.x,member.position.z,routePoint)
++    member.rotation.y=lerpHeading(standing.heading,routeHeading,weight)
+ 
+     const phase=elapsed*5.2+member.phase
+-    const swing=Math.sin(phase)*.58
+-    const secondary=reducedMotion?0:Math.sin(phase*.5)
++    const swing=weight===0?0:Math.sin(phase)*.58*weight
++    const counterSwing=weight===0?0:-swing
++    const idle=reducedMotion?0:Math.sin(elapsed*.9+member.phase)
++    const secondary=reducedMotion?0:Math.sin(phase*.5)*weight
+     const [leftArm,rightArm]=member.userData.arms
+     const [leftLeg,rightLeg]=member.userData.legs
+     leftArm.rotation.x=swing*.72
+-    rightArm.rotation.x=-swing*.72
+-    leftLeg.rotation.x=-swing
++    rightArm.rotation.x=counterSwing*.72
++    leftLeg.rotation.x=counterSwing
+     rightLeg.rotation.x=swing
+-    member.userData.pole.rotation.x=-swing*.34
+-    member.userData.torso.rotation.z=secondary*.018
+-    member.userData.torso.rotation.x=reducedMotion?0:Math.abs(Math.sin(phase))*.018
++    member.userData.pole.rotation.x=counterSwing*.34
++    member.userData.torso.rotation.z=secondary*.018+idle*.006*(1-weight)
++    member.userData.torso.rotation.x=
++      reducedMotion?0:Math.abs(Math.sin(phase))*.018*weight
+     member.userData.backpack.rotation.z=reducedMotion?0:secondary*-.012
+ 
++    member.position.y=surfaceY
+     member.updateWorldMatrix(true,true)
+     const rootY=member.getWorldPosition(rootPositionScratch).y
+     bootBoundsScratch.makeEmpty()
+     member.userData.bootMeshes.forEach(boot=>bootBoundsScratch.expandByObject(boot))
+     const bootBottomOffset=bootBoundsScratch.min.y-rootY
+     member.userData.bootBottomOffset=bootBottomOffset
+     member.position.y=surfaceY-bootBottomOffset
+   })
+ }
+diff --git a/src/three/trekkingParty.test.js b/src/three/trekkingParty.test.js
+index 08524f4..87c5fc6 100644
+--- a/src/three/trekkingParty.test.js
++++ b/src/three/trekkingParty.test.js
+@@ -1,13 +1,16 @@
+ import { describe, expect, it } from 'vitest'
+-import { createTrekkingParty } from './trekkingParty'
+-import { updateTrekkingParty } from './trekkingParty'
++import {
++  createTrekkingParty,
++  TRAILHEAD_STANDING_POSES,
++  updateTrekkingParty,
++} from './trekkingParty'
+ import * as THREE from 'three'
+ import { createMaterials, disposeObject3D } from './primitives'
+ 
+ const getBootBounds=member=>{
+   const bounds=new THREE.Box3()
+   member.getObjectByName('boots').userData.parts.forEach(boot=>bounds.expandByObject(boot))
+   return bounds
+ }
+ 
+ describe('trekking party',()=>{
+@@ -78,11 +81,82 @@ describe('trekking party',()=>{
+     const [leftArm,rightArm]=guide.userData.arms
+     const [leftLeg,rightLeg]=guide.userData.legs
+     expect(Math.abs(leftArm.rotation.x)).toBeGreaterThan(.01)
+     expect(rightArm.rotation.x).toBeCloseTo(-leftArm.rotation.x)
+     expect(leftLeg.rotation.x).toBeCloseTo(-rightLeg.rotation.x)
+     expect(guide.userData.torso.rotation.z).toBe(0)
+     expect(guide.userData.torso.rotation.x).toBe(0)
+     expect(guide.userData.backpack.rotation.z).toBe(0)
+     disposeObject3D(party)
+   })
++
++  it('starts one guide and three tourists in distinct planted standing poses',()=>{
++    const party=createTrekkingParty(createMaterials())
++    const curve=new THREE.CatmullRomCurve3([
++      new THREE.Vector3(3.2,.35,34),
++      new THREE.Vector3(2,3.1,22),
++      new THREE.Vector3(0,5,12),
++    ])
++    const heightAt=(x,z)=>.35+(34-z)*.12+x*.01
++    updateTrekkingParty(party,curve,0,2,false,heightAt,{
++      departureWeight:0,
++      standingPoses:TRAILHEAD_STANDING_POSES,
++    })
++    party.updateMatrixWorld(true)
++    expect(party.userData.members.map(member=>member.role))
++      .toEqual(['guide','tourist','tourist','tourist'])
++    party.userData.members.forEach((member,index)=>{
++      const [x,,z]=TRAILHEAD_STANDING_POSES[index].position
++      expect(member.position.x).toBeCloseTo(x,6)
++      expect(member.position.z).toBeCloseTo(z,6)
++      expect(member.rotation.y).toBeCloseTo(TRAILHEAD_STANDING_POSES[index].heading,6)
++      expect(getBootBounds(member).min.y).toBeCloseTo(heightAt(x,z),5)
++      member.userData.legs.forEach(leg=>expect(leg.rotation.x).toBe(0))
++      member.userData.arms.forEach(arm=>expect(arm.rotation.x).toBe(0))
++    })
++    disposeObject3D(party)
++  })
++
++  it('moves monotonically from standing positions into the guide-led route',()=>{
++    const curve=new THREE.CatmullRomCurve3([
++      new THREE.Vector3(3.2,.35,34),
++      new THREE.Vector3(2,3.1,22),
++      new THREE.Vector3(0,5,12),
++    ])
++    const party=createTrekkingParty(createMaterials())
++    const distances=[]
++    ;[0,.25,.5,.75,1].forEach(weight=>{
++      updateTrekkingParty(party,curve,.25,1,false,()=>.35,{
++        departureWeight:weight,
++        standingPoses:TRAILHEAD_STANDING_POSES,
++      })
++      const guide=party.userData.members[0]
++      const [x,,z]=TRAILHEAD_STANDING_POSES[0].position
++      distances.push(Math.hypot(guide.position.x-x,guide.position.z-z))
++      expect(party.userData.departureWeight).toBe(weight)
++    })
++    distances.slice(1).forEach((distance,index)=>
++      expect(distance).toBeGreaterThanOrEqual(distances[index])
++    )
++    expect(Math.abs(party.userData.members[0].userData.legs[0].rotation.x))
++      .toBeGreaterThan(.01)
++    disposeObject3D(party)
++  })
++
++  it('removes idle sway under reduced motion while retaining scroll-controlled departure',()=>{
++    const curve=new THREE.LineCurve3(
++      new THREE.Vector3(3.2,.35,34),
++      new THREE.Vector3(0,5,12),
++    )
++    const party=createTrekkingParty(createMaterials())
++    updateTrekkingParty(party,curve,.2,1,true,()=>.35,{
++      departureWeight:.5,
++      standingPoses:TRAILHEAD_STANDING_POSES,
++    })
++    const guide=party.userData.members[0]
++    expect(guide.userData.torso.rotation.z).toBe(0)
++    expect(guide.userData.torso.rotation.x).toBe(0)
++    expect(guide.userData.backpack.rotation.z).toBe(0)
++    expect(guide.position.z).not.toBe(TRAILHEAD_STANDING_POSES[0].position[2])
++    disposeObject3D(party)
++  })
+ })

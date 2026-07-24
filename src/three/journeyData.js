@@ -18,17 +18,33 @@ export const JOURNEY_STOPS = [
 
 export const CAMERA_KEYFRAMES = JOURNEY_STOPS.map(({ camera, target }) => ({ camera, target }))
 export const clamp01 = (value) => Math.min(1, Math.max(0, Number.isFinite(value) ? value : 0))
+const softenedLinear=value=>{
+  const t=clamp01(value)
+  const ramp=.2
+  const maximumVelocity=1/(1-ramp)
+  const integratedSmootherstep=u=>
+    u**6-3*u**5+2.5*u**4
+  if(t<ramp){
+    return maximumVelocity*ramp*integratedSmootherstep(t/ramp)
+  }
+  if(t<=1-ramp){
+    return maximumVelocity*(t-ramp/2)
+  }
+  return 1-maximumVelocity*ramp*
+    integratedSmootherstep((1-t)/ramp)
+}
 const lerp = (a, b, t) => a + (b - a) * t
 const lerp3 = (a, b, t) => a.map((value, index) => lerp(value, b[index], t))
 const CINEMATIC_KEYFRAMES=[
   {p:0,camera:[8.5,3.8,46],target:[-2,1.55,34.8]},
   {p:.08,camera:[8,5.6,39.5],target:[2.6,1.9,28.5]},
-  {p:.12,camera:[8,7,40],target:[2.6,1.9,28.5],interpolation:'linear'},
+  {p:.12,camera:[8,7,40],target:[2.6,1.9,28.5],interpolation:'soft-linear'},
   {p:.18,camera:[4.5,9.8,6],target:[0,3,-4]},
   {p:.28,camera:[8,7,-18],target:[2,1,-31.5]},
   {p:.35,camera:[7,6,-19],target:[2,1,-33]},
   {p:.42,camera:[-4,4,-27],target:[2,1,-34]},
   {p:.52,camera:[.8,1.55,-55],target:[-4.3,.42,-57.9]},
+  {p:.59,camera:[-3,2.15,-81],target:[-.5,.73,-83.15]},
   {p:.60,camera:[-3,1.65,-82],target:[-2,.3,-86]},
   {p:.67,camera:[5,3.5,-78],target:[-2,1,-86]},
   {p:.74,camera:[7,4,-82],target:[-2,1,-86]},
@@ -44,8 +60,8 @@ const cinematicState=value=>{
   if(value===b.p){
     return{cameraPosition:[...b.camera],cameraTarget:[...b.target]}
   }
-  const t=a.interpolation==='linear'
-    ?(value-a.p)/(b.p-a.p)
+  const t=a.interpolation==='soft-linear'
+    ?softenedLinear((value-a.p)/(b.p-a.p))
     :smootherstep(a.p,b.p,value)
   return{cameraPosition:lerp3(a.camera,b.camera,t),cameraTarget:lerp3(a.target,b.target,t)}
 }

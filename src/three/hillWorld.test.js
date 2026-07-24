@@ -112,6 +112,55 @@ describe('hill world',()=>{
     disposeObject3D(mobile)
   })
 
+  it.each(['desktop','mobile'])(
+    'keeps the %s gravel surface on an exact raised subset of the rendered terrain',
+    quality=>{
+      const world=createHillWorld(createMaterials(),quality)
+      const terrain=world.getObjectByName('hill-terrain')
+      const gravel=world.getObjectByName('trailhead-gravel-surface')
+      const clearance=world.userData.trailhead.userData.turnoutSurfaceClearance
+      expect(gravel).toBeTruthy()
+      expect(clearance).toBeGreaterThan(.01)
+      expect(clearance).toBeLessThan(.08)
+
+      const signature=(position,index,offset=0)=>{
+        const vertices=[0,1,2].map(vertex=>{
+          const source=index.getX(vertex)
+          return[
+            position.getX(source).toFixed(5),
+            (position.getY(source)-offset).toFixed(5),
+            position.getZ(source).toFixed(5),
+          ].join(',')
+        })
+        return vertices.sort().join('|')
+      }
+      const terrainPosition=terrain.geometry.getAttribute('position')
+      const terrainIndex=terrain.geometry.getIndex()
+      const terrainTriangles=new Set()
+      for(let offset=0;offset<terrainIndex.count;offset+=3){
+        terrainTriangles.add(signature(
+          terrainPosition,
+          {
+            getX:vertex=>terrainIndex.getX(offset+vertex),
+          },
+        ))
+      }
+      const gravelPosition=gravel.geometry.getAttribute('position')
+      const gravelIndex=gravel.geometry.getIndex()
+      expect(gravelIndex.count).toBeGreaterThan(0)
+      for(let offset=0;offset<gravelIndex.count;offset+=3){
+        expect(terrainTriangles.has(signature(
+          gravelPosition,
+          {
+            getX:vertex=>gravelIndex.getX(offset+vertex),
+          },
+          clearance,
+        ))).toBe(true)
+      }
+      disposeObject3D(world)
+    },
+  )
+
   it('aligns the route and landing root to the full 3D mountain landmark',()=>{
     const world=createHillWorld(createMaterials(),'mobile')
     world.updateMatrixWorld(true)

@@ -1,0 +1,994 @@
+# Review package: ce33d03..9e5058b
+
+## Commits
+9e5058b Make projected visibility evidence fail closed
+6133d6d Frame coach departure across desktop and mobile
+
+## Files changed
+ .superpowers/sdd/bus-trailhead-task-5-report.md | 133 +++++++++++++++++
+ src/journey/chapters.test.js                    |  13 ++
+ src/three/indiaJourney.js                       | 182 ++++++++++++++++++++---
+ src/three/indiaJourney.test.js                  | 184 ++++++++++++++++++++++++
+ src/three/journeyData.js                        |  10 +-
+ src/three/journeyData.test.js                   |  68 +++++++--
+ 6 files changed, 557 insertions(+), 33 deletions(-)
+
+## Diff
+diff --git a/.superpowers/sdd/bus-trailhead-task-5-report.md b/.superpowers/sdd/bus-trailhead-task-5-report.md
+new file mode 100644
+index 0000000..838edc7
+--- /dev/null
++++ b/.superpowers/sdd/bus-trailhead-task-5-report.md
+@@ -0,0 +1,133 @@
++# Task 5 Report: Continuous Desktop/Mobile Opening Cameras
++
++## Status
++
++Implemented the approved desktop trailhead camera beats, the mobile opening hold-to-trekker blend, projected object framing evidence, and locked retained expedition/content boundaries.
++
++## TDD evidence
++
++### Journey-data RED
++
++Command:
++
++`npm test -- --run src/three/journeyData.test.js`
++
++Result: expected failure, 1 failed / 15 passed. The new opening assertion received the old `[5,15,18]` camera instead of `[8.5,3.8,46]`.
++
++### Journey-data GREEN
++
++Command:
++
++`npm test -- --run src/three/journeyData.test.js`
++
++Result: 16/16 passed after replacing only the opening keyframes and returning exact keyframe copies at exact progress stops.
++
++The exact-copy branch was needed because interpolating at `.08` produced `2.5999999999999996` rather than the required public value `2.6`. Between-keyframe interpolation is unchanged.
++
++### India-journey RED
++
++Command:
++
++`npm test -- --run src/three/indiaJourney.test.js`
++
++Result: expected failure, 4 failed / 11 passed. Failures identified the missing camera resolver, projected-bounds helper, and opening QA evidence.
++
++### India-journey GREEN
++
++Command:
++
++`npm test -- --run src/three/indiaJourney.test.js`
++
++Result: 15/15 passed.
++
++### Focused camera/QA/chapter gate
++
++Command:
++
++`npm test -- --run src/three/journeyData.test.js src/three/indiaJourney.test.js src/journey/chapters.test.js`
++
++Result: 3 files passed, 37/37 tests passed.
++
++### Full suite
++
++Command:
++
++`npm test`
++
++Result: 23 files passed, 146/146 tests passed.
++
++`git diff --check` also passed with no whitespace errors. A production build was not run because the task brief does not require one.
++
++## Files
++
++- `src/three/journeyData.js`
++- `src/three/journeyData.test.js`
++- `src/three/indiaJourney.js`
++- `src/three/indiaJourney.test.js`
++- `src/journey/chapters.test.js`
++
++This report is the only additional task artifact. `src/journey/chapters.js`, `scripts/visual-qa.mjs`, component files, world files, and planning/progress artifacts were not modified by Task 5.
++
++## Self-review
++
++- Desktop opening keyframes are exact at `0`, `.08`, `.12`, and `.18`.
++- All camera keyframe values from `.28` onward are unchanged.
++- Dense desktop sampling keeps each camera/target rail step at or below `.8`.
++- Expedition phase boundaries remain exact at `.28`, `.42`, `.60`, `.74`, and `.94`.
++- Content ranges remain `0–.14`, `.14–.28`, `.28–.94`, and `.94–1`.
++- Mobile holds the coach composition through `.045`, blends with `smootherstep`, and equals existing trekker framing at `.12`.
++- Existing mobile boat and jeep framing remains unchanged.
++- The resolver is used for both initial camera setup and animation frames.
++- Pointer response, damping, the `.78` maximum runtime camera step, atmosphere, and no-audio behavior remain unchanged.
++- Projected bounds retain the required public return contract and fail closed for absent, hidden, or empty objects.
++- Opening QA evidence includes departure weight, coach mount/render/full-frame state and world matrix, plus fully framed guide/tourist counts.
++- Visual-debug discovery includes coach and trailhead objects without changing the visual-QA harness.
++
++## Concerns
++
++None. Three.js projection is based on the world-space `Box3` corners, with frustum intersection determining `rendered` and all NDC axes determining `fullyFramed`, as required.
++
++## Review blocker fix: fail-closed projected visibility
++
++### RED
++
++Command:
++
++`npm test -- --run src/three/indiaJourney.test.js`
++
++Result: expected failure, 1 file failed with 4 failed / 15 passed. The new
++regressions showed that a hidden only mesh, a zero-opacity only mesh, and a
++`material.visible=false` only mesh each incorrectly reported
++`rendered:true` and `fullyFramed:true`. A hidden oversized descendant also
++incorrectly expanded coverage from `0.040404` to `1` and changed
++`fullyFramed` from `true` to `false`.
++
++### GREEN
++
++Command:
++
++`npm test -- --run src/three/indiaJourney.test.js`
++
++Result: 1 file passed, 19/19 tests passed after projected bounds were changed
++to union only genuinely renderable mesh geometry bounding boxes transformed
++by each mesh's `matrixWorld`.
++
++### Task 5 focused gate
++
++Command:
++
++`npm test -- --run src/three/journeyData.test.js src/three/indiaJourney.test.js src/journey/chapters.test.js`
++
++Result: 3 files passed, 41/41 tests passed.
++
++### Review-fix files changed
++
++- `src/three/indiaJourney.js`
++- `src/three/indiaJourney.test.js`
++- `.superpowers/sdd/bus-trailhead-task-5-report.md`
++
++### Review-fix concerns
++
++None. Projected visibility now ignores meshes hidden by their hierarchy,
++materials hidden with `material.visible=false`, and materials at negligible
++opacity. Hidden descendants cannot enlarge the reported object bounds.
+diff --git a/src/journey/chapters.test.js b/src/journey/chapters.test.js
+index cbf6e72..995be5f 100644
+--- a/src/journey/chapters.test.js
++++ b/src/journey/chapters.test.js
+@@ -11,19 +11,32 @@ describe('journey chapters', () => {
+     expect(getChapterAtProgress(0).id).toBe('home')
+     expect(getChapterAtProgress(1).id).toBe('contact')
+     expect(getProgressForChapter('plans')).toBeGreaterThan(0)
+   })
+   it('reserves the opening for the mountain party before company content', () => {
+     expect(OPENING_TREK_END).toBeGreaterThanOrEqual(.12)
+     expect(OPENING_DRIVE_END).toBe(OPENING_TREK_END)
+     expect(getChapterAtProgress(.08).layout).toBe('drive')
+     expect(getChapterAtProgress(OPENING_TREK_END + .01).id).toBe('who-we-are')
+   })
++  it('keeps all approved content ranges unchanged around the trailhead opening',()=>{
++    expect(OPENING_TREK_END).toBe(.14)
++    expect(CHAPTERS.map(({id,progressStart,progressEnd})=>[
++      id,
++      progressStart,
++      progressEnd,
++    ])).toEqual([
++      ['home',0,.14],
++      ['who-we-are',.14,.28],
++      ['plans',.28,.94],
++      ['contact',.94,1],
++    ])
++  })
+   it('uses the approved nationwide tourism-management message', () => {
+     const about = CHAPTERS.find(({ id }) => id === 'who-we-are')
+     expect(about.body).toMatch(/design, coordinate and manage journeys across India/i)
+     expect(about.body).not.toMatch(/South Indian/i)
+   })
+   it('contains no customer-facing Himalaya, snow, or ice semantics',()=>{
+     expect(JSON.stringify({chapters:CHAPTERS,plans:TRAVEL_PLANS})).not.toMatch(/himalaya|snow|ice/i)
+   })
+ })
+diff --git a/src/three/indiaJourney.js b/src/three/indiaJourney.js
+index dd4ca6b..dd58459 100644
+--- a/src/three/indiaJourney.js
++++ b/src/three/indiaJourney.js
+@@ -1,14 +1,15 @@
+ import * as THREE from 'three'
+ import { createExpeditionController } from './expeditionController'
+ import { clamp01,getJourneyState } from './journeyData'
+ import { createMaterials,disposeObject3D } from './primitives'
++import { smootherstep } from './terrain'
+ 
+ export const getRenderQuality=width=>width<768?'mobile':'desktop'
+ export const getWorldVisibility=()=>[]
+ export const getDampingFactor=delta=>1-Math.exp(-Math.max(0,delta)*4.5)
+ export const getCameraDampingFactor=(delta,quality='desktop')=>{
+   const base=getDampingFactor(Math.min(Math.max(delta,0),.5))
+   return base*(quality==='mobile'?.72:1)
+ }
+ export const dampCameraVector=(current,desired,damping,maxStep=Infinity)=>{
+   const distance=current.distanceTo(desired)
+@@ -32,21 +33,21 @@ const hierarchyVisible=(object,root)=>{
+   while(current){
+     if(current.visible===false) return false
+     if(root&&current===root) return true
+     current=current.parent
+   }
+   return !root
+ }
+ const materialsVisible=object=>{
+   const materials=Array.isArray(object.material)?object.material:[object.material]
+   return materials.filter(Boolean).some(material=>
+-    (material.opacity??1)>.01
++    material.visible!==false&&(material.opacity??1)>.01
+   )
+ }
+ 
+ const getCameraFrustum=camera=>{
+   camera.updateMatrixWorld(true)
+   camera.updateProjectionMatrix()
+   return new THREE.Frustum().setFromProjectionMatrix(
+     new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix,camera.matrixWorldInverse),
+   )
+ }
+@@ -83,20 +84,87 @@ export const getRenderedTransportMembers=(transport,weight,camera)=>{
+         !object.isMesh||
+         !hierarchyVisible(object)||
+         !materialsVisible(object)
+       ) return
+       if(frustum.intersectsObject(object)) rendered=true
+     })
+     return rendered
+   })
+ }
+ 
++export const getProjectedObjectBounds=(object,camera)=>{
++  if(!object||!camera||!hierarchyVisible(object)){
++    return{
++      rendered:false,
++      fullyFramed:false,
++      coverage:0,
++      ndcBounds:null,
++    }
++  }
++  object.updateWorldMatrix(true,true)
++  const bounds=new THREE.Box3()
++  const meshBounds=new THREE.Box3()
++  object.traverse(candidate=>{
++    if(
++      !candidate.isMesh||
++      !hierarchyVisible(candidate,object)||
++      !materialsVisible(candidate)||
++      !candidate.geometry
++    ) return
++    if(!candidate.geometry.boundingBox) candidate.geometry.computeBoundingBox()
++    const geometryBounds=candidate.geometry.boundingBox
++    if(geometryBounds&&!geometryBounds.isEmpty()){
++      meshBounds.copy(geometryBounds).applyMatrix4(candidate.matrixWorld)
++      bounds.union(meshBounds)
++    }
++  })
++  if(bounds.isEmpty()){
++    return{
++      rendered:false,
++      fullyFramed:false,
++      coverage:0,
++      ndcBounds:null,
++    }
++  }
++  const frustum=getCameraFrustum(camera)
++  const minimum=new THREE.Vector3(Infinity,Infinity,Infinity)
++  const maximum=new THREE.Vector3(-Infinity,-Infinity,-Infinity)
++  const corner=new THREE.Vector3()
++  for(const x of [bounds.min.x,bounds.max.x]){
++    for(const y of [bounds.min.y,bounds.max.y]){
++      for(const z of [bounds.min.z,bounds.max.z]){
++        corner.set(x,y,z).project(camera)
++        minimum.min(corner)
++        maximum.max(corner)
++      }
++    }
++  }
++  const left=THREE.MathUtils.clamp((minimum.x+1)/2,0,1)
++  const right=THREE.MathUtils.clamp((maximum.x+1)/2,0,1)
++  const top=THREE.MathUtils.clamp((1-maximum.y)/2,0,1)
++  const bottom=THREE.MathUtils.clamp((1-minimum.y)/2,0,1)
++  const rendered=frustum.intersectsBox(bounds)
++  const fullyFramed=rendered&&
++    minimum.x>=-1&&maximum.x<=1&&
++    minimum.y>=-1&&maximum.y<=1&&
++    minimum.z>=-1&&maximum.z<=1
++  return{
++    rendered,
++    fullyFramed,
++    coverage:rounded(Math.max(0,right-left)*Math.max(0,bottom-top)),
++    ndcBounds:{
++      min:minimum.toArray().map(rounded),
++      max:maximum.toArray().map(rounded),
++    },
++  }
++}
++
+ export const createCameraJumpTracker=()=>{
+   const previousCamera=new THREE.Vector3()
+   const previousTarget=new THREE.Vector3()
+   let initialized=false
+   let maximum=0
+   return{
+     observe(camera,target){
+       if(initialized){
+         maximum=Math.max(
+           maximum,
+@@ -129,20 +197,59 @@ export const getMobileTransportCamera=(transport,[x,y,z])=>{
+   return{
+     camera:[
+       rounded(x+framing.camera[0]),
+       rounded(y+framing.camera[1]),
+       rounded(z+framing.camera[2]),
+     ],
+     target:[x,rounded(y+framing.targetY),z],
+   }
+ }
+ 
++const MOBILE_OPENING_FRAME=Object.freeze({
++  camera:Object.freeze([3.5,5.1,67]),
++  target:Object.freeze([-2.5,1.55,34.8]),
++})
++
++const lerpFrame=(from,to,weight)=>({
++  camera:from.camera.map(
++    (value,index)=>rounded(THREE.MathUtils.lerp(value,to.camera[index],weight)),
++  ),
++  target:from.target.map(
++    (value,index)=>rounded(THREE.MathUtils.lerp(value,to.target[index],weight)),
++  ),
++})
++
++export const getResolvedCameraFrame=({
++  quality,
++  progress,
++  state,
++  transportPosition,
++})=>{
++  const desktop={
++    camera:[...state.cameraPosition],
++    target:[...state.cameraTarget],
++  }
++  if(quality!=='mobile') return desktop
++  const transport=getMobileTransportCamera(
++    state.expedition.activeTransport,
++    transportPosition,
++  )
++  if(state.expedition.activeTransport!=='trekker'||progress>=.12){
++    return transport
++  }
++  return lerpFrame(
++    MOBILE_OPENING_FRAME,
++    transport,
++    smootherstep(.045,.12,progress),
++  )
++}
++
+ export const getTransportWorldPosition=(name,transport,target=new THREE.Vector3())=>{
+   const members=name==='trekker'?transport?.userData?.members:null
+   if(!members?.length) return transport.getWorldPosition(target)
+   transport.updateWorldMatrix(true,true)
+   const memberPosition=new THREE.Vector3()
+   target.set(0,0,0)
+   members.forEach(member=>target.add(member.getWorldPosition(memberPosition)))
+   return target.multiplyScalar(1/members.length)
+ }
+ 
+@@ -200,66 +307,92 @@ const nextBiomeForPhase=phase=>{
+   if(phase==='mountain-trek'||phase==='trek-to-boat') return'water'
+   if(phase==='water-boat'||phase==='boat-to-jeep') return'forest'
+   return null
+ }
+ 
+ export const getJourneyQASnapshot=({
+   state,
+   transition,
+   renderedWorlds,
+   transports,
++  scenery,
+   camera,
+   cameraJump,
+   consoleFailures=[],
+   audioControls=0,
+ })=>{
+   const activeTransport=state?.expedition?.activeTransport
+   const members=getRenderedTransportMembers(
+     transports?.[activeTransport],
+     transition.transports[activeTransport],
+     camera,
+   )
++  const coach=scenery?.coach
++  const coachProjection=getProjectedObjectBounds(coach,camera)
++  const fullyFramedMembers=members.filter(member=>
++    getProjectedObjectBounds(member,camera).fullyFramed
++  )
++  coach?.updateWorldMatrix(true,true)
+   const activeBiome=Object.entries(transition.worlds)
+     .reduce((active,[name,weight])=>weight>active.weight?{name,weight}:active,{name:null,weight:-1})
+     .name
+   const nextBiomeName=nextBiomeForPhase(state?.expedition?.phase)
+   return{
+     phase:state.expedition.phase,
+     activeBiome,
+     activeTransport,
+     biomeWeights:{...transition.worlds},
+     transportWeights:{...transition.transports},
+     visibleMembers:{
+       guides:members.filter(member=>(member.role||member.userData?.role)==='guide').length,
+       tourists:members.filter(member=>(member.role||member.userData?.role)==='tourist').length,
+     },
++    opening:{
++      departureWeight:transition.opening?.departureWeight??1,
++      coach:{
++        mounted:Boolean(coach?.parent),
++        rendered:coachProjection.rendered,
++        fullyFramed:coachProjection.fullyFramed,
++        worldMatrix:coach
++          ?coach.matrixWorld.elements.map(rounded)
++          :[],
++      },
++      fullyFramedMembers:{
++        guides:fullyFramedMembers.filter(
++          member=>(member.role||member.userData?.role)==='guide'
++        ).length,
++        tourists:fullyFramedMembers.filter(
++          member=>(member.role||member.userData?.role)==='tourist'
++        ).length,
++      },
++    },
+     distantVisibility:{
+       nextBiome:nextBiomeName?renderedWorlds[nextBiomeName]===true:null,
+       nextBiomeName,
+       ...renderedWorlds,
+     },
+     cameraJump:rounded(cameraJump),
+     consoleFailures:[...consoleFailures],
+     audioControls,
+   }
+ }
+ 
+ const getProjectedVisualDebug=(scene,camera,cameraTarget,desiredCamera,desiredTarget)=>{
+   scene.updateMatrixWorld(true)
+   camera.updateMatrixWorld(true)
+   const candidates=[]
+   const corner=new THREE.Vector3()
+   scene.traverse(object=>{
+     if(
+       object.visible===false||
+       !object.name||
+-      !/^(jungle-tree-|crown-silhouette-|mist-veil|jungle-mist|jungle-sun-shafts|hill-mist-pocket)/.test(object.name)
++      !/^(jungle-tree-|crown-silhouette-|mist-veil|jungle-mist|jungle-sun-shafts|hill-mist-pocket|tour-coach|trailhead-)/.test(object.name)
+     ) return
+     const bounds=new THREE.Box3().setFromObject(object)
+     if(bounds.isEmpty()) return
+     const minimum=new THREE.Vector2(Infinity,Infinity)
+     const maximum=new THREE.Vector2(-Infinity,-Infinity)
+     for(const x of [bounds.min.x,bounds.max.x]){
+       for(const y of [bounds.min.y,bounds.max.y]){
+         for(const z of [bounds.min.z,bounds.max.z]){
+           corner.set(x,y,z).project(camera)
+           if(!Number.isFinite(corner.x)||!Number.isFinite(corner.y)) continue
+@@ -323,22 +456,33 @@ export function createIndiaJourney(canvas,{reducedMotion=false,onContextLost=()=
+     initialAtmosphere.fogFar,
+   )
+   renderer.toneMappingExposure=initialAtmosphere.exposure
+ 
+   const hemisphere=new THREE.HemisphereLight('#ffe0b4','#263b37',initialAtmosphere.hemisphereIntensity)
+   const sun=new THREE.DirectionalLight(initialAtmosphere.directionalColor,3.25)
+   sun.position.set(-15,18,12)
+   sun.castShadow=quality==='desktop'
+   scene.add(hemisphere,sun)
+ 
+-  const cameraTarget=new THREE.Vector3(...initialState.cameraTarget)
+-  camera.position.set(...initialState.cameraPosition)
++  const initialTransport=expedition.transports[initialState.expedition.activeTransport]
++  const initialTransportPosition=getTransportWorldPosition(
++    initialState.expedition.activeTransport,
++    initialTransport,
++  ).toArray()
++  const initialFrame=getResolvedCameraFrame({
++    quality,
++    progress:0,
++    state:initialState,
++    transportPosition:initialTransportPosition,
++  })
++  const cameraTarget=new THREE.Vector3(...initialFrame.target)
++  camera.position.set(...initialFrame.camera)
+   camera.lookAt(cameraTarget)
+   const cameraJumpTracker=createCameraJumpTracker()
+   cameraJumpTracker.reset(camera.position,cameraTarget)
+ 
+   const resize=()=>{
+     const parent=canvas.parentElement
+     if(!parent) return
+     renderer.setSize(parent.clientWidth,parent.clientHeight,false)
+     camera.aspect=parent.clientWidth/Math.max(1,parent.clientHeight)
+     camera.updateProjectionMatrix()
+@@ -362,36 +506,33 @@ export function createIndiaJourney(canvas,{reducedMotion=false,onContextLost=()=
+   let lost=false
+   let disposed=false
+ 
+   const animate=()=>{
+     if(paused||lost||disposed) return
+     const delta=clock.getDelta()
+     const elapsed=clock.elapsedTime
+     const state=getJourneyState(progress)
+     const transition=expedition.update(state.expedition,elapsed,reducedMotion)
+     const damping=getCameraDampingFactor(delta,quality)
+-    desiredCamera.set(...state.cameraPosition)
+-    desiredTarget.set(...state.cameraTarget)
+-
+-    if(quality==='mobile'){
+-      const transport=expedition.transports[state.expedition.activeTransport]
+-      const transportPosition=getTransportWorldPosition(
+-        state.expedition.activeTransport,
+-        transport,
+-      )
+-      const framing=getMobileTransportCamera(
+-        state.expedition.activeTransport,
+-        transportPosition.toArray(),
+-      )
+-      desiredCamera.set(...framing.camera)
+-      desiredTarget.set(...framing.target)
+-    }
++    const transport=expedition.transports[state.expedition.activeTransport]
++    const transportPosition=getTransportWorldPosition(
++      state.expedition.activeTransport,
++      transport,
++    ).toArray()
++    const resolvedFrame=getResolvedCameraFrame({
++      quality,
++      progress,
++      state,
++      transportPosition,
++    })
++    desiredCamera.set(...resolvedFrame.camera)
++    desiredTarget.set(...resolvedFrame.target)
+     if(!reducedMotion){
+       desiredCamera.x+=pointer.x*.45
+       desiredCamera.y-=pointer.y*.25
+     }
+ 
+     const maximumCameraStep=.78
+     dampCameraVector(camera.position,desiredCamera,damping,maximumCameraStep)
+     dampCameraVector(cameraTarget,desiredTarget,damping,maximumCameraStep)
+     camera.lookAt(cameraTarget)
+     cameraJumpTracker.observe(camera.position,cameraTarget)
+@@ -437,20 +578,21 @@ export function createIndiaJourney(canvas,{reducedMotion=false,onContextLost=()=
+     getQASnapshot:extras=>({
+       ...getJourneyQASnapshot({
+         state:latestState,
+         transition:latestTransition,
+         renderedWorlds:getRenderedWorldVisibility(
+           expedition.worlds,
+           latestTransition.worlds,
+           camera,
+         ),
+         transports:expedition.transports,
++        scenery:expedition.scenery,
+         camera,
+         cameraJump:cameraJumpTracker.value(),
+         ...extras,
+       }),
+       visualDebug:getProjectedVisualDebug(
+         scene,
+         camera,
+         cameraTarget,
+         desiredCamera,
+         desiredTarget,
+diff --git a/src/three/indiaJourney.test.js b/src/three/indiaJourney.test.js
+index 6ef9ec5..da3631c 100644
+--- a/src/three/indiaJourney.test.js
++++ b/src/three/indiaJourney.test.js
+@@ -2,42 +2,88 @@ import * as THREE from 'three'
+ import { describe, expect, it } from 'vitest'
+ import {
+   createCameraJumpTracker,
+   dampCameraVector,
+   getAtmosphere,
+   getCameraDampingFactor,
+   getCameraRailJump,
+   getDampingFactor,
+   getJourneyQASnapshot,
+   getMobileTransportCamera,
++  getProjectedObjectBounds,
+   getRenderQuality,
+   getRenderedWorldVisibility,
++  getResolvedCameraFrame,
+   getTransportWorldPosition,
+   getWorldVisibility,
+ } from './indiaJourney'
++import { disposeObject3D } from './primitives'
+ 
+ describe('renderer quality', () => {
+   it('selects the simplified mobile scene at narrow widths', () => {
+     expect(getRenderQuality(390)).toBe('mobile')
+     expect(getRenderQuality(1440)).toBe('desktop')
+   })
+   it('isolates cinematic architecture from competing legacy regions',()=>{
+     expect(getWorldVisibility('mountain')).toEqual([])
+     expect(getWorldVisibility('handoff')).toEqual([])
+     expect(getWorldVisibility('plans')).toEqual([])
+     expect(getWorldVisibility('contact')).toEqual([])
+   })
+   it('frames the mobile party, boat, and jeep at readable trailing distances',()=>{
+     expect(getMobileTransportCamera('trekker',[2,1,-30])).toEqual({camera:[9,13,-15],target:[2,.8,-30]})
+     expect(getMobileTransportCamera('boat',[-2,.25,-86])).toEqual({camera:[.4,1.75,-80.5],target:[-2,.75,-86]})
+     expect(getMobileTransportCamera('jeep',[1,.2,-120])).toEqual({camera:[1.4,1.9,-114.3],target:[1,1.1,-120]})
+   })
++  it('holds the mobile coach composition and blends exactly into trekker framing',()=>{
++    const state={
++      cameraPosition:[8.5,3.8,46],
++      cameraTarget:[-2,1.55,34.8],
++      expedition:{activeTransport:'trekker'},
++    }
++    const transportPosition=[2,3.1,22]
++    const frame=progress=>getResolvedCameraFrame({
++      quality:'mobile',
++      progress,
++      state,
++      transportPosition,
++    })
++    expect(frame(0)).toEqual({
++      camera:[3.5,5.1,67],
++      target:[-2.5,1.55,34.8],
++    })
++    expect(frame(.045)).toEqual(frame(0))
++    const middle=frame(.08)
++    expect(middle.camera[2]).toBeLessThan(frame(0).camera[2])
++    expect(frame(.12)).toEqual(
++      getMobileTransportCamera('trekker',transportPosition),
++    )
++  })
++  it('leaves desktop and later mobile transport frames unchanged',()=>{
++    const state={
++      cameraPosition:[7,6,-19],
++      cameraTarget:[2,1,-33],
++      expedition:{activeTransport:'boat'},
++    }
++    expect(getResolvedCameraFrame({
++      quality:'desktop',
++      progress:.5,
++      state,
++      transportPosition:[-2,.25,-60],
++    })).toEqual({camera:state.cameraPosition,target:state.cameraTarget})
++    expect(getResolvedCameraFrame({
++      quality:'mobile',
++      progress:.5,
++      state,
++      transportPosition:[-2,.25,-60],
++    })).toEqual(getMobileTransportCamera('boat',[-2,.25,-60]))
++  })
+   it('frames the party around its members instead of its origin',()=>{
+     const party=new THREE.Group()
+     const guide=new THREE.Object3D()
+     const tourist=new THREE.Object3D()
+     guide.position.set(-1,1,-28)
+     tourist.position.set(1,1,-32)
+     party.add(guide,tourist)
+     party.userData.members=[guide,tourist]
+     expect(getTransportWorldPosition('trekker',party).toArray()).toEqual([0,1,-30])
+   })
+@@ -167,20 +213,158 @@ describe('renderer quality', () => {
+       return root
+     }
+     const visibility=getRenderedWorldVisibility({
+       mountain:rootAt(100),
+       water:rootAt(0),
+       forest:rootAt(0),
+     },{mountain:1,water:1,forest:0},camera)
+     expect(visibility).toEqual({mountain:false,water:true,forest:false})
+   })
+ 
++  it('reports whether an object is rendered and fully inside the camera frame',()=>{
++    const camera=new THREE.PerspectiveCamera(60,1,.1,100)
++    camera.position.set(0,1,5)
++    camera.lookAt(0,1,0)
++    camera.updateMatrixWorld(true)
++    camera.updateProjectionMatrix()
++    const material=new THREE.MeshBasicMaterial()
++    const centered=new THREE.Mesh(new THREE.BoxGeometry(1,1,1),material)
++    centered.position.y=1
++    centered.updateMatrixWorld(true)
++    expect(getProjectedObjectBounds(centered,camera)).toMatchObject({
++      rendered:true,
++      fullyFramed:true,
++    })
++    centered.position.x=100
++    centered.updateMatrixWorld(true)
++    expect(getProjectedObjectBounds(centered,camera)).toMatchObject({
++      rendered:false,
++      fullyFramed:false,
++    })
++    centered.geometry.dispose()
++    material.dispose()
++  })
++
++  it('does not project an object whose only mesh is hidden',()=>{
++    const camera=new THREE.PerspectiveCamera(60,1,.1,100)
++    camera.position.set(0,1,5)
++    camera.lookAt(0,1,0)
++    const root=new THREE.Group()
++    const hiddenMesh=new THREE.Mesh(
++      new THREE.BoxGeometry(1,1,1),
++      new THREE.MeshBasicMaterial(),
++    )
++    hiddenMesh.visible=false
++    root.add(hiddenMesh)
++    expect(getProjectedObjectBounds(root,camera)).toMatchObject({
++      rendered:false,
++      fullyFramed:false,
++    })
++    disposeObject3D(root)
++  })
++
++  it('does not project an object whose only mesh has zero opacity',()=>{
++    const camera=new THREE.PerspectiveCamera(60,1,.1,100)
++    camera.position.set(0,1,5)
++    camera.lookAt(0,1,0)
++    const root=new THREE.Group()
++    root.add(new THREE.Mesh(
++      new THREE.BoxGeometry(1,1,1),
++      new THREE.MeshBasicMaterial({opacity:0,transparent:true}),
++    ))
++    expect(getProjectedObjectBounds(root,camera)).toMatchObject({
++      rendered:false,
++      fullyFramed:false,
++    })
++    disposeObject3D(root)
++  })
++
++  it('does not project an object whose only mesh material is hidden',()=>{
++    const camera=new THREE.PerspectiveCamera(60,1,.1,100)
++    camera.position.set(0,1,5)
++    camera.lookAt(0,1,0)
++    const root=new THREE.Group()
++    const material=new THREE.MeshBasicMaterial()
++    material.visible=false
++    root.add(new THREE.Mesh(new THREE.BoxGeometry(1,1,1),material))
++    expect(getProjectedObjectBounds(root,camera)).toMatchObject({
++      rendered:false,
++      fullyFramed:false,
++    })
++    disposeObject3D(root)
++  })
++
++  it('excludes hidden oversized descendants from projected bounds',()=>{
++    const camera=new THREE.PerspectiveCamera(60,1,.1,100)
++    camera.position.set(0,1,5)
++    camera.lookAt(0,1,0)
++    const root=new THREE.Group()
++    const visibleMesh=new THREE.Mesh(
++      new THREE.BoxGeometry(1,1,1),
++      new THREE.MeshBasicMaterial(),
++    )
++    const hiddenOversizedMesh=new THREE.Mesh(
++      new THREE.BoxGeometry(100,100,100),
++      new THREE.MeshBasicMaterial(),
++    )
++    hiddenOversizedMesh.visible=false
++    root.add(visibleMesh,hiddenOversizedMesh)
++    expect(getProjectedObjectBounds(root,camera))
++      .toEqual(getProjectedObjectBounds(visibleMesh,camera))
++    disposeObject3D(root)
++  })
++
++  it('includes fail-closed coach and fully framed party evidence',()=>{
++    const camera=new THREE.PerspectiveCamera(60,1,.1,100)
++    camera.position.set(0,2,8)
++    camera.lookAt(0,1,0)
++    camera.updateMatrixWorld(true)
++    camera.updateProjectionMatrix()
++    const coach=new THREE.Group()
++    coach.add(new THREE.Mesh(
++      new THREE.BoxGeometry(2,1,4),
++      new THREE.MeshBasicMaterial(),
++    ))
++    const trekker=new THREE.Group()
++    trekker.userData.members=['guide','tourist','tourist','tourist'].map((role,index)=>{
++      const member=Object.assign(new THREE.Group(),{role})
++      member.position.set((index-1.5)*.6,1,0)
++      member.add(new THREE.Mesh(
++        new THREE.BoxGeometry(.3,1,.3),
++        new THREE.MeshBasicMaterial(),
++      ))
++      trekker.add(member)
++      return member
++    })
++    const snapshot=getJourneyQASnapshot({
++      state:{expedition:{phase:'mountain-trek',activeTransport:'trekker'}},
++      transition:{
++        worlds:{mountain:1,water:0,forest:0},
++        transports:{trekker:1,boat:0,jeep:0},
++        opening:{departureWeight:0},
++      },
++      renderedWorlds:{mountain:true,water:false,forest:false},
++      transports:{trekker,boat:new THREE.Group(),jeep:new THREE.Group()},
++      scenery:{coach},
++      camera,
++      cameraJump:0,
++    })
++    expect(snapshot.opening).toMatchObject({
++      departureWeight:0,
++      coach:{mounted:false,rendered:true,fullyFramed:true},
++      fullyFramedMembers:{guides:1,tourists:3},
++    })
++    expect(snapshot.opening.coach.worldMatrix).toHaveLength(16)
++    disposeObject3D(coach)
++    disposeObject3D(trekker)
++  })
++
+   it('measures observed runtime camera movement and resets between QA states',()=>{
+     const tracker=createCameraJumpTracker()
+     const camera=new THREE.Vector3(0,0,0)
+     const target=new THREE.Vector3(0,0,-1)
+     tracker.reset(camera,target)
+     camera.x=.42
+     target.y=.18
+     tracker.observe(camera,target)
+     expect(tracker.value()).toBeCloseTo(.42)
+     tracker.reset(camera,target)
+diff --git a/src/three/journeyData.js b/src/three/journeyData.js
+index 6b58330..511d9a1 100644
+--- a/src/three/journeyData.js
++++ b/src/three/journeyData.js
+@@ -14,39 +14,43 @@ export const JOURNEY_STOPS = [
+   stop('agra', 'Agra', 'An icon in marble', 'Pause before the symmetry and calm of the Taj Mahal.', 'west-north', { sky: '#8098ad', horizon: '#efa082', ground: '#767b77', accent: '#fff0c8' }, [-5, 5, -88], [-3, 2, -102]),
+   stop('varanasi', 'Varanasi', 'Light along the Ganges', 'Move past river steps, boats and the glow of evening rituals.', 'ganges', { sky: '#5d6684', horizon: '#df704f', ground: '#59454d', accent: '#ffbf59' }, [7, 5, -106], [7, 1, -120]),
+   stop('hill-country', 'Forested Hill Country', 'The journey enters the canopy', 'Finish among forested ridges, mist-filled valleys and winding green trails.', 'hill-country', { sky: '#4f6682', horizon: '#cc8e7c', ground: '#34464a', accent: '#eef8ff' }, [0, 8, -126], [0, 3, -140]),
+ ]
+ 
+ export const CAMERA_KEYFRAMES = JOURNEY_STOPS.map(({ camera, target }) => ({ camera, target }))
+ export const clamp01 = (value) => Math.min(1, Math.max(0, Number.isFinite(value) ? value : 0))
+ const lerp = (a, b, t) => a + (b - a) * t
+ const lerp3 = (a, b, t) => a.map((value, index) => lerp(value, b[index], t))
+ const CINEMATIC_KEYFRAMES=[
+-  {p:0,camera:[5,15,18],target:[0,3,8]},
+-  {p:.08,camera:[4.2,13,4],target:[0,4,-3.5]},
+-  {p:.18,camera:[4.5,9.8,-10],target:[0,3,-20]},
++  {p:0,camera:[8.5,3.8,46],target:[-2,1.55,34.8]},
++  {p:.08,camera:[8,5.6,39.5],target:[2.6,1.9,28.5]},
++  {p:.12,camera:[7,8.4,30.5],target:[2,4.2,20]},
++  {p:.18,camera:[4.5,9.8,6],target:[0,3,-4]},
+   {p:.28,camera:[8,7,-18],target:[2,1,-31.5]},
+   {p:.35,camera:[7,6,-19],target:[2,1,-33]},
+   {p:.42,camera:[-4,4,-27],target:[2,1,-34]},
+   {p:.52,camera:[.8,1.55,-55],target:[-4.3,.42,-57.9]},
+   {p:.60,camera:[-3,1.65,-82],target:[-2,.3,-86]},
+   {p:.67,camera:[5,3.5,-78],target:[-2,1,-86]},
+   {p:.74,camera:[7,4,-82],target:[-2,1,-86]},
+   {p:.84,camera:[0,3.6,-100.5],target:[.15,1.15,-108]},
+   {p:.94,camera:[1,3.8,-122],target:[1,.95,-130]},
+   {p:1,camera:[1,3.8,-122],target:[1,.95,-130]},
+ ]
+ const cinematicState=value=>{
+   const found=CINEMATIC_KEYFRAMES.findIndex(keyframe=>value<=keyframe.p)
+   const nextIndex=Math.max(1,found<0?CINEMATIC_KEYFRAMES.length-1:found)
+   const a=CINEMATIC_KEYFRAMES[nextIndex-1]
+   const b=CINEMATIC_KEYFRAMES[nextIndex]
++  if(value===b.p){
++    return{cameraPosition:[...b.camera],cameraTarget:[...b.target]}
++  }
+   const t=smootherstep(a.p,b.p,value)
+   return{cameraPosition:lerp3(a.camera,b.camera,t),cameraTarget:lerp3(a.target,b.target,t)}
+ }
+ 
+ export function getExpeditionState(progress){
+   const p=clamp01(progress)
+   if(p<.28)return{phase:'mountain-trek',biome:'mountain',activeTransport:'trekker',localProgress:p/.28}
+   if(p<.42)return{phase:'trek-to-boat',biome:'mountain-water',activeTransport:'trekker',localProgress:(p-.28)/.14}
+   if(p<.60)return{phase:'water-boat',biome:'water',activeTransport:'boat',localProgress:(p-.42)/.18}
+   if(p<.74)return{phase:'boat-to-jeep',biome:'water-forest',activeTransport:'boat',localProgress:(p-.60)/.14}
+diff --git a/src/three/journeyData.test.js b/src/three/journeyData.test.js
+index 3c405d9..c255d1e 100644
+--- a/src/three/journeyData.test.js
++++ b/src/three/journeyData.test.js
+@@ -1,13 +1,13 @@
+ import { describe, expect, it } from 'vitest'
+ import { JOURNEY_STOPS, clamp01, getExpeditionState, getJourneyState } from './journeyData'
+-import { LANDMARKS,sampleMountainHeight } from './terrain'
++import { LANDMARKS } from './terrain'
+ 
+ describe('India journey data', () => {
+   it('runs south to north through every approved tourism stop', () => {
+     expect(JOURNEY_STOPS.map((stop) => stop.id)).toEqual([
+       'kerala', 'tamil-nadu', 'hampi', 'goa', 'mumbai',
+       'rajasthan', 'agra', 'varanasi', 'hill-country',
+     ])
+   })
+ 
+   it('clamps progress and returns stable endpoint states', () => {
+@@ -86,29 +86,77 @@ describe('India journey data', () => {
+     expect(rounded(forestApproach.cameraTarget)).toEqual([-2,.3,-86])
+     ;[corridor,forestApproach].forEach(({cameraPosition,cameraTarget})=>{
+       const distance=Math.hypot(...cameraPosition.map(
+         (value,index)=>value-cameraTarget[index],
+       ))
+       expect(distance).toBeLessThan(6.2)
+       expect(cameraPosition[1]-cameraTarget[1]).toBeLessThan(1.5)
+     })
+   })
+ 
+-  it('keeps the mountain opening far enough back to frame the whole party',()=>{
+-    const {cameraPosition,cameraTarget}=getJourneyState(.08)
+-    const distance=Math.hypot(...cameraPosition.map((value,index)=>value-cameraTarget[index]))
+-    expect(distance).toBeGreaterThan(12)
+-    expect(distance).toBeLessThan(16)
+-    expect(cameraPosition[2]).toBeLessThanOrEqual(4.5)
+-    expect(cameraTarget[2]).toBeLessThanOrEqual(-3)
+-    expect(cameraPosition[1]-sampleMountainHeight(cameraPosition[0],cameraPosition[2]))
+-      .toBeGreaterThan(4)
++  it('uses the approved ground-level coach, departure, and mountain-entry camera beats',()=>{
++    const expected=[
++      {progress:0,camera:[8.5,3.8,46],target:[-2,1.55,34.8]},
++      {progress:.08,camera:[8,5.6,39.5],target:[2.6,1.9,28.5]},
++      {progress:.12,camera:[7,8.4,30.5],target:[2,4.2,20]},
++      {progress:.18,camera:[4.5,9.8,6],target:[0,3,-4]},
++    ]
++    expected.forEach(({progress,camera,target})=>{
++      expect(getJourneyState(progress).cameraPosition).toEqual(camera)
++      expect(getJourneyState(progress).cameraTarget).toEqual(target)
++    })
++  })
++
++  it('keeps the complete expedition phase table unchanged after the opening',()=>{
++    expect([
++      [0,'mountain-trek'],
++      [.279999,'mountain-trek'],
++      [.28,'trek-to-boat'],
++      [.419999,'trek-to-boat'],
++      [.42,'water-boat'],
++      [.599999,'water-boat'],
++      [.60,'boat-to-jeep'],
++      [.739999,'boat-to-jeep'],
++      [.74,'forest-jeep'],
++      [.939999,'forest-jeep'],
++      [.94,'contact'],
++      [1,'contact'],
++    ].map(([progress])=>getExpeditionState(progress).phase)).toEqual([
++      'mountain-trek',
++      'mountain-trek',
++      'trek-to-boat',
++      'trek-to-boat',
++      'water-boat',
++      'water-boat',
++      'boat-to-jeep',
++      'boat-to-jeep',
++      'forest-jeep',
++      'forest-jeep',
++      'contact',
++      'contact',
++    ])
++  })
++
++  it('keeps the complete desktop rail continuous at dense progress samples',()=>{
++    for(let index=0;index<1000;index+=1){
++      const from=getJourneyState(index/1000)
++      const to=getJourneyState((index+1)/1000)
++      const jump=Math.max(
++        Math.hypot(...from.cameraPosition.map(
++          (value,axis)=>value-to.cameraPosition[axis],
++        )),
++        Math.hypot(...from.cameraTarget.map(
++          (value,axis)=>value-to.cameraTarget[axis],
++        )),
++      )
++      expect(jump).toBeLessThanOrEqual(.8)
++    }
+   })
+ 
+   it('keeps the forest camera inside the protected route corridor',()=>{
+     const {cameraPosition,cameraTarget}=getJourneyState(.84)
+     expect(Math.abs(cameraPosition[0]-cameraTarget[0])).toBeLessThanOrEqual(2)
+     expect(Math.hypot(...cameraPosition.map((value,index)=>value-cameraTarget[index])))
+       .toBeLessThan(9)
+   })
+ 
+   it('keeps the landing camera behind the full trekking party during the water reveal',()=>{

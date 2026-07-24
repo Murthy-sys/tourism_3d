@@ -78,13 +78,16 @@ describe('India journey data', () => {
 
   it('keeps the desktop water tracking cameras low and close to the boat corridor',()=>{
     const corridor=getJourneyState(.52)
+    const forestReveal=getJourneyState(.59)
     const forestApproach=getJourneyState(.60)
     const rounded=values=>values.map(value=>Number(value.toFixed(3)))
     expect(rounded(corridor.cameraPosition)).toEqual([.8,1.55,-55])
     expect(rounded(corridor.cameraTarget)).toEqual([-4.3,.42,-57.9])
+    expect(rounded(forestReveal.cameraPosition)).toEqual([-3,2.15,-81])
+    expect(rounded(forestReveal.cameraTarget)).toEqual([-.5,.73,-83.15])
     expect(rounded(forestApproach.cameraPosition)).toEqual([-3,1.65,-82])
     expect(rounded(forestApproach.cameraTarget)).toEqual([-2,.3,-86])
-    ;[corridor,forestApproach].forEach(({cameraPosition,cameraTarget})=>{
+    ;[corridor,forestReveal,forestApproach].forEach(({cameraPosition,cameraTarget})=>{
       const distance=Math.hypot(...cameraPosition.map(
         (value,index)=>value-cameraTarget[index],
       ))
@@ -149,6 +152,57 @@ describe('India journey data', () => {
         )),
       )
       expect(jump).toBeLessThanOrEqual(.8)
+    }
+  })
+
+  it('joins the mountain-entry rail with continuous velocity',()=>{
+    const h=1e-5
+    const velocity=(from,to)=>from.map(
+      (value,axis)=>(to[axis]-value)/h,
+    )
+    const magnitude=vector=>Math.hypot(...vector)
+    const difference=(a,b)=>Math.hypot(...a.map(
+      (value,axis)=>value-b[axis],
+    ))
+
+    for(const boundary of [.12,.18]){
+      const before=getJourneyState(boundary-h)
+      const at=getJourneyState(boundary)
+      const after=getJourneyState(boundary+h)
+      for(const field of ['cameraPosition','cameraTarget']){
+        const left=velocity(before[field],at[field])
+        const right=velocity(at[field],after[field])
+        expect(magnitude(left)).toBeLessThan(1e-3)
+        expect(magnitude(right)).toBeLessThan(1e-3)
+        expect(difference(left,right)).toBeLessThan(1e-3)
+      }
+    }
+  })
+
+  it('moves monotonically through the softened mountain-entry segment',()=>{
+    const start=getJourneyState(.12)
+    const end=getJourneyState(.18)
+    for(const field of ['cameraPosition','cameraTarget']){
+      const delta=end[field].map(
+        (value,axis)=>value-start[field][axis],
+      )
+      const lengthSquared=delta.reduce(
+        (sum,value)=>sum+value*value,
+        0,
+      )
+      let previous=-Infinity
+      for(let index=0;index<=60;index+=1){
+        const current=getJourneyState(.12+index/1000)[field]
+        const scalar=current.reduce(
+          (sum,value,axis)=>
+            sum+(value-start[field][axis])*delta[axis],
+          0,
+        )/lengthSquared
+        expect(scalar).toBeGreaterThanOrEqual(previous-1e-10)
+        expect(scalar).toBeGreaterThanOrEqual(-1e-10)
+        expect(scalar).toBeLessThanOrEqual(1+1e-10)
+        previous=scalar
+      }
     }
   })
 

@@ -15,8 +15,44 @@ const outputRoot=path.resolve(
   requested,
 )
 const viewport=requested==='mobile'?{width:390,height:844}:{width:1440,height:900}
+const captureTravel=10000
 const states=[
-  {name:'mountain-opening',progress:.08,phase:'mountain-trek',activeBiome:'mountain',activeTransport:'trekker'},
+  {
+    name:'trailhead-establishing',
+    progress:0,
+    phase:'mountain-trek',
+    activeBiome:'mountain',
+    activeTransport:'trekker',
+    opening:{departureWeight:0,coach:'fully-framed',party:'fully-framed'},
+  },
+  {
+    name:'travelers-beside-coach',
+    progress:.035,
+    phase:'mountain-trek',
+    activeBiome:'mountain',
+    activeTransport:'trekker',
+    opening:{departureWeight:0,coach:'fully-framed',party:'fully-framed'},
+  },
+  {
+    name:'trailhead-departure',
+    progress:.08,
+    phase:'mountain-trek',
+    activeBiome:'mountain',
+    activeTransport:'trekker',
+    opening:{
+      departureWeight:.4376849383,
+      coach:'rendered',
+      party:'visible',
+    },
+  },
+  {
+    name:'mountain-entry',
+    progress:.12,
+    phase:'mountain-trek',
+    activeBiome:'mountain',
+    activeTransport:'trekker',
+    opening:{departureWeight:1,coach:'mounted',party:'visible'},
+  },
   {
     name:'distant-water-reveal',
     progress:.26,
@@ -66,6 +102,7 @@ const assertWeight=(weights,key,label)=>{
     throw new Error(`${label} ${key} does not overlap: ${weights[key]}`)
   }
 }
+let coachWorldMatrix
 const assertSnapshot=(snapshot,state,externalFailures)=>{
   if(!snapshot||typeof snapshot!=='object') throw new Error('Journey QA snapshot is unavailable')
   if(snapshot.phase!==state.phase){
@@ -89,8 +126,59 @@ const assertSnapshot=(snapshot,state,externalFailures)=>{
       `${snapshot.activeTransport} (${snapshot.transportWeights[state.activeTransport]})`,
     )
   }
+  if(Object.prototype.hasOwnProperty.call(snapshot.transportWeights,'coach')){
+    throw new Error('Coach was added to expedition transport weights')
+  }
+  if(!snapshot.opening?.coach||!snapshot.opening.coach.mounted){
+    throw new Error('Coach is not mounted as trailhead scenery')
+  }
+  if(!snapshot.opening.coach.worldMatrix?.length){
+    throw new Error('Coach world matrix evidence is unavailable')
+  }
+  if(!coachWorldMatrix){
+    coachWorldMatrix=[...snapshot.opening.coach.worldMatrix]
+  }else if(
+    snapshot.opening.coach.worldMatrix.some(
+      (value,index)=>Math.abs(value-coachWorldMatrix[index])>1e-6
+    )
+  ){
+    throw new Error('Coach world matrix changed')
+  }
+  if(state.opening){
+    if(
+      Math.abs(
+        snapshot.opening.departureWeight-state.opening.departureWeight
+      )>1e-6
+    ){
+      throw new Error(
+        `${state.name} departure weight mismatch: `+
+        `${snapshot.opening.departureWeight}`
+      )
+    }
+    if(
+      state.opening.coach==='fully-framed'&&
+      !snapshot.opening.coach.fullyFramed
+    ){
+      throw new Error(`${state.name} does not fully frame the coach`)
+    }
+    if(
+      state.opening.coach==='rendered'&&
+      !snapshot.opening.coach.rendered
+    ){
+      throw new Error(`${state.name} does not render the coach`)
+    }
+    if(state.opening.party==='fully-framed'){
+      const framed=snapshot.opening.fullyFramedMembers
+      if(framed.guides!==1||framed.tourists!==3){
+        throw new Error(`${state.name} does not fully frame the party`)
+      }
+    }
+  }
   if(snapshot.visibleMembers.guides!==1||snapshot.visibleMembers.tourists!==3){
-    throw new Error('Trekking party is incomplete')
+    throw new Error(
+      `${state.name} trekking party is incomplete: `+
+      JSON.stringify(snapshot.visibleMembers),
+    )
   }
   if(snapshot.audioControls!==0) throw new Error('Audio controls returned')
   const consoleFailures=[...new Set([
@@ -161,6 +249,11 @@ try{
   await page.getByRole('button',{name:'Start'}).click()
   await page.waitForFunction(()=>typeof window.__journeyQA==='function',{timeout:20000})
   await page.locator('.journey__canvas').waitFor({state:'visible',timeout:20000})
+  await page.evaluate(captureTravel=>{
+    const track=document.querySelector('.experience__track')
+    if(!track) throw new Error('Journey track is unavailable')
+    track.style.height=`${innerHeight+captureTravel}px`
+  },captureTravel)
   await page.addStyleTag({content:`
     body.visual-qa-webgl .experience__grade,
     body.visual-qa-webgl .chapter,
@@ -265,6 +358,7 @@ try{
       cameraJump:snapshot.cameraJump,
       consoleFailures:snapshot.consoleFailures,
       audioControls:snapshot.audioControls,
+      opening:snapshot.opening,
       visualDebug:snapshot.visualDebug,
       layout,
       screenshots:{page:pagePath,webgl:webglPath},

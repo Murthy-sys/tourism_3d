@@ -15,7 +15,7 @@ export const OPENING_TREK_END=.14
 export const OPENING_DRIVE_END=OPENING_TREK_END
 export const CHAPTERS=[
   {id:'home',menuLabel:'Home',title:'The trail is calling.',kicker:'WanderLux',body:'A journey across India begins here.',progressStart:0,progressEnd:OPENING_TREK_END,layout:'drive'},
-  {id:'who-we-are',menuLabel:'Who We Are',title:'Journeys, managed completely.',kicker:'Who we are',body:'We don’t simply book holidays. We design, coordinate and manage journeys across India—from the first conversation to the moment you return home.',progressStart:OPENING_TREK_END,progressEnd:.28,layout:'operations'},
+  {id:'who-we-are',menuLabel:'Who We Are',title:'Destination stories. Brand impact.',kicker:'Who we are',body:'Sanchari Kannadiga partners with tourism boards, hotels, resorts, travel companies, adventure brands and government tourism departments to turn destinations into cinematic stories that inspire real journeys. Beyond beautiful travel films, we create strategic brand collaborations—from campaign concepts and on-location production to experience-led storytelling and audience-ready content that builds attention, trust and travel intent.',progressStart:OPENING_TREK_END,progressEnd:.28,layout:'operations'},
   {id:'plans',menuLabel:'Plans',title:'Three expedition chapters.',kicker:'Curated journeys',body:'Choose a direction. We will shape every detail around you.',progressStart:.28,progressEnd:.94,layout:'monument-plans'},
   {id:'contact',menuLabel:'Contact',title:'Where should we take you next?',kicker:'Begin a journey',body:'Tell us what you imagine. We will make the route real.',progressStart:.94,progressEnd:1,layout:'pavilion-contact'},
 ]

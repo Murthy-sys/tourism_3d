@@ -1,0 +1,398 @@
+# Review package: e595cb5..7c003c5
+
+## Commits
+7c003c5 Extend mountain world with natural trailhead
+
+## Files changed
+ src/three/terrain.js        |  30 +++++++-
+ src/three/terrain.test.js   |  30 ++++++++
+ src/three/trailhead.js      | 170 ++++++++++++++++++++++++++++++++++++++++++++
+ src/three/trailhead.test.js |  86 ++++++++++++++++++++++
+ 4 files changed, 314 insertions(+), 2 deletions(-)
+
+## Diff
+diff --git a/src/three/terrain.js b/src/three/terrain.js
+index c52edca..633e335 100644
+--- a/src/three/terrain.js
++++ b/src/three/terrain.js
+@@ -1,27 +1,53 @@
+ import * as THREE from 'three'
+ 
+ export const LANDMARKS=Object.freeze({
++  trailheadStart:Object.freeze([3.2,.35,34]),
++  mountainEntry:Object.freeze([2,3.1,22]),
+   mountainStart:Object.freeze([0,5,12]),
+   mountainLanding:Object.freeze([2,.35,-34]),
+   forestLanding:Object.freeze([-2,.25,-86]),
+   forestEnd:Object.freeze([1,.2,-132]),
+ })
+ 
+ export const smootherstep=(a,b,value)=>{
+   const t=THREE.MathUtils.clamp((value-a)/(b-a||1),0,1)
+   return t*t*t*(t*(t*6-15)+10)
+ }
+ 
+-const ridge=(x,z)=>Math.sin(x*.17+Math.sin(z*.08))*2.5+Math.cos(z*.11-x*.09)*1.8+Math.sin((x+z)*.29)*.65
++const ridge=(x,z)=>
++  Math.sin(x*.17+Math.sin(z*.08))*2.5+
++  Math.cos(z*.11-x*.09)*1.8+
++  Math.sin((x+z)*.29)*.65
+ 
+-export const sampleMountainHeight=(x,z)=>Math.max(0,(ridge(x,z)+4.4)*smootherstep(-38,8,z))
++const baseMountainHeight=(x,z)=>
++  Math.max(0,(ridge(x,z)+4.4)*smootherstep(-38,8,z))
++
++const openingCenterX=z=>
++  THREE.MathUtils.lerp(0,3.2,smootherstep(12,34,z))
++
++const openingFloor=z=>
++  THREE.MathUtils.lerp(5,.35,smootherstep(12,34,z))
++
++export const sampleMountainHeight=(x,z)=>{
++  const base=baseMountainHeight(x,z)
++  const corridorEnvelope=
++    smootherstep(8,12,z)*
++    (1-smootherstep(35,41,z))
++  const corridor=
++    (1-smootherstep(1.1,5.8,Math.abs(x-openingCenterX(z))))*
++    corridorEnvelope
++  const turnoutDistance=Math.hypot((x+2)/12,(z-34)/9)
++  const turnout=1-smootherstep(.72,1.25,turnoutDistance)
++  const weight=Math.max(corridor,turnout)
++  return THREE.MathUtils.lerp(base,openingFloor(z),weight)
++}
+ 
+ export const sampleMountainSlope=(x,z)=>{
+   const d=.15
+   return Math.hypot(
+     sampleMountainHeight(x+d,z)-sampleMountainHeight(x-d,z),
+     sampleMountainHeight(x,z+d)-sampleMountainHeight(x,z-d),
+   )/(d*2)
+ }
+ 
+ export const createTerrainGeometry=({
+diff --git a/src/three/terrain.test.js b/src/three/terrain.test.js
+index bef4c28..8d2ceec 100644
+--- a/src/three/terrain.test.js
++++ b/src/three/terrain.test.js
+@@ -1,10 +1,11 @@
++import * as THREE from 'three'
+ import {describe,expect,it} from 'vitest'
+ import {LANDMARKS,createTerrainGeometry,getBiomeWeights,sampleMountainHeight,sampleMountainSlope,smootherstep} from './terrain'
+ 
+ describe('mountain-water-forest terrain contracts',()=>{
+   it('creates deterministic irregular terrain without radial cone symmetry',()=>{
+     expect(sampleMountainHeight(5,-9)).toBe(sampleMountainHeight(5,-9))
+     expect(new Set([-12,-6,0,6,12].map(x=>sampleMountainHeight(x,-18).toFixed(3))).size).toBeGreaterThan(3)
+     expect(sampleMountainSlope(5,-9)).toBeGreaterThanOrEqual(0)
+     const geometry=createTerrainGeometry({width:20,depth:30,segmentsX:10,segmentsZ:12,heightAt:sampleMountainHeight})
+     expect(geometry.attributes.position.count).toBe(143)
+@@ -15,11 +16,40 @@ describe('mountain-water-forest terrain contracts',()=>{
+     for(const p of [.2,.3,.4,.5,.6,.7,.8]){
+       const weights=getBiomeWeights(p)
+       expect(weights.mountain+weights.water+weights.forest).toBeCloseTo(1,6)
+     }
+     expect(getBiomeWeights(.31).mountain).toBeGreaterThan(.05)
+     expect(getBiomeWeights(.31).water).toBeGreaterThan(.05)
+     expect(getBiomeWeights(.66).water).toBeGreaterThan(.05)
+     expect(getBiomeWeights(.66).forest).toBeGreaterThan(.05)
+     expect(Object.isFrozen(LANDMARKS)).toBe(true)
+   })
++
++  it('adds a flat trailhead and mountain entry without changing later landmarks',()=>{
++    expect(LANDMARKS).toMatchObject({
++      trailheadStart:[3.2,.35,34],
++      mountainEntry:[2,3.1,22],
++      mountainStart:[0,5,12],
++      mountainLanding:[2,.35,-34],
++      forestLanding:[-2,.25,-86],
++      forestEnd:[1,.2,-132],
++    })
++    Object.values(LANDMARKS).forEach(landmark=>expect(Object.isFrozen(landmark)).toBe(true))
++    expect(sampleMountainHeight(3.2,34)).toBeCloseTo(.35,1)
++    expect(sampleMountainHeight(-4,34)).toBeCloseTo(.35,1)
++    expect(sampleMountainHeight(2,22)).toBeCloseTo(3.1,1)
++    expect(sampleMountainHeight(0,12)).toBeCloseTo(5,1)
++  })
++
++  it('blends the turnout into the mountain without a height seam',()=>{
++    const samples=Array.from({length:89},(_,index)=>{
++      const t=index/88
++      const x=THREE.MathUtils.lerp(3.2,0,t)
++      const z=THREE.MathUtils.lerp(34,12,t)
++      return sampleMountainHeight(x,z)
++    })
++    const adjacent=samples.slice(1).map((height,index)=>Math.abs(height-samples[index]))
++    expect(Math.max(...adjacent)).toBeLessThan(.22)
++    expect(samples.at(-1)).toBeGreaterThan(samples[0]+4)
++    expect(getBiomeWeights(.31).water).toBeGreaterThan(.05)
++  })
+ })
+diff --git a/src/three/trailhead.js b/src/three/trailhead.js
+new file mode 100644
+index 0000000..ef4e454
+--- /dev/null
++++ b/src/three/trailhead.js
+@@ -0,0 +1,170 @@
++import * as THREE from 'three'
++import {mesh} from './primitives'
++
++const namedGroup=name=>{
++  const group=new THREE.Group()
++  group.name=name
++  return group
++}
++
++const hash=(index,salt=0)=>{
++  const value=Math.sin((index+1)*91.733+salt*37.119)*43758.5453
++  return value-Math.floor(value)
++}
++
++const minimumRouteDistance=(point,route)=>
++  route.getSpacedPoints(100).reduce(
++    (distance,candidate)=>Math.min(distance,point.distanceTo(candidate)),
++    Infinity,
++  )
++
++const createTurnoutGeometry=(heightAt,quality)=>{
++  const segments=quality==='mobile'?36:72
++  const positions=[-2,heightAt(-2,34)+.015,34]
++  const indices=[]
++  for(let index=0;index<segments;index+=1){
++    const angle=index/segments*Math.PI*2
++    const radius=1+(hash(index,2)-.5)*.12
++    const x=-2+Math.cos(angle)*12*radius
++    const z=34+Math.sin(angle)*8.5*radius
++    positions.push(x,heightAt(x,z)+.018,z)
++  }
++  for(let index=0;index<segments;index+=1){
++    indices.push(0,index+1,(index+1)%segments+1)
++  }
++  const geometry=new THREE.BufferGeometry()
++  geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3))
++  geometry.setIndex(indices)
++  geometry.computeVertexNormals()
++  return geometry
++}
++
++const makePatch=(name,radius,color,roughness,x,z,heightAt)=>{
++  const patch=mesh(
++    new THREE.CircleGeometry(radius,24),
++    new THREE.MeshStandardMaterial({
++      color,
++      roughness,
++      metalness:0,
++      transparent:true,
++      opacity:.72,
++      depthWrite:false,
++    }),
++    [x,heightAt(x,z)+.035,z],
++    [-Math.PI/2,0,0],
++  )
++  patch.name=name
++  patch.scale.y=.62
++  patch.castShadow=false
++  return patch
++}
++
++export function createTrailhead(materials,{
++  quality='desktop',
++  heightAt,
++  route,
++  standingPoses=[],
++}){
++  const trailhead=namedGroup('trailhead')
++  const gravel=namedGroup('trailhead-gravel')
++  gravel.add(mesh(
++    createTurnoutGeometry(heightAt,quality),
++    new THREE.MeshStandardMaterial({
++      color:'#756d5f',
++      roughness:1,
++      metalness:0,
++    }),
++  ))
++  const earth=namedGroup('trailhead-earth')
++  earth.add(
++    makePatch('trailhead-earth-patch-1',4.1,'#665443',1,-5.1,35.4,heightAt),
++    makePatch('trailhead-earth-patch-2',3.2,'#6c5844',1,2.6,31.8,heightAt),
++  )
++
++  const tireMarks=namedGroup('trailhead-tire-marks')
++  ;[-.72,.72].forEach((offset,index)=>{
++    const track=mesh(
++      new THREE.BoxGeometry(.12,.018,9.2),
++      new THREE.MeshStandardMaterial({color:'#403c35',roughness:1}),
++      [-4+offset,heightAt(-4+offset,34)+.045,34],
++      [0,-Math.PI/2,0],
++    )
++    track.name=`trailhead-tire-mark-${index+1}`
++    track.castShadow=false
++    tireMarks.add(track)
++  })
++
++  const damp=namedGroup('trailhead-damp-patches')
++  damp.add(
++    makePatch('trailhead-damp-patch-1',1.15,'#394944',.38,-8.1,31.1,heightAt),
++    makePatch('trailhead-damp-patch-2',.82,'#344641',.34,.2,39.1,heightAt),
++  )
++
++  const grass=namedGroup('trailhead-edge-grass')
++  const stones=namedGroup('trailhead-edge-stones')
++  const bushes=namedGroup('trailhead-framing-bushes')
++  const routeObstacles=[]
++  const count=quality==='mobile'?28:56
++  const turnoutBounds=new THREE.Box3(
++    new THREE.Vector3(-10.5,-.1,29),
++    new THREE.Vector3(4.5,4.2,40.2),
++  )
++  const standingPoints=standingPoses.map(pose=>new THREE.Vector3(...pose.position))
++
++  for(let index=0;index<count;index+=1){
++    const angle=index/count*Math.PI*2+(hash(index,9)-.5)*.12
++    const radiusX=13.2+hash(index,10)*3.4
++    const radiusZ=9.4+hash(index,11)*2.8
++    const x=-2+Math.cos(angle)*radiusX
++    const z=34+Math.sin(angle)*radiusZ
++    const point=new THREE.Vector3(x,heightAt(x,z),z)
++    if(minimumRouteDistance(point,route)<2.4) continue
++    if(standingPoints.some(candidate=>candidate.distanceTo(point)<1.6)) continue
++
++    const kind=index%3
++    let object
++    if(kind===0){
++      object=mesh(
++        new THREE.DodecahedronGeometry(.16+hash(index,12)*.24,0),
++        materials.stone,
++        point.toArray(),
++        [hash(index,13),hash(index,14)*Math.PI,0],
++      )
++      object.name='trailhead-edge-stone'
++      object.scale.y=.45
++      stones.add(object)
++    }else if(kind===1){
++      object=mesh(
++        new THREE.ConeGeometry(.06,.42+hash(index,15)*.28,5),
++        index%2?materials.leaf:materials.leaf2,
++        [x,point.y+.24,z],
++      )
++      object.name='trailhead-edge-grass-clump'
++      grass.add(object)
++    }else{
++      object=mesh(
++        new THREE.IcosahedronGeometry(.38+hash(index,16)*.32,1),
++        index%2?materials.leaf2:materials.leaf,
++        [x,point.y+.34,z],
++      )
++      object.name='trailhead-framing-bush'
++      object.scale.set(1.2,.72,.9)
++      bushes.add(object)
++    }
++    object.updateMatrixWorld(true)
++    routeObstacles.push(new THREE.Box3().setFromObject(object))
++  }
++
++  trailhead.add(gravel,earth,tireMarks,damp,grass,stones,bushes)
++  trailhead.userData={
++    coachPose:{
++      position:new THREE.Vector3(-4,heightAt(-4,34),34),
++      heading:-Math.PI/2,
++    },
++    turnoutBounds,
++    routeObstacles,
++    routeClearance:1.5,
++    cameraClearance:3,
++  }
++  return trailhead
++}
+diff --git a/src/three/trailhead.test.js b/src/three/trailhead.test.js
+new file mode 100644
+index 0000000..406f736
+--- /dev/null
++++ b/src/three/trailhead.test.js
+@@ -0,0 +1,86 @@
++import * as THREE from 'three'
++import {describe,expect,it} from 'vitest'
++import {createMaterials,disposeObject3D} from './primitives'
++import {createTrailhead} from './trailhead'
++import {LANDMARKS,sampleMountainHeight} from './terrain'
++
++const standingPoses=[
++  {role:'guide',position:[3.2,.35,33.7],heading:-3.04},
++  {role:'tourist',position:[1.8,.35,36.5],heading:-2.35},
++  {role:'tourist',position:[3.2,.35,36.7],heading:2.65},
++  {role:'tourist',position:[2.4,.35,38],heading:-2.7},
++]
++
++const route=new THREE.CatmullRomCurve3([
++  new THREE.Vector3(...LANDMARKS.trailheadStart),
++  new THREE.Vector3(...LANDMARKS.mountainEntry),
++  new THREE.Vector3(...LANDMARKS.mountainStart),
++])
++
++describe('trailhead clearing',()=>{
++  it('builds gravel, earth, tracks, damp patches, and natural edge detail',()=>{
++    const trailhead=createTrailhead(createMaterials(),{
++      quality:'desktop',
++      heightAt:sampleMountainHeight,
++      route,
++      standingPoses,
++    })
++    ;[
++      'trailhead-gravel',
++      'trailhead-earth',
++      'trailhead-tire-marks',
++      'trailhead-damp-patches',
++      'trailhead-edge-grass',
++      'trailhead-edge-stones',
++      'trailhead-framing-bushes',
++    ].forEach(name=>expect(trailhead.getObjectByName(name)).toBeTruthy())
++    expect(trailhead.userData.coachPose.position.toArray()).toEqual([
++      -4,
++      sampleMountainHeight(-4,34),
++      34,
++    ])
++    expect(trailhead.userData.coachPose.heading).toBe(-Math.PI/2)
++    expect(trailhead.userData.routeClearance).toBeGreaterThanOrEqual(1.5)
++    expect(trailhead.userData.cameraClearance).toBeGreaterThanOrEqual(3)
++    disposeObject3D(trailhead)
++  })
++
++  it('keeps every edge obstacle outside the walking corridor, coach turnout, and party',()=>{
++    const trailhead=createTrailhead(createMaterials(),{
++      quality:'desktop',
++      heightAt:sampleMountainHeight,
++      route,
++      standingPoses,
++    })
++    const samples=route.getSpacedPoints(80)
++    trailhead.userData.routeObstacles.forEach(bounds=>{
++      samples.forEach(point=>expect(bounds.distanceToPoint(point))
++        .toBeGreaterThanOrEqual(trailhead.userData.routeClearance))
++      expect(bounds.intersectsBox(trailhead.userData.turnoutBounds)).toBe(false)
++      standingPoses.forEach(pose=>{
++        const [x,y,z]=pose.position
++        expect(bounds.distanceToPoint(new THREE.Vector3(x,y,z))).toBeGreaterThan(.8)
++      })
++    })
++    disposeObject3D(trailhead)
++  })
++
++  it('preserves semantic groups on mobile with fewer decorative instances',()=>{
++    const options={heightAt:sampleMountainHeight,route,standingPoses}
++    const desktop=createTrailhead(createMaterials(),{...options,quality:'desktop'})
++    const mobile=createTrailhead(createMaterials(),{...options,quality:'mobile'})
++    ;[
++      'trailhead-gravel',
++      'trailhead-earth',
++      'trailhead-tire-marks',
++      'trailhead-damp-patches',
++      'trailhead-edge-grass',
++      'trailhead-edge-stones',
++      'trailhead-framing-bushes',
++    ].forEach(name=>expect(mobile.getObjectByName(name)).toBeTruthy())
++    expect(desktop.userData.routeObstacles.length)
++      .toBeGreaterThan(mobile.userData.routeObstacles.length)
++    disposeObject3D(desktop)
++    disposeObject3D(mobile)
++  })
++})

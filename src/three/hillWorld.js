@@ -494,6 +494,7 @@ export function createHillWorld(materials,quality='desktop'){
     heightAt,
     route,
     standingPoses:TRAILHEAD_STANDING_POSES,
+    terrainGeometry:terrain.geometry,
   })
   const landing=createLanding(materials)
   const water=createWaterGlint()

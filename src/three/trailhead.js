@@ -18,7 +18,64 @@ const minimumRouteDistance=(point,route)=>
     Infinity,
   )
 
-const createTurnoutGeometry=(heightAt,quality)=>{
+const TURNOUT_SURFACE_CLEARANCE=.03125
+
+const createTerrainAlignedTurnout=(terrainGeometry,quality)=>{
+  const sourcePosition=terrainGeometry?.getAttribute?.('position')
+  const sourceIndex=terrainGeometry?.getIndex?.()
+  if(!sourcePosition||!sourceIndex) return null
+
+  const segments=quality==='mobile'?36:72
+  const positions=[]
+  const indices=[]
+  const copiedVertices=new Map()
+  const copyVertex=source=>{
+    if(copiedVertices.has(source)) return copiedVertices.get(source)
+    const target=positions.length/3
+    positions.push(
+      sourcePosition.getX(source),
+      sourcePosition.getY(source)+TURNOUT_SURFACE_CLEARANCE,
+      sourcePosition.getZ(source),
+    )
+    copiedVertices.set(source,target)
+    return target
+  }
+
+  for(let offset=0;offset<sourceIndex.count;offset+=3){
+    const sourceVertices=[0,1,2].map(
+      vertex=>sourceIndex.getX(offset+vertex),
+    )
+    const x=sourceVertices.reduce(
+      (sum,vertex)=>sum+sourcePosition.getX(vertex),
+      0,
+    )/3
+    const z=sourceVertices.reduce(
+      (sum,vertex)=>sum+sourcePosition.getZ(vertex),
+      0,
+    )/3
+    const angle=Math.atan2((z-34)/8.5,(x+2)/12)
+    const boundaryIndex=Math.floor(
+      ((angle+Math.PI)/(Math.PI*2))*segments,
+    )%segments
+    const boundary=1+(hash(boundaryIndex,2)-.5)*.12
+    const radius=Math.hypot((x+2)/12,(z-34)/8.5)
+    if(radius>boundary) continue
+    indices.push(...sourceVertices.map(copyVertex))
+  }
+  if(!indices.length) return null
+  const geometry=new THREE.BufferGeometry()
+  geometry.setAttribute(
+    'position',
+    new THREE.Float32BufferAttribute(positions,3),
+  )
+  geometry.setIndex(indices)
+  geometry.computeVertexNormals()
+  return geometry
+}
+
+const createTurnoutGeometry=(heightAt,quality,terrainGeometry)=>{
+  const aligned=createTerrainAlignedTurnout(terrainGeometry,quality)
+  if(aligned) return aligned
   const segments=quality==='mobile'?36:72
   const rings=quality==='mobile'?7:8
   const positions=[-2,heightAt(-2,34)+.015,34]
@@ -78,17 +135,19 @@ export function createTrailhead(materials,{
   heightAt,
   route,
   standingPoses=[],
+  terrainGeometry,
 }){
   const trailhead=namedGroup('trailhead')
   const gravel=namedGroup('trailhead-gravel')
   const turnout=mesh(
-    createTurnoutGeometry(heightAt,quality),
+    createTurnoutGeometry(heightAt,quality,terrainGeometry),
     new THREE.MeshStandardMaterial({
       color:'#756d5f',
       roughness:1,
       metalness:0,
     }),
   )
+  turnout.name='trailhead-gravel-surface'
   turnout.castShadow=false
   gravel.add(turnout)
   const earth=namedGroup('trailhead-earth')
@@ -181,6 +240,7 @@ export function createTrailhead(materials,{
     routeObstacles,
     routeClearance:1.5,
     cameraClearance:3,
+    turnoutSurfaceClearance:TURNOUT_SURFACE_CLEARANCE,
   }
   return trailhead
 }
