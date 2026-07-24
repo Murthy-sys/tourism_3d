@@ -17,6 +17,26 @@ const route=new THREE.CatmullRomCurve3([
   new THREE.Vector3(...LANDMARKS.mountainStart),
 ])
 
+const meshesIn=root=>{
+  const meshes=[]
+  root.traverse(object=>{if(object.isMesh) meshes.push(object)})
+  return meshes
+}
+
+const maxSurfaceDeviation=(surface,heightAt)=>{
+  const position=surface.geometry.getAttribute('position')
+  const index=surface.geometry.getIndex()
+  let maximum=0
+  for(let offset=0;offset<index.count;offset+=3){
+    const vertices=[0,1,2].map(vertex=>index.getX(offset+vertex))
+    const x=vertices.reduce((sum,vertex)=>sum+position.getX(vertex),0)/3
+    const y=vertices.reduce((sum,vertex)=>sum+position.getY(vertex),0)/3
+    const z=vertices.reduce((sum,vertex)=>sum+position.getZ(vertex),0)/3
+    maximum=Math.max(maximum,Math.abs(y-heightAt(x,z)))
+  }
+  return maximum
+}
+
 describe('trailhead clearing',()=>{
   it('builds gravel, earth, tracks, damp patches, and natural edge detail',()=>{
     const trailhead=createTrailhead(createMaterials(),{
@@ -82,5 +102,64 @@ describe('trailhead clearing',()=>{
       .toBeGreaterThan(mobile.userData.routeObstacles.length)
     disposeObject3D(desktop)
     disposeObject3D(mobile)
+  })
+
+  it('keeps clearing surface layers shadow-receiving without casting',()=>{
+    const trailhead=createTrailhead(createMaterials(),{
+      quality:'desktop',
+      heightAt:sampleMountainHeight,
+      route,
+      standingPoses,
+    })
+    ;[
+      'trailhead-gravel',
+      'trailhead-earth',
+      'trailhead-tire-marks',
+      'trailhead-damp-patches',
+    ].forEach(name=>{
+      const surfaces=meshesIn(trailhead.getObjectByName(name))
+      expect(surfaces.length).toBeGreaterThan(0)
+      surfaces.forEach(surface=>{
+        expect(surface.castShadow).toBe(false)
+        expect(surface.receiveShadow).toBe(true)
+      })
+    })
+    disposeObject3D(trailhead)
+  })
+
+  it.each(['desktop','mobile'])(
+    'keeps the %s gravel turnout close to the underlying terrain',
+    quality=>{
+      const trailhead=createTrailhead(createMaterials(),{
+        quality,
+        heightAt:sampleMountainHeight,
+        route,
+        standingPoses,
+      })
+      const surfaces=meshesIn(trailhead.getObjectByName('trailhead-gravel'))
+      expect(surfaces.length).toBeGreaterThan(0)
+      surfaces.forEach(surface=>{
+        expect(maxSurfaceDeviation(surface,sampleMountainHeight)).toBeLessThan(.5)
+      })
+      disposeObject3D(trailhead)
+    },
+  )
+
+  it.each(['desktop','mobile'])('faces the %s gravel turnout upward',quality=>{
+    const trailhead=createTrailhead(createMaterials(),{
+      quality,
+      heightAt:sampleMountainHeight,
+      route,
+      standingPoses,
+    })
+    const surfaces=meshesIn(trailhead.getObjectByName('trailhead-gravel'))
+    expect(surfaces.length).toBeGreaterThan(0)
+    surfaces.forEach(surface=>{
+      const normal=surface.geometry.getAttribute('normal')
+      for(let index=0;index<normal.count;index+=1){
+        expect(normal.getY(index)).toBeGreaterThan(0)
+      }
+    })
+    disposeObject3D(trailhead)
   })
 })

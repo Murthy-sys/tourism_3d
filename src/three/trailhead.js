@@ -20,17 +20,31 @@ const minimumRouteDistance=(point,route)=>
 
 const createTurnoutGeometry=(heightAt,quality)=>{
   const segments=quality==='mobile'?36:72
+  const rings=quality==='mobile'?7:8
   const positions=[-2,heightAt(-2,34)+.015,34]
   const indices=[]
-  for(let index=0;index<segments;index+=1){
-    const angle=index/segments*Math.PI*2
-    const radius=1+(hash(index,2)-.5)*.12
-    const x=-2+Math.cos(angle)*12*radius
-    const z=34+Math.sin(angle)*8.5*radius
-    positions.push(x,heightAt(x,z)+.018,z)
+  for(let ring=1;ring<=rings;ring+=1){
+    for(let index=0;index<segments;index+=1){
+      const angle=index/segments*Math.PI*2
+      const radius=ring/rings*(1+(hash(index,2)-.5)*.12)
+      const x=-2+Math.cos(angle)*12*radius
+      const z=34+Math.sin(angle)*8.5*radius
+      positions.push(x,heightAt(x,z)+.018,z)
+    }
   }
   for(let index=0;index<segments;index+=1){
-    indices.push(0,index+1,(index+1)%segments+1)
+    indices.push(0,(index+1)%segments+1,index+1)
+  }
+  for(let ring=2;ring<=rings;ring+=1){
+    const innerStart=1+(ring-2)*segments
+    const outerStart=innerStart+segments
+    for(let index=0;index<segments;index+=1){
+      const next=(index+1)%segments
+      indices.push(
+        innerStart+index,outerStart+next,outerStart+index,
+        innerStart+index,innerStart+next,outerStart+next,
+      )
+    }
   }
   const geometry=new THREE.BufferGeometry()
   geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3))
@@ -67,14 +81,16 @@ export function createTrailhead(materials,{
 }){
   const trailhead=namedGroup('trailhead')
   const gravel=namedGroup('trailhead-gravel')
-  gravel.add(mesh(
+  const turnout=mesh(
     createTurnoutGeometry(heightAt,quality),
     new THREE.MeshStandardMaterial({
       color:'#756d5f',
       roughness:1,
       metalness:0,
     }),
-  ))
+  )
+  turnout.castShadow=false
+  gravel.add(turnout)
   const earth=namedGroup('trailhead-earth')
   earth.add(
     makePatch('trailhead-earth-patch-1',4.1,'#665443',1,-5.1,35.4,heightAt),
