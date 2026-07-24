@@ -80,8 +80,9 @@ describe('visual QA fail-closed corpus',()=>{
     expect(source).toContain('track.style.height=`${innerHeight+captureTravel}px`')
   })
 
-  it('allows a cold desktop camera jump to settle without weakening accuracy',()=>{
-    expect(source).toContain('const cameraSettleTimeout=90000')
+  it('allows only cold targeted desktop captures extra camera settle time without weakening accuracy',()=>{
+    expect(source).toContain("const isColdTargetedDesktop=requested==='desktop'&&Boolean(requestedState)")
+    expect(source).toContain('const cameraSettleTimeout=isColdTargetedDesktop?90000:45000')
     expect(source).toContain('distance(debug.camera,debug.desiredCamera)<.35')
     expect(source).toContain(
       'distance(debug.cameraTarget,debug.desiredTarget)<.35',
@@ -94,9 +95,14 @@ describe('visual QA fail-closed corpus',()=>{
     expect(source).toContain('progress:.91')
     expect(source).toContain('labels:SOCIAL_MEDIA_METRICS.map')
     expect(source).toContain('values:SOCIAL_MEDIA_METRICS.map')
+    expect(source).toContain('accessibleValues:SOCIAL_MEDIA_METRICS.map')
     expect(source).toContain("document.querySelector('.chapter--social-performance')")
+    expect(source).toContain("querySelectorAll('dd span[aria-hidden=\"true\"]')")
+    expect(source).toContain('accessibleValues:[...performanceElement.querySelectorAll(\'dd\')]')
     expect(source).toContain('layout.content.performance')
     expect(source).toContain('performance.itemFontSize<10')
+    expect(source).toContain('performance.handleFontSize<10')
+    expect(source).toContain('performance.sourceFontSize<10')
     expect(source).toContain('rectanglesOverlap(performance.rect,control.rect)')
   })
 
@@ -109,6 +115,17 @@ describe('visual QA fail-closed corpus',()=>{
     expect(source).toContain('control.rect.right<=control.rect.left')
     expect(source).toContain('control.rect.bottom<=control.rect.top')
     expect(source).toContain('if(!performance)')
+    expect(source).toContain('if(!performance.rect)')
+    expect(source).toContain('Object.values(performance.rect).every(Number.isFinite)')
+    expect(source).toContain('performance.rect.right<=performance.rect.left')
+    expect(source).toContain('performance.rect.bottom<=performance.rect.top')
+    expect(source).toContain('performance.rect.left<0')
+    expect(source).toContain('performance.rect.right>viewport.width')
+    expect(source).toContain("performance.display==='none'")
+    expect(source).toContain("['hidden','collapse'].includes(performance.visibility)")
+    expect(source).toContain('!Number.isFinite(performance.opacity)||performance.opacity<=.05')
     expect(source).toContain('Number.isFinite(performance.itemFontSize)')
+    expect(source).toContain('Number.isFinite(performance.handleFontSize)')
+    expect(source).toContain('Number.isFinite(performance.sourceFontSize)')
   })
 })

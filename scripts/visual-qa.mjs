@@ -23,7 +23,6 @@ const outputRoot=path.resolve(
 )
 const viewport=requested==='mobile'?{width:390,height:844}:{width:1440,height:900}
 const captureTravel=10000
-const cameraSettleTimeout=90000
 const WHO_WE_ARE=CHAPTERS.find(chapter=>chapter.id==='who-we-are')
 const states=[
   {
@@ -148,6 +147,7 @@ const states=[
         source:SOCIAL_MEDIA_PROFILE.sourceLabel,
         labels:SOCIAL_MEDIA_METRICS.map(metric=>metric.label),
         values:SOCIAL_MEDIA_METRICS.map(metric=>metric.display),
+        accessibleValues:SOCIAL_MEDIA_METRICS.map(metric=>metric.display),
       },
     },
   },
@@ -159,6 +159,8 @@ const captureStates=requestedState
 if(requestedState&&!captureStates.length){
   throw new Error(`Unknown visual QA state: ${requestedState}`)
 }
+const isColdTargetedDesktop=requested==='desktop'&&Boolean(requestedState)
+const cameraSettleTimeout=isColdTargetedDesktop?90000:45000
 
 const isIgnoredConsoleMessage=text=>text.includes('ReadPixels')
 const assertWeight=(weights,key,label)=>{
@@ -387,6 +389,15 @@ try{
       const chapter=document.querySelector('.chapter')
       const performanceElement=document.querySelector('.chapter--social-performance')
       const performanceRect=performanceElement?.getBoundingClientRect()
+      const performanceStyle=performanceElement
+        ?getComputedStyle(performanceElement)
+        :null
+      const handleElement=performanceElement?.querySelector(
+        '.social-performance__header>a',
+      )
+      const sourceElement=performanceElement?.querySelector(
+        '.social-performance__source',
+      )
       const performance=performanceElement?{
         handle:performanceElement
           .querySelector('.social-performance__header>a')
@@ -396,17 +407,28 @@ try{
           ?.textContent?.trim()||'',
         labels:[...performanceElement.querySelectorAll('dt')]
           .map(node=>node.textContent?.trim()||''),
-        values:[...performanceElement.querySelectorAll('dd')]
+        values:[...performanceElement.querySelectorAll('dd span[aria-hidden="true"]')]
+          .map(node=>node.textContent?.trim()||''),
+        accessibleValues:[...performanceElement.querySelectorAll('dd')]
           .map(node=>node.getAttribute('aria-label')?.split(': ').slice(1).join(': ')||''),
         itemFontSize:parseFloat(getComputedStyle(
           performanceElement.querySelector('dt'),
         ).fontSize),
-        rect:{
+        handleFontSize:handleElement
+          ?parseFloat(getComputedStyle(handleElement).fontSize)
+          :NaN,
+        sourceFontSize:sourceElement
+          ?parseFloat(getComputedStyle(sourceElement).fontSize)
+          :NaN,
+        display:performanceStyle.display,
+        visibility:performanceStyle.visibility,
+        opacity:parseFloat(performanceStyle.opacity),
+        rect:performanceRect?{
           left:Math.round(performanceRect.left),
           top:Math.round(performanceRect.top),
           right:Math.round(performanceRect.right),
           bottom:Math.round(performanceRect.bottom),
-        },
+        }:null,
       }:null
       const brandCards=chapter
         ?[...chapter.querySelectorAll('.brand-value-card')].map(card=>{
@@ -488,6 +510,39 @@ try{
       }
     }
     if(state.content){
+      if(state.content.performance){
+        const performance=layout.content?.performance
+        if(!performance){
+          throw new Error(`${state.name} performance evidence is unavailable`)
+        }
+        if(!performance.rect){
+          throw new Error(`${state.name} performance bounds are unavailable`)
+        }
+        if(
+          !Object.values(performance.rect).every(Number.isFinite)||
+          performance.rect.right<=performance.rect.left||
+          performance.rect.bottom<=performance.rect.top
+        ){
+          throw new Error(`${state.name} performance bounds are invalid`)
+        }
+        if(
+          performance.rect.left<0||
+          performance.rect.top<0||
+          performance.rect.right>viewport.width||
+          performance.rect.bottom>viewport.height
+        ){
+          throw new Error(`${requested} performance card is clipped at ${state.name}`)
+        }
+        if(performance.display==='none'){
+          throw new Error(`${state.name} performance card is not displayed`)
+        }
+        if(['hidden','collapse'].includes(performance.visibility)){
+          throw new Error(`${state.name} performance card is not visible`)
+        }
+        if(!Number.isFinite(performance.opacity)||performance.opacity<=.05){
+          throw new Error(`${state.name} performance card is too transparent`)
+        }
+      }
       if(layout.content?.title!==state.content.title){
         throw new Error(`${state.name} content title mismatch`)
       }
@@ -505,13 +560,14 @@ try{
       }
       if(state.content.performance){
         const performance=layout.content.performance
-        if(!performance){
-          throw new Error(`${state.name} performance evidence is unavailable`)
-        }
-        if(!Number.isFinite(performance.itemFontSize)){
+        if(
+          !Number.isFinite(performance.itemFontSize)||
+          !Number.isFinite(performance.handleFontSize)||
+          !Number.isFinite(performance.sourceFontSize)
+        ){
           throw new Error(`${state.name} performance type evidence is unavailable`)
         }
-        for(const key of ['handle','source','labels','values']){
+        for(const key of ['handle','source','labels','values','accessibleValues']){
           if(
             JSON.stringify(performance[key])!==
             JSON.stringify(state.content.performance[key])
@@ -519,9 +575,19 @@ try{
             throw new Error(`${state.name} performance ${key} mismatch`)
           }
         }
-        if(requested==='mobile'&&performance.itemFontSize<10){
+        if(
+          requested==='mobile'&&(
+            performance.itemFontSize<10||
+            performance.handleFontSize<10||
+            performance.sourceFontSize<10
+          )
+        ){
           throw new Error(
-            `Mobile performance type is too small: ${performance.itemFontSize}px`,
+            `Mobile performance type is too small: ${JSON.stringify({
+              metric:performance.itemFontSize,
+              handle:performance.handleFontSize,
+              source:performance.sourceFontSize,
+            })}`,
           )
         }
         for(const control of layout.controls){
