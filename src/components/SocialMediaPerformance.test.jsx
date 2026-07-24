@@ -1,3 +1,5 @@
+import {readFileSync} from 'node:fs'
+import {resolve} from 'node:path'
 import {render,screen} from '@testing-library/react'
 import {describe,expect,it} from 'vitest'
 import {
@@ -54,5 +56,13 @@ describe('SocialMediaPerformance',()=>{
     expect(screen.getByText('156K+')).toBeInTheDocument()
     expect(screen.getByText('815K avg.')).toBeInTheDocument()
     expect(screen.getByText('46.7%')).toBeInTheDocument()
+  })
+
+  it('keeps dashboard motion solely controlled by scroll progress',()=>{
+    const stylesheet=readFileSync(resolve(process.cwd(),'src/index.css'),'utf8')
+    const dashboardRule=stylesheet.match(
+      /\.chapter--social-performance\{[^}]*\}/,
+    )?.[0]
+    expect(dashboardRule).toContain('animation:none')
   })
 })
