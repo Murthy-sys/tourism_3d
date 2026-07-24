@@ -12,7 +12,7 @@ import {SOCIAL_MEDIA_METRICS} from '../journey/chapters'
 describe('SocialMediaPerformance',()=>{
   it('formats deterministic public values and stable pending states',()=>{
     expect(formatSocialMetric(SOCIAL_MEDIA_METRICS[0],1)).toBe('156K+')
-    expect(formatSocialMetric(SOCIAL_MEDIA_METRICS[2],1)).toBe('815K avg.')
+    expect(formatSocialMetric(SOCIAL_MEDIA_METRICS[2],1)).toBe('Updating soon')
     expect(formatSocialMetric(SOCIAL_MEDIA_METRICS[3],1)).toBe('46.7%')
     expect(formatSocialMetric(SOCIAL_MEDIA_METRICS[1],.5))
       .toBe('Updating soon')
@@ -54,7 +54,7 @@ describe('SocialMediaPerformance',()=>{
   it('renders final visual values immediately for reduced motion',()=>{
     render(<SocialMediaPerformance progress={.88} reducedMotion/>)
     expect(screen.getByText('156K+')).toBeInTheDocument()
-    expect(screen.getByText('815K avg.')).toBeInTheDocument()
+    expect(screen.getAllByText('Updating soon')).toHaveLength(4)
     expect(screen.getByText('46.7%')).toBeInTheDocument()
   })
 

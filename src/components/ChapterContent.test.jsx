@@ -4,6 +4,7 @@ import ChapterContent from './ChapterContent'
 import {
   BRAND_CAPABILITIES,
   CHAPTERS,
+  getChapterAtProgress,
 } from '../journey/chapters'
 import * as chapterData from '../journey/chapters'
 
@@ -109,6 +110,23 @@ describe('cinematic chapter content',()=>{
     expect(screen.getByLabelText('Social media performance'))
       .toBeInTheDocument()
     expect(screen.queryByText('Three expedition chapters.'))
+      .not.toBeInTheDocument()
+  })
+
+  it('keeps social performance below Contact at the existing final boundary',()=>{
+    expect(getChapterAtProgress(.939999).id).toBe('plans')
+    expect(getChapterAtProgress(.94).id).toBe('contact')
+    const {rerender}=render(
+      <ChapterContent
+        chapter={getChapterAtProgress(.939999)}
+        progress={.939999}
+        reducedMotion
+      />,
+    )
+    expect(screen.getByLabelText('Social media performance')).toBeInTheDocument()
+    rerender(<ChapterContent chapter={getChapterAtProgress(.94)} progress={.94}/>)
+    expect(screen.getByText('Where should we take you next?')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Social media performance'))
       .not.toBeInTheDocument()
   })
 })

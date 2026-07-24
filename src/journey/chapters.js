@@ -23,7 +23,7 @@ export const SOCIAL_MEDIA_PROFILE={
 export const SOCIAL_MEDIA_METRICS=[
   {id:'followers',label:'Followers',value:156200,kind:'compact',suffix:'+',display:'156K+'},
   {id:'total-reach',label:'Total Reach',value:null,kind:'pending',suffix:'',display:'Updating soon'},
-  {id:'reel-views',label:'Reel Views',value:815700,kind:'compact',suffix:' avg.',display:'815K avg.'},
+  {id:'reel-views',label:'Reel Views',value:null,kind:'pending',suffix:'',display:'Updating soon'},
   {id:'engagement',label:'Engagement',value:46.7,kind:'percent',suffix:'%',display:'46.7%'},
   {id:'viral-reels',label:'Viral Reels',value:null,kind:'pending',suffix:'',display:'Updating soon'},
   {id:'audience-insights',label:'Audience Insights',value:null,kind:'pending',suffix:'',display:'Updating soon'},

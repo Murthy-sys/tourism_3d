@@ -16,6 +16,9 @@
 - Contact still begins at `.94`; menu and counter remain four chapters.
 - Keep the exact six metric labels and displays from the approved design.
 - Public values are static July 2026 estimates, not a live Instagram API feed.
+- Only Followers and Engagement have approved public values. Reelax's 815.7K
+  figure is general average views, not reel-only views, so `Reel Views` remains
+  `Updating soon` until a reel-specific value is approved.
 - Missing private metrics render `Updating soon`; never derive or invent them.
 - Animation is progress-driven, reversible, deterministic, and reduced-motion safe.
 - Preserve every 3D, camera, forest-jeep, audio, handoff, menu, Plans, and Contact behavior outside the overlay change.
@@ -72,10 +75,10 @@ it('owns the approved social performance data without invented insights',()=>{
     {
       id:'reel-views',
       label:'Reel Views',
-      value:815700,
-      kind:'compact',
-      suffix:' avg.',
-      display:'815K avg.',
+      value:null,
+      kind:'pending',
+      suffix:'',
+      display:'Updating soon',
     },
     {
       id:'engagement',
@@ -122,7 +125,7 @@ import {SOCIAL_MEDIA_METRICS} from '../journey/chapters'
 describe('SocialMediaPerformance',()=>{
   it('formats deterministic public values and stable pending states',()=>{
     expect(formatSocialMetric(SOCIAL_MEDIA_METRICS[0],1)).toBe('156K+')
-    expect(formatSocialMetric(SOCIAL_MEDIA_METRICS[2],1)).toBe('815K avg.')
+    expect(formatSocialMetric(SOCIAL_MEDIA_METRICS[2],1)).toBe('Updating soon')
     expect(formatSocialMetric(SOCIAL_MEDIA_METRICS[3],1)).toBe('46.7%')
     expect(formatSocialMetric(SOCIAL_MEDIA_METRICS[1],.5))
       .toBe('Updating soon')
@@ -164,7 +167,7 @@ describe('SocialMediaPerformance',()=>{
   it('renders final visual values immediately for reduced motion',()=>{
     render(<SocialMediaPerformance progress={.88} reducedMotion/>)
     expect(screen.getByText('156K+')).toBeInTheDocument()
-    expect(screen.getByText('815K avg.')).toBeInTheDocument()
+    expect(screen.getAllByText('Updating soon')).toHaveLength(4)
     expect(screen.getByText('46.7%')).toBeInTheDocument()
   })
 })
@@ -196,7 +199,7 @@ export const SOCIAL_MEDIA_PROFILE={
 export const SOCIAL_MEDIA_METRICS=[
   {id:'followers',label:'Followers',value:156200,kind:'compact',suffix:'+',display:'156K+'},
   {id:'total-reach',label:'Total Reach',value:null,kind:'pending',suffix:'',display:'Updating soon'},
-  {id:'reel-views',label:'Reel Views',value:815700,kind:'compact',suffix:' avg.',display:'815K avg.'},
+  {id:'reel-views',label:'Reel Views',value:null,kind:'pending',suffix:'',display:'Updating soon'},
   {id:'engagement',label:'Engagement',value:46.7,kind:'percent',suffix:'%',display:'46.7%'},
   {id:'viral-reels',label:'Viral Reels',value:null,kind:'pending',suffix:'',display:'Updating soon'},
   {id:'audience-insights',label:'Audience Insights',value:null,kind:'pending',suffix:'',display:'Updating soon'},
@@ -625,7 +628,7 @@ env QA_BASE_URL=http://127.0.0.1:4175/ QA_OUTPUT_DIR=/tmp/tourist-management-soc
 env QA_BASE_URL=http://127.0.0.1:4175/ QA_OUTPUT_DIR=/tmp/tourist-management-social-qa QA_STATE=social-performance node scripts/visual-qa.mjs --project mobile
 ```
 
-Expected: exact six metrics, final public displays, three pending displays,
+Expected: exact six metrics, two final public displays, four pending displays,
 forest-jeep continuity, no control overlap, no clipping/overflow, no console
 failures, and zero audio controls. Inspect both full-page images.
 

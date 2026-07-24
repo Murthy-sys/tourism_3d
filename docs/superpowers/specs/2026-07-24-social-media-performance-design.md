@@ -29,17 +29,19 @@ The card contains:
 - Six metrics in this exact order:
   1. Followers — `156K+`
   2. Total Reach — `Updating soon`
-  3. Reel Views — `815K avg.`
+  3. Reel Views — `Updating soon`
   4. Engagement — `46.7%`
   5. Viral Reels — `Updating soon`
   6. Audience Insights — `Updating soon`
 - Source note: `Public estimates · July 2026`
 
-The three published values are rounded public estimates from the Reelax creator
-profile for `@sanchari.kannadiga`: 156.2K followers, 815.7K average views, and
-46.73% engagement. They are static portfolio data, not a live Instagram API
-feed. Total Reach, Viral Reels, and Audience Insights remain explicitly marked
-as updating until the creator supplies private Instagram Insights.
+The two published values are rounded public estimates from the Reelax creator
+profile for `@sanchari.kannadiga`: 156.2K followers and 46.73% engagement.
+Reelax's 815.7K figure is a general average-views value, not a reel-only
+metric, so it is intentionally not displayed as `Reel Views`. These are static
+portfolio data, not a live Instagram API feed. Total Reach, Reel Views, Viral
+Reels, and Audience Insights remain explicitly marked as updating until the
+creator supplies private Instagram Insights.
 
 All six entries live in one authoritative `SOCIAL_MEDIA_METRICS` array so later
 updates require changing data rather than component markup. Public numeric
@@ -74,7 +76,7 @@ entries retain raw values and formatting metadata; pending entries use
   IntersectionObserver.
 - Beat-local progress is normalized from `.88–.94`.
 - The card fades and rises into place first.
-- The three numeric values count upward with a short stagger and finish by
+- The two numeric values count upward with a short stagger and finish by
   approximately `.91`, leaving a final-value dwell before Contact.
 - Divider lines draw in with the same stagger.
 - Pending metrics remain stable as `Updating soon`.
@@ -123,7 +125,7 @@ entries retain raw values and formatting metadata; pending entries use
   exact labels and displays, semantic markup, link behavior, progress-driven
   count output, and reduced-motion final values.
 - Visual QA adds a deterministic state near `.91` requiring forest-jeep
-  continuity, all six metrics, final public values, pending labels, no console
+  continuity, all six metrics, two final public values, four pending labels, no console
   failures, no audio controls, no overflow, no clipping, and no control
   overlap.
 - Desktop acceptance is `1440×900`; mobile acceptance is `390×844`.

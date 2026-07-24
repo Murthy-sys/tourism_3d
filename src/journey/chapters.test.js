@@ -42,10 +42,10 @@ describe('journey chapters', () => {
       {
         id:'reel-views',
         label:'Reel Views',
-        value:815700,
-        kind:'compact',
-        suffix:' avg.',
-        display:'815K avg.',
+        value:null,
+        kind:'pending',
+        suffix:'',
+        display:'Updating soon',
       },
       {
         id:'engagement',

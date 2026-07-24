@@ -42,12 +42,12 @@ The four portfolio beats additionally compare the live DOM against the exact sou
 - The following beat presents a prominent diagonal desktop composition—offer at the top-left and brand reasons at the bottom-right—then stacks the same two cards in reading order on mobile without clipping the menu, counter, or scroll cue. Review raised mobile labels from `8px` to a responsive `10.92px` at the approved viewport.
 - Mountain, reflective-water, and dense-forest environments remain in the approved order with trekker → boat → jeep handoffs and no camera snap.
 - Water, landing, party, boat occupants, forest route, and complete jeep remain readable in their approved compositions.
-- The Social Media Performance beat keeps its two-column glass dashboard legible at both `1440×900` and `390×844`: Followers (`156K+`), Reel Views (`815K avg.`), and Engagement (`46.7%`) are final at `.91`; Total Reach, Viral Reels, and Audience Insights remain explicitly `Updating soon`. Its profile and source note are `@sanchari.kannadiga` and `Public estimates · July 2026`.
+- The Social Media Performance beat keeps its two-column glass dashboard legible at both `1440×900` and `390×844`: Followers (`156K+`) and Engagement (`46.7%`) are final at `.91`; Total Reach, Reel Views, Viral Reels, and Audience Insights remain explicitly `Updating soon`. Reelax's `815.7K` is a general average-views figure, so it is intentionally not presented as reel-only views. Its profile and source note are `@sanchari.kannadiga` and `Public estimates · July 2026`.
 - Background audio and sound controls remain absent.
 
 ## Automated verification
 
-- `npm test -- --run`: passed, 24 files and 182 tests.
+- `npm test -- --run`: passed, 24 files and 184 tests.
 - `npm run build`: passed, 54 modules transformed.
 - `git diff --check`: passed.
 - The existing Vite bundle-size advisory remains non-blocking.
