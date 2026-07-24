@@ -5,8 +5,8 @@
 Remove the entire customer-facing “Three Expedition Chapters” experience and
 replace the Contact finale beneath “Where should we take you next?” with five
 responsive transparent trek-package cards. Selecting a package opens a minimal
-date form and continues to a prefilled WhatsApp conversation with
-`7204033032`.
+booking form for the contact person and travel dates, then continues to a
+prefilled WhatsApp conversation with `7204033032`.
 
 The posters are content references only. Their advertised dates are not copied
 into the site.
@@ -123,14 +123,27 @@ one.
 
 1. Selecting a card opens the existing full-screen cinematic dialog restyled
    for package booking.
-2. The dialog identifies the selected package and displays required Start Date
-   and End Date fields.
-3. End Date cannot precede Start Date. Empty or invalid dates remain in the
-   dialog with a readable error.
+2. The dialog keeps the selected package visible as a read-only summary and
+   displays required Contact Person Name, Start Date, and End Date fields.
+3. The traveller can select both dates. Contact Person Name cannot be empty,
+   and End Date cannot precede Start Date. Empty or invalid fields remain in
+   the dialog with a readable error.
 4. Pressing “Continue on WhatsApp” opens exactly one prefilled WhatsApp compose
    URL for Indian number `+91 7204033032`.
-5. The message includes package name, price, duration, selected dates, and a
-   request to confirm availability and booking details.
+5. The message includes the contact person name, selected package name, price,
+   duration, selected start and end dates, and a request to confirm
+   availability and booking details.
+
+The message follows this content structure:
+
+```text
+Hello Sanchari Kannadiga,
+I would like to enquire about the [Package Name] package.
+Contact person: [Contact Person Name]
+Travel dates: [Start Date] to [End Date]
+Package: [Package Name] — [Duration] — [Price] per person
+Please confirm availability and share the booking details.
+```
 
 Web pages cannot silently send a WhatsApp message. The site opens the prefilled
 conversation; the traveller completes the send inside WhatsApp.
@@ -139,7 +152,7 @@ conversation; the traveller completes the send inside WhatsApp.
 
 - Package selection uses real buttons with package-specific accessible names.
 - The dialog remains modal, closes with Escape, and exposes labelled date
-  fields and validation messages.
+  fields, a labelled contact-name field, and validation messages.
 - The WhatsApp URL is generated from encoded text and the fixed approved phone
   number only.
 - No poster date, second phone number, hidden customer data, backend, or
@@ -151,8 +164,9 @@ conversation; the traveller completes the send inside WhatsApp.
   inclusion differences.
 - Component tests prove Expedition Chapters are absent, package cards render
   under Contact, and a selected package reaches the dialog.
-- Dialog tests cover dates, invalid ranges, URL encoding, the exact
-  `917204033032` WhatsApp target, and Escape.
+- Dialog tests cover the required contact person name, selected package
+  summary, selectable dates, invalid ranges, message contents, URL encoding,
+  the exact `917204033032` WhatsApp target, and Escape.
 - Desktop `1440×900` and mobile `390×844` visual QA verify package-card
   readability, transparency, viewport containment, and control clearance.
 - The full suite, production build, independent review, commit, and push to
