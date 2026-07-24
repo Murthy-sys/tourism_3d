@@ -26,7 +26,7 @@ Every approved state verifies:
 - Paired cards clear the menu, chapter counter, and scroll cue geometrically; mobile item type is measured from computed styles and must remain at least `10px`.
 - Correct full-page and WebGL screenshots written only after runtime assertions pass.
 
-The three portfolio beats additionally compare the live DOM against the exact source content:
+The four portfolio beats additionally compare the live DOM against the exact source content:
 
 - “Destination stories. Brand impact.” plus the full collaboration-positioning body and all nine approved promotion services.
 - “Karnataka, experienced deeply.” inside the transparent creator card plus the exact eight requested coverage pillars, in order.
@@ -47,7 +47,7 @@ The three portfolio beats additionally compare the live DOM against the exact so
 
 ## Automated verification
 
-- `npm test -- --run`: passed, 24 files and 181 tests.
+- `npm test -- --run`: passed, 24 files and 182 tests.
 - `npm run build`: passed, 54 modules transformed.
 - `git diff --check`: passed.
 - The existing Vite bundle-size advisory remains non-blocking.

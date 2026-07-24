@@ -99,4 +99,16 @@ describe('visual QA fail-closed corpus',()=>{
     expect(source).toContain('performance.itemFontSize<10')
     expect(source).toContain('rectanglesOverlap(performance.rect,control.rect)')
   })
+
+  it('fails closed when required controls or performance geometry are unavailable',()=>{
+    expect(source).toContain(
+      "const expectedControls=['edge-controls','chapter-counter','scroll-signal']",
+    )
+    expect(source).toContain('if(!control.rect)')
+    expect(source).toContain('Object.values(control.rect).every(Number.isFinite)')
+    expect(source).toContain('control.rect.right<=control.rect.left')
+    expect(source).toContain('control.rect.bottom<=control.rect.top')
+    expect(source).toContain('if(!performance)')
+    expect(source).toContain('Number.isFinite(performance.itemFontSize)')
+  })
 })

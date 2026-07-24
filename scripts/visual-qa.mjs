@@ -428,20 +428,18 @@ try{
           }
          })
          :[]
-      const controls=[
-        ...document.querySelectorAll(
-          '.edge-controls, .chapter-counter, .scroll-signal',
-        ),
-      ].map(control=>{
-        const controlRect=control.getBoundingClientRect()
+      const expectedControls=['edge-controls','chapter-counter','scroll-signal']
+      const controls=expectedControls.map(name=>{
+        const control=document.querySelector(`.${name}`)
+        const controlRect=control?.getBoundingClientRect()
         return{
-          name:control.className,
-          rect:{
+          name,
+          rect:controlRect?{
             left:Math.round(controlRect.left),
             top:Math.round(controlRect.top),
             right:Math.round(controlRect.right),
             bottom:Math.round(controlRect.bottom),
-          },
+          }:null,
         }
       })
       return{
@@ -477,6 +475,18 @@ try{
     if(layout.overlay?.clipped){
       throw new Error(`${requested} overlay is clipped at ${state.name}`)
     }
+    for(const control of layout.controls){
+      if(!control.rect){
+        throw new Error(`${state.name} is missing ${control.name}`)
+      }
+      if(
+        !Object.values(control.rect).every(Number.isFinite)||
+        control.rect.right<=control.rect.left||
+        control.rect.bottom<=control.rect.top
+      ){
+        throw new Error(`${state.name} has invalid ${control.name} bounds`)
+      }
+    }
     if(state.content){
       if(layout.content?.title!==state.content.title){
         throw new Error(`${state.name} content title mismatch`)
@@ -495,6 +505,12 @@ try{
       }
       if(state.content.performance){
         const performance=layout.content.performance
+        if(!performance){
+          throw new Error(`${state.name} performance evidence is unavailable`)
+        }
+        if(!Number.isFinite(performance.itemFontSize)){
+          throw new Error(`${state.name} performance type evidence is unavailable`)
+        }
         for(const key of ['handle','source','labels','values']){
           if(
             JSON.stringify(performance[key])!==
