@@ -13,6 +13,21 @@ export const STORIES=[
 ]
 export const OPENING_TREK_END=.14
 export const OPENING_DRIVE_END=OPENING_TREK_END
+export const SOCIAL_PERFORMANCE_START=.88
+export const SOCIAL_MEDIA_PROFILE={
+  handle:'@sanchari.kannadiga',
+  url:'https://www.instagram.com/sanchari.kannadiga/',
+  sourceLabel:'Public estimates · July 2026',
+  sourceUrl:'https://getreelax.com/instagram/sanchari.kannadiga/',
+}
+export const SOCIAL_MEDIA_METRICS=[
+  {id:'followers',label:'Followers',value:156200,kind:'compact',suffix:'+',display:'156K+'},
+  {id:'total-reach',label:'Total Reach',value:null,kind:'pending',suffix:'',display:'Updating soon'},
+  {id:'reel-views',label:'Reel Views',value:815700,kind:'compact',suffix:' avg.',display:'815K avg.'},
+  {id:'engagement',label:'Engagement',value:46.7,kind:'percent',suffix:'%',display:'46.7%'},
+  {id:'viral-reels',label:'Viral Reels',value:null,kind:'pending',suffix:'',display:'Updating soon'},
+  {id:'audience-insights',label:'Audience Insights',value:null,kind:'pending',suffix:'',display:'Updating soon'},
+]
 export const BRAND_CAPABILITIES=[
   'Destination Promotions',
   'Tourism Campaigns',

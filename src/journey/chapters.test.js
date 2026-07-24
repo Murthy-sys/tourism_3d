@@ -4,6 +4,9 @@ import {
   CHAPTERS,
   OPENING_DRIVE_END,
   OPENING_TREK_END,
+  SOCIAL_MEDIA_METRICS,
+  SOCIAL_MEDIA_PROFILE,
+  SOCIAL_PERFORMANCE_START,
   TRAVEL_PLANS,
   getChapterAtProgress,
   getProgressForChapter,
@@ -11,6 +14,65 @@ import {
 import * as chapterData from './chapters'
 
 describe('journey chapters', () => {
+  it('owns the approved social performance data without invented insights',()=>{
+    expect(SOCIAL_PERFORMANCE_START).toBe(.88)
+    expect(SOCIAL_MEDIA_PROFILE).toEqual({
+      handle:'@sanchari.kannadiga',
+      url:'https://www.instagram.com/sanchari.kannadiga/',
+      sourceLabel:'Public estimates · July 2026',
+      sourceUrl:'https://getreelax.com/instagram/sanchari.kannadiga/',
+    })
+    expect(SOCIAL_MEDIA_METRICS).toEqual([
+      {
+        id:'followers',
+        label:'Followers',
+        value:156200,
+        kind:'compact',
+        suffix:'+',
+        display:'156K+',
+      },
+      {
+        id:'total-reach',
+        label:'Total Reach',
+        value:null,
+        kind:'pending',
+        suffix:'',
+        display:'Updating soon',
+      },
+      {
+        id:'reel-views',
+        label:'Reel Views',
+        value:815700,
+        kind:'compact',
+        suffix:' avg.',
+        display:'815K avg.',
+      },
+      {
+        id:'engagement',
+        label:'Engagement',
+        value:46.7,
+        kind:'percent',
+        suffix:'%',
+        display:'46.7%',
+      },
+      {
+        id:'viral-reels',
+        label:'Viral Reels',
+        value:null,
+        kind:'pending',
+        suffix:'',
+        display:'Updating soon',
+      },
+      {
+        id:'audience-insights',
+        label:'Audience Insights',
+        value:null,
+        kind:'pending',
+        suffix:'',
+        display:'Updating soon',
+      },
+    ])
+  })
   it('contains the complete approved experience in order', () => {
     expect(CHAPTERS.map((chapter) => chapter.id)).toEqual(['home','who-we-are','plans','contact'])
     expect(TRAVEL_PLANS.map((plan) => plan.id)).toEqual(['mountain-trail','heritage-india','southern-discovery'])
