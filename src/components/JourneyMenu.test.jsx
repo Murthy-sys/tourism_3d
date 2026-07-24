@@ -11,4 +11,19 @@ describe('JourneyMenu', () => {
     fireEvent.click(screen.getByRole('button',{name:'Plans'}))
     expect(onSelect).toHaveBeenCalledWith('plans')
   })
+
+  it('retains Plans and routes Plan a Trip through its callback',()=>{
+    const onBook=vi.fn()
+    render(
+      <JourneyMenu
+        open
+        onClose={vi.fn()}
+        onSelect={vi.fn()}
+        onBook={onBook}
+      />,
+    )
+    expect(screen.getByRole('button',{name:'Plans'})).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button',{name:'Plan a Trip'}))
+    expect(onBook).toHaveBeenCalledTimes(1)
+  })
 })

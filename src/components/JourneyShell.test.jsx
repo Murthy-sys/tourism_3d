@@ -4,6 +4,7 @@ import JourneyShell from './JourneyShell'
 
 const renderProgress=vi.hoisted(()=>vi.fn())
 const renderChapter=vi.hoisted(()=>vi.fn())
+const renderBooking=vi.hoisted(()=>vi.fn())
 vi.mock('./Hero3D',()=>({default:({progress})=>{
   renderProgress(progress)
   return <canvas className="journey__canvas"/>
@@ -12,11 +13,16 @@ vi.mock('./ChapterContent',()=>({default:props=>{
   renderChapter(props)
   return null
 }}))
+vi.mock('./BookingOverlay',()=>({default:props=>{
+  renderBooking(props)
+  return props.open?<div role="dialog" aria-label="Package booking"/>:null
+}}))
 
 describe('JourneyShell',()=>{
   beforeEach(()=>{
     renderProgress.mockClear()
     renderChapter.mockClear()
+    renderBooking.mockClear()
   })
   afterEach(()=>vi.unstubAllGlobals())
 
@@ -61,5 +67,22 @@ describe('JourneyShell',()=>{
     vi.stubGlobal('matchMedia',vi.fn(()=>({matches:true})))
     render(<JourneyShell/>)
     expect(renderChapter.mock.calls.at(-1)[0].reducedMotion).toBe(true)
+  })
+
+  it('opens booking with the exact package selected from Contact',()=>{
+    render(<JourneyShell/>)
+    const selectedPackage={
+      id:'kurinjal-trek',
+      name:'Kurinjal Trek',
+      priceLabel:'₹3,399',
+      duration:'1 Night · 1 Day',
+    }
+    act(()=>renderChapter.mock.calls.at(-1)[0].onPlan(selectedPackage))
+    expect(renderBooking.mock.calls.at(-1)[0]).toEqual(
+      expect.objectContaining({
+        open:true,
+        selectedPackage,
+      }),
+    )
   })
 })

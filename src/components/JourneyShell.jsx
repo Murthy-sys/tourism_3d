@@ -17,7 +17,7 @@ export default function JourneyShell(){
   const [progress,setProgress]=useState(0)
   const [menuOpen,setMenuOpen]=useState(false)
   const [booking,setBooking]=useState(false)
-  const [plan,setPlan]=useState('')
+  const [selectedPackage,setSelectedPackage]=useState(null)
   const [fallback,setFallback]=useState(false)
   const reducedMotion=useMemo(()=>window.matchMedia?.('(prefers-reduced-motion: reduce)').matches??false,[])
   const updateProgress=value=>{
@@ -66,10 +66,13 @@ export default function JourneyShell(){
     }
     navigation.current.frame=requestAnimationFrame(advance)
   }
-  const book=p=>{setPlan(p?.name||'');setBooking(true)}
+  const book=selected=>{
+    setSelectedPackage(selected)
+    setBooking(true)
+  }
   return <main className="experience"><section className="experience__track" ref={track}><div className="experience__stage"><div className="experience__sky"/><Hero3D progress={progress} reducedMotion={reducedMotion} onFallback={()=>setFallback(true)}/><div className="experience__grade"/>
-    <ChapterContent chapter={chapter} progress={progress} reducedMotion={reducedMotion} onPlan={book} onBook={()=>book()}/><div className="chapter-counter">{String(CHAPTERS.indexOf(chapter)+1).padStart(2,'0')} / {String(CHAPTERS.length).padStart(2,'0')}</div><div className="scroll-signal">SCROLL TO TRAVEL<i/></div>
+    <ChapterContent chapter={chapter} progress={progress} reducedMotion={reducedMotion} onPlan={book}/><div className="chapter-counter">{String(CHAPTERS.indexOf(chapter)+1).padStart(2,'0')} / {String(CHAPTERS.length).padStart(2,'0')}</div><div className="scroll-signal">SCROLL TO TRAVEL<i/></div>
     {fallback&&<div className="journey-fallback" role="status">Cinematic fallback active.</div>}</div></section>
-    <div className="edge-controls"><JourneyMenu open={menuOpen} onOpen={()=>setMenuOpen(true)} onClose={()=>setMenuOpen(false)} onSelect={goTo} onBook={()=>book()}/></div>
-    <BookingOverlay open={booking} initialPlan={plan} onClose={()=>setBooking(false)}/></main>
+    <div className="edge-controls"><JourneyMenu open={menuOpen} onOpen={()=>setMenuOpen(true)} onClose={()=>setMenuOpen(false)} onSelect={goTo} onBook={()=>goTo('contact')}/></div>
+    <BookingOverlay open={booking} selectedPackage={selectedPackage} onClose={()=>setBooking(false)}/></main>
 }
