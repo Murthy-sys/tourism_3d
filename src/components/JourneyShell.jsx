@@ -68,7 +68,7 @@ export default function JourneyShell(){
   }
   const book=p=>{setPlan(p?.name||'');setBooking(true)}
   return <main className="experience"><section className="experience__track" ref={track}><div className="experience__stage"><div className="experience__sky"/><Hero3D progress={progress} reducedMotion={reducedMotion} onFallback={()=>setFallback(true)}/><div className="experience__grade"/>
-    <ChapterContent chapter={chapter} progress={progress} onPlan={book} onBook={()=>book()}/><div className="chapter-counter">{String(CHAPTERS.indexOf(chapter)+1).padStart(2,'0')} / {String(CHAPTERS.length).padStart(2,'0')}</div><div className="scroll-signal">SCROLL TO TRAVEL<i/></div>
+    <ChapterContent chapter={chapter} progress={progress} reducedMotion={reducedMotion} onPlan={book} onBook={()=>book()}/><div className="chapter-counter">{String(CHAPTERS.indexOf(chapter)+1).padStart(2,'0')} / {String(CHAPTERS.length).padStart(2,'0')}</div><div className="scroll-signal">SCROLL TO TRAVEL<i/></div>
     {fallback&&<div className="journey-fallback" role="status">Cinematic fallback active.</div>}</div></section>
     <div className="edge-controls"><JourneyMenu open={menuOpen} onOpen={()=>setMenuOpen(true)} onClose={()=>setMenuOpen(false)} onSelect={goTo} onBook={()=>book()}/></div>
     <BookingOverlay open={booking} initialPlan={plan} onClose={()=>setBooking(false)}/></main>

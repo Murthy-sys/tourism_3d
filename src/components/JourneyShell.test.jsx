@@ -1,15 +1,24 @@
 import { act, fireEvent, render, screen } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import JourneyShell from './JourneyShell'
 
 const renderProgress=vi.hoisted(()=>vi.fn())
+const renderChapter=vi.hoisted(()=>vi.fn())
 vi.mock('./Hero3D',()=>({default:({progress})=>{
   renderProgress(progress)
   return <canvas className="journey__canvas"/>
 }}))
+vi.mock('./ChapterContent',()=>({default:props=>{
+  renderChapter(props)
+  return null
+}}))
 
 describe('JourneyShell',()=>{
-  beforeEach(()=>{renderProgress.mockClear()})
+  beforeEach(()=>{
+    renderProgress.mockClear()
+    renderChapter.mockClear()
+  })
+  afterEach(()=>vi.unstubAllGlobals())
 
   it('renders one immersive journey without conventional sections',()=>{
     const {container}=render(<JourneyShell/>)
@@ -46,5 +55,11 @@ describe('JourneyShell',()=>{
     expect(traversed.some(value=>value>.28&&value<.42)).toBe(true)
     expect(traversed.some(value=>value>.60&&value<.74)).toBe(true)
     expect(traversed.every((value,index)=>index===0||value>=traversed[index-1])).toBe(true)
+  })
+
+  it('passes reduced-motion state to chapter overlays',()=>{
+    vi.stubGlobal('matchMedia',vi.fn(()=>({matches:true})))
+    render(<JourneyShell/>)
+    expect(renderChapter.mock.calls.at(-1)[0].reducedMotion).toBe(true)
   })
 })

@@ -85,4 +85,30 @@ describe('cinematic chapter content',()=>{
     rerender(<ChapterContent chapter={chapter} progress={.75} onPlan={vi.fn()}/>)
     expect(screen.getByRole('button',{name:'Plan Southern Discovery journey'})).toHaveClass('active')
   })
+
+  it('replaces only the tail of Plans with social performance',()=>{
+    const plans=CHAPTERS.find(({id})=>id==='plans')
+    const {rerender}=render(
+      <ChapterContent
+        chapter={plans}
+        progress={.879999}
+        onPlan={vi.fn()}
+      />,
+    )
+    expect(screen.getByText('Three expedition chapters.')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Social media performance'))
+      .not.toBeInTheDocument()
+    rerender(
+      <ChapterContent
+        chapter={plans}
+        progress={.88}
+        reducedMotion
+        onPlan={vi.fn()}
+      />,
+    )
+    expect(screen.getByLabelText('Social media performance'))
+      .toBeInTheDocument()
+    expect(screen.queryByText('Three expedition chapters.'))
+      .not.toBeInTheDocument()
+  })
 })

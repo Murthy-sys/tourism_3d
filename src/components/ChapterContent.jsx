@@ -1,9 +1,27 @@
-import {BRAND_CAPABILITIES,TRAVEL_PLANS} from '../journey/chapters'
+import {
+  BRAND_CAPABILITIES,
+  SOCIAL_PERFORMANCE_START,
+  TRAVEL_PLANS,
+} from '../journey/chapters'
 import { getJourneyState } from '../three/journeyData'
+import SocialMediaPerformance from './SocialMediaPerformance'
 
-export default function ChapterContent({chapter,progress,onPlan,onBook}){
+export default function ChapterContent({
+  chapter,
+  progress,
+  reducedMotion=false,
+  onPlan,
+  onBook,
+}){
   const planFocus=getJourneyState(progress).planFocus
   if(chapter.layout==='drive')return null
+  if(
+    chapter.layout==='monument-plans'&&
+    progress>=SOCIAL_PERFORMANCE_START
+  )return <SocialMediaPerformance
+    progress={progress}
+    reducedMotion={reducedMotion}
+  />
   const isOperations=chapter.layout==='operations'
   const brandValueBeat=isOperations&&progress>=.25
   const creatorBeat=isOperations&&progress>=.22&&!brandValueBeat
