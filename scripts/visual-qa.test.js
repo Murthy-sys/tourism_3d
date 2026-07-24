@@ -132,6 +132,9 @@ describe('visual QA fail-closed corpus',()=>{
   it('verifies the responsive Contact package catalog',()=>{
     expect(source).toContain("name:'contact-packages'")
     expect(source).toContain('progress:.97')
+    expect(source).toContain(
+      "name:'contact-packages',\n    progress:.97,\n    phase:'contact'",
+    )
     expect(source).toContain('packages:TREK_PACKAGES.map')
     expect(source).toContain("chapter.querySelectorAll('.package-card')")
     expect(source).toContain('packageCard.itemFontSize<10')
