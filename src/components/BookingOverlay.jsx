@@ -1,17 +1,136 @@
 import { useEffect, useState } from 'react'
-const blank={name:'',email:'',plan:'',dates:'',travelers:'1',message:''}
-export default function BookingOverlay({open,initialPlan='',initialDestination='',onClose}){
-  const [form,setForm]=useState({...blank,plan:initialPlan||initialDestination}),[submitted,setSubmitted]=useState(false)
-  useEffect(()=>setForm(f=>({...f,plan:initialPlan||initialDestination||f.plan})),[initialPlan,initialDestination])
-  useEffect(()=>{const key=e=>e.key==='Escape'&&open&&onClose?.();document.addEventListener('keydown',key);return()=>document.removeEventListener('keydown',key)},[open,onClose])
-  if(!open)return null
-  const change=e=>setForm(f=>({...f,[e.target.name]:e.target.value}))
-  return <div className="booking-overlay" role="dialog" aria-modal="true" aria-labelledby="booking-title"><button className="booking-overlay__close" onClick={onClose} aria-label="Close booking">×</button>
-    <div className="booking-overlay__intro"><p>Plan your India journey</p><h2 id="booking-title">From imagination<br/>to itinerary.</h2><span>A travel manager responds within one business day.</span></div>
-    <form onSubmit={e=>{e.preventDefault();setSubmitted(true)}}>{submitted?<div className="booking-overlay__success"><p>Journey request received</p><h3>We’ll take it from here.</h3><button type="button" onClick={()=>{setSubmitted(false);setForm({...blank,plan:initialPlan})}}>Plan another</button></div>:<>
-      <label>Full name<input name="name" value={form.name} onChange={change} required autoFocus/></label><label>Email<input type="email" name="email" value={form.email} onChange={change} required/></label>
-      <label>Plan or destination<input name="plan" value={form.plan} onChange={change} placeholder="Kerala, Rajasthan, hill country…" required/></label><label>Travel dates<input name="dates" value={form.dates} onChange={change}/></label>
-      <label>Travellers<select name="travelers" value={form.travelers} onChange={change}>{[1,2,3,4,5,'6+'].map(n=><option key={n}>{n}</option>)}</select></label><label>Your journey<textarea name="message" value={form.message} onChange={change} rows="3"/></label>
-      <button className="booking-overlay__submit">Request itinerary</button></>}</form>
+
+const WHATSAPP_NUMBER='917204033032'
+const blank={contactName:'',startDate:'',endDate:''}
+
+export const buildWhatsAppMessage=({
+  contactName,
+  startDate,
+  endDate,
+  selectedPackage,
+})=>[
+  'Hello Sanchari Kannadiga,',
+  `I would like to enquire about the ${selectedPackage.name} package.`,
+  `Contact person: ${contactName.trim()}`,
+  `Travel dates: ${startDate} to ${endDate}`,
+  `Package: ${selectedPackage.name} — ${selectedPackage.duration} — ${selectedPackage.priceLabel} per person`,
+  'Please confirm availability and share the booking details.',
+].join('\n')
+
+export const buildWhatsAppUrl=details=>
+  `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(
+    buildWhatsAppMessage(details),
+  )}`
+
+const defaultOpenWhatsApp=url=>
+  window.open(url,'_blank','noopener,noreferrer')
+
+export default function BookingOverlay({
+  open,
+  selectedPackage,
+  onClose,
+  openWhatsApp=defaultOpenWhatsApp,
+}){
+  const [form,setForm]=useState(blank)
+  const [error,setError]=useState('')
+
+  useEffect(()=>{
+    if(open){
+      setForm(blank)
+      setError('')
+    }
+  },[open,selectedPackage?.id])
+
+  useEffect(()=>{
+    const key=event=>{
+      if(event.key==='Escape'&&open) onClose?.()
+    }
+    document.addEventListener('keydown',key)
+    return()=>document.removeEventListener('keydown',key)
+  },[open,onClose])
+
+  if(!open||!selectedPackage)return null
+
+  const change=event=>{
+    setForm(current=>({
+      ...current,
+      [event.target.name]:event.target.value,
+    }))
+    setError('')
+  }
+
+  const submit=event=>{
+    event.preventDefault()
+    if(!form.contactName.trim()||!form.startDate||!form.endDate){
+      setError('Enter the contact person name and select both travel dates.')
+      return
+    }
+    if(form.endDate<form.startDate){
+      setError('End Date cannot be before Start Date.')
+      return
+    }
+    openWhatsApp(buildWhatsAppUrl({...form,selectedPackage}))
+  }
+
+  return <div
+    className="booking-overlay"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="booking-title"
+  >
+    <button
+      className="booking-overlay__close"
+      type="button"
+      onClick={onClose}
+      aria-label="Close booking"
+    >×</button>
+    <div className="booking-overlay__intro">
+      <p>Selected trek package</p>
+      <h2 id="booking-title">{selectedPackage.name}</h2>
+      <div className="booking-overlay__package">
+        <strong>{selectedPackage.priceLabel}</strong>
+        <span>{selectedPackage.duration} · Per person</span>
+      </div>
+    </div>
+    <form onSubmit={submit} noValidate>
+      <label>
+        Contact Person Name
+        <input
+          name="contactName"
+          value={form.contactName}
+          onChange={change}
+          required
+          autoFocus
+        />
+      </label>
+      <label>
+        Start Date
+        <input
+          type="date"
+          name="startDate"
+          value={form.startDate}
+          onChange={change}
+          required
+        />
+      </label>
+      <label>
+        End Date
+        <input
+          type="date"
+          name="endDate"
+          min={form.startDate||undefined}
+          value={form.endDate}
+          onChange={change}
+          required
+        />
+      </label>
+      {error&&<p className="booking-overlay__error" role="alert">{error}</p>}
+      <button className="booking-overlay__submit">
+        Continue on WhatsApp
+      </button>
+      <p className="booking-overlay__note">
+        WhatsApp opens with your package enquiry ready to send.
+      </p>
+    </form>
   </div>
 }
