@@ -18,6 +18,19 @@ describe('journey chapters', () => {
     expect(getChapterAtProgress(.08).layout).toBe('drive')
     expect(getChapterAtProgress(OPENING_TREK_END + .01).id).toBe('who-we-are')
   })
+  it('keeps all approved content ranges unchanged around the trailhead opening',()=>{
+    expect(OPENING_TREK_END).toBe(.14)
+    expect(CHAPTERS.map(({id,progressStart,progressEnd})=>[
+      id,
+      progressStart,
+      progressEnd,
+    ])).toEqual([
+      ['home',0,.14],
+      ['who-we-are',.14,.28],
+      ['plans',.28,.94],
+      ['contact',.94,1],
+    ])
+  })
   it('uses the approved nationwide tourism-management message', () => {
     const about = CHAPTERS.find(({ id }) => id === 'who-we-are')
     expect(about.body).toMatch(/design, coordinate and manage journeys across India/i)

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { JOURNEY_STOPS, clamp01, getExpeditionState, getJourneyState } from './journeyData'
-import { LANDMARKS,sampleMountainHeight } from './terrain'
+import { LANDMARKS } from './terrain'
 
 describe('India journey data', () => {
   it('runs south to north through every approved tourism stop', () => {
@@ -93,15 +93,63 @@ describe('India journey data', () => {
     })
   })
 
-  it('keeps the mountain opening far enough back to frame the whole party',()=>{
-    const {cameraPosition,cameraTarget}=getJourneyState(.08)
-    const distance=Math.hypot(...cameraPosition.map((value,index)=>value-cameraTarget[index]))
-    expect(distance).toBeGreaterThan(12)
-    expect(distance).toBeLessThan(16)
-    expect(cameraPosition[2]).toBeLessThanOrEqual(4.5)
-    expect(cameraTarget[2]).toBeLessThanOrEqual(-3)
-    expect(cameraPosition[1]-sampleMountainHeight(cameraPosition[0],cameraPosition[2]))
-      .toBeGreaterThan(4)
+  it('uses the approved ground-level coach, departure, and mountain-entry camera beats',()=>{
+    const expected=[
+      {progress:0,camera:[8.5,3.8,46],target:[-2,1.55,34.8]},
+      {progress:.08,camera:[8,5.6,39.5],target:[2.6,1.9,28.5]},
+      {progress:.12,camera:[7,8.4,30.5],target:[2,4.2,20]},
+      {progress:.18,camera:[4.5,9.8,6],target:[0,3,-4]},
+    ]
+    expected.forEach(({progress,camera,target})=>{
+      expect(getJourneyState(progress).cameraPosition).toEqual(camera)
+      expect(getJourneyState(progress).cameraTarget).toEqual(target)
+    })
+  })
+
+  it('keeps the complete expedition phase table unchanged after the opening',()=>{
+    expect([
+      [0,'mountain-trek'],
+      [.279999,'mountain-trek'],
+      [.28,'trek-to-boat'],
+      [.419999,'trek-to-boat'],
+      [.42,'water-boat'],
+      [.599999,'water-boat'],
+      [.60,'boat-to-jeep'],
+      [.739999,'boat-to-jeep'],
+      [.74,'forest-jeep'],
+      [.939999,'forest-jeep'],
+      [.94,'contact'],
+      [1,'contact'],
+    ].map(([progress])=>getExpeditionState(progress).phase)).toEqual([
+      'mountain-trek',
+      'mountain-trek',
+      'trek-to-boat',
+      'trek-to-boat',
+      'water-boat',
+      'water-boat',
+      'boat-to-jeep',
+      'boat-to-jeep',
+      'forest-jeep',
+      'forest-jeep',
+      'contact',
+      'contact',
+    ])
+  })
+
+  it('keeps the complete desktop rail continuous at dense progress samples',()=>{
+    for(let index=0;index<1000;index+=1){
+      const from=getJourneyState(index/1000)
+      const to=getJourneyState((index+1)/1000)
+      const jump=Math.max(
+        Math.hypot(...from.cameraPosition.map(
+          (value,axis)=>value-to.cameraPosition[axis],
+        )),
+        Math.hypot(...from.cameraTarget.map(
+          (value,axis)=>value-to.cameraTarget[axis],
+        )),
+      )
+      expect(jump).toBeLessThanOrEqual(.8)
+    }
   })
 
   it('keeps the forest camera inside the protected route corridor',()=>{

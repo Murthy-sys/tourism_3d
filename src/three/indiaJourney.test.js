@@ -9,11 +9,14 @@ import {
   getDampingFactor,
   getJourneyQASnapshot,
   getMobileTransportCamera,
+  getProjectedObjectBounds,
   getRenderQuality,
   getRenderedWorldVisibility,
+  getResolvedCameraFrame,
   getTransportWorldPosition,
   getWorldVisibility,
 } from './indiaJourney'
+import { disposeObject3D } from './primitives'
 
 describe('renderer quality', () => {
   it('selects the simplified mobile scene at narrow widths', () => {
@@ -30,6 +33,49 @@ describe('renderer quality', () => {
     expect(getMobileTransportCamera('trekker',[2,1,-30])).toEqual({camera:[9,13,-15],target:[2,.8,-30]})
     expect(getMobileTransportCamera('boat',[-2,.25,-86])).toEqual({camera:[.4,1.75,-80.5],target:[-2,.75,-86]})
     expect(getMobileTransportCamera('jeep',[1,.2,-120])).toEqual({camera:[1.4,1.9,-114.3],target:[1,1.1,-120]})
+  })
+  it('holds the mobile coach composition and blends exactly into trekker framing',()=>{
+    const state={
+      cameraPosition:[8.5,3.8,46],
+      cameraTarget:[-2,1.55,34.8],
+      expedition:{activeTransport:'trekker'},
+    }
+    const transportPosition=[2,3.1,22]
+    const frame=progress=>getResolvedCameraFrame({
+      quality:'mobile',
+      progress,
+      state,
+      transportPosition,
+    })
+    expect(frame(0)).toEqual({
+      camera:[3.5,5.1,67],
+      target:[-2.5,1.55,34.8],
+    })
+    expect(frame(.045)).toEqual(frame(0))
+    const middle=frame(.08)
+    expect(middle.camera[2]).toBeLessThan(frame(0).camera[2])
+    expect(frame(.12)).toEqual(
+      getMobileTransportCamera('trekker',transportPosition),
+    )
+  })
+  it('leaves desktop and later mobile transport frames unchanged',()=>{
+    const state={
+      cameraPosition:[7,6,-19],
+      cameraTarget:[2,1,-33],
+      expedition:{activeTransport:'boat'},
+    }
+    expect(getResolvedCameraFrame({
+      quality:'desktop',
+      progress:.5,
+      state,
+      transportPosition:[-2,.25,-60],
+    })).toEqual({camera:state.cameraPosition,target:state.cameraTarget})
+    expect(getResolvedCameraFrame({
+      quality:'mobile',
+      progress:.5,
+      state,
+      transportPosition:[-2,.25,-60],
+    })).toEqual(getMobileTransportCamera('boat',[-2,.25,-60]))
   })
   it('frames the party around its members instead of its origin',()=>{
     const party=new THREE.Group()
@@ -172,6 +218,75 @@ describe('renderer quality', () => {
       forest:rootAt(0),
     },{mountain:1,water:1,forest:0},camera)
     expect(visibility).toEqual({mountain:false,water:true,forest:false})
+  })
+
+  it('reports whether an object is rendered and fully inside the camera frame',()=>{
+    const camera=new THREE.PerspectiveCamera(60,1,.1,100)
+    camera.position.set(0,1,5)
+    camera.lookAt(0,1,0)
+    camera.updateMatrixWorld(true)
+    camera.updateProjectionMatrix()
+    const material=new THREE.MeshBasicMaterial()
+    const centered=new THREE.Mesh(new THREE.BoxGeometry(1,1,1),material)
+    centered.position.y=1
+    centered.updateMatrixWorld(true)
+    expect(getProjectedObjectBounds(centered,camera)).toMatchObject({
+      rendered:true,
+      fullyFramed:true,
+    })
+    centered.position.x=100
+    centered.updateMatrixWorld(true)
+    expect(getProjectedObjectBounds(centered,camera)).toMatchObject({
+      rendered:false,
+      fullyFramed:false,
+    })
+    centered.geometry.dispose()
+    material.dispose()
+  })
+
+  it('includes fail-closed coach and fully framed party evidence',()=>{
+    const camera=new THREE.PerspectiveCamera(60,1,.1,100)
+    camera.position.set(0,2,8)
+    camera.lookAt(0,1,0)
+    camera.updateMatrixWorld(true)
+    camera.updateProjectionMatrix()
+    const coach=new THREE.Group()
+    coach.add(new THREE.Mesh(
+      new THREE.BoxGeometry(2,1,4),
+      new THREE.MeshBasicMaterial(),
+    ))
+    const trekker=new THREE.Group()
+    trekker.userData.members=['guide','tourist','tourist','tourist'].map((role,index)=>{
+      const member=Object.assign(new THREE.Group(),{role})
+      member.position.set((index-1.5)*.6,1,0)
+      member.add(new THREE.Mesh(
+        new THREE.BoxGeometry(.3,1,.3),
+        new THREE.MeshBasicMaterial(),
+      ))
+      trekker.add(member)
+      return member
+    })
+    const snapshot=getJourneyQASnapshot({
+      state:{expedition:{phase:'mountain-trek',activeTransport:'trekker'}},
+      transition:{
+        worlds:{mountain:1,water:0,forest:0},
+        transports:{trekker:1,boat:0,jeep:0},
+        opening:{departureWeight:0},
+      },
+      renderedWorlds:{mountain:true,water:false,forest:false},
+      transports:{trekker,boat:new THREE.Group(),jeep:new THREE.Group()},
+      scenery:{coach},
+      camera,
+      cameraJump:0,
+    })
+    expect(snapshot.opening).toMatchObject({
+      departureWeight:0,
+      coach:{mounted:false,rendered:true,fullyFramed:true},
+      fullyFramedMembers:{guides:1,tourists:3},
+    })
+    expect(snapshot.opening.coach.worldMatrix).toHaveLength(16)
+    disposeObject3D(coach)
+    disposeObject3D(trekker)
   })
 
   it('measures observed runtime camera movement and resets between QA states',()=>{

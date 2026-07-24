@@ -2,6 +2,7 @@ import * as THREE from 'three'
 import { createExpeditionController } from './expeditionController'
 import { clamp01,getJourneyState } from './journeyData'
 import { createMaterials,disposeObject3D } from './primitives'
+import { smootherstep } from './terrain'
 
 export const getRenderQuality=width=>width<768?'mobile':'desktop'
 export const getWorldVisibility=()=>[]
@@ -90,6 +91,58 @@ export const getRenderedTransportMembers=(transport,weight,camera)=>{
   })
 }
 
+export const getProjectedObjectBounds=(object,camera)=>{
+  if(!object||!camera||!hierarchyVisible(object)){
+    return{
+      rendered:false,
+      fullyFramed:false,
+      coverage:0,
+      ndcBounds:null,
+    }
+  }
+  object.updateWorldMatrix(true,true)
+  const bounds=new THREE.Box3().setFromObject(object)
+  if(bounds.isEmpty()){
+    return{
+      rendered:false,
+      fullyFramed:false,
+      coverage:0,
+      ndcBounds:null,
+    }
+  }
+  const frustum=getCameraFrustum(camera)
+  const minimum=new THREE.Vector3(Infinity,Infinity,Infinity)
+  const maximum=new THREE.Vector3(-Infinity,-Infinity,-Infinity)
+  const corner=new THREE.Vector3()
+  for(const x of [bounds.min.x,bounds.max.x]){
+    for(const y of [bounds.min.y,bounds.max.y]){
+      for(const z of [bounds.min.z,bounds.max.z]){
+        corner.set(x,y,z).project(camera)
+        minimum.min(corner)
+        maximum.max(corner)
+      }
+    }
+  }
+  const left=THREE.MathUtils.clamp((minimum.x+1)/2,0,1)
+  const right=THREE.MathUtils.clamp((maximum.x+1)/2,0,1)
+  const top=THREE.MathUtils.clamp((1-maximum.y)/2,0,1)
+  const bottom=THREE.MathUtils.clamp((1-minimum.y)/2,0,1)
+  const rendered=frustum.intersectsBox(bounds)
+  const fullyFramed=rendered&&
+    minimum.x>=-1&&maximum.x<=1&&
+    minimum.y>=-1&&maximum.y<=1&&
+    minimum.z>=-1&&maximum.z<=1
+  return{
+    rendered,
+    fullyFramed,
+    coverage:rounded(Math.max(0,right-left)*Math.max(0,bottom-top)),
+    ndcBounds:{
+      min:minimum.toArray().map(rounded),
+      max:maximum.toArray().map(rounded),
+    },
+  }
+}
+
 export const createCameraJumpTracker=()=>{
   const previousCamera=new THREE.Vector3()
   const previousTarget=new THREE.Vector3()
@@ -134,6 +187,45 @@ export const getMobileTransportCamera=(transport,[x,y,z])=>{
     ],
     target:[x,rounded(y+framing.targetY),z],
   }
+}
+
+const MOBILE_OPENING_FRAME=Object.freeze({
+  camera:Object.freeze([3.5,5.1,67]),
+  target:Object.freeze([-2.5,1.55,34.8]),
+})
+
+const lerpFrame=(from,to,weight)=>({
+  camera:from.camera.map(
+    (value,index)=>rounded(THREE.MathUtils.lerp(value,to.camera[index],weight)),
+  ),
+  target:from.target.map(
+    (value,index)=>rounded(THREE.MathUtils.lerp(value,to.target[index],weight)),
+  ),
+})
+
+export const getResolvedCameraFrame=({
+  quality,
+  progress,
+  state,
+  transportPosition,
+})=>{
+  const desktop={
+    camera:[...state.cameraPosition],
+    target:[...state.cameraTarget],
+  }
+  if(quality!=='mobile') return desktop
+  const transport=getMobileTransportCamera(
+    state.expedition.activeTransport,
+    transportPosition,
+  )
+  if(state.expedition.activeTransport!=='trekker'||progress>=.12){
+    return transport
+  }
+  return lerpFrame(
+    MOBILE_OPENING_FRAME,
+    transport,
+    smootherstep(.045,.12,progress),
+  )
 }
 
 export const getTransportWorldPosition=(name,transport,target=new THREE.Vector3())=>{
@@ -207,6 +299,7 @@ export const getJourneyQASnapshot=({
   transition,
   renderedWorlds,
   transports,
+  scenery,
   camera,
   cameraJump,
   consoleFailures=[],
@@ -218,6 +311,12 @@ export const getJourneyQASnapshot=({
     transition.transports[activeTransport],
     camera,
   )
+  const coach=scenery?.coach
+  const coachProjection=getProjectedObjectBounds(coach,camera)
+  const fullyFramedMembers=members.filter(member=>
+    getProjectedObjectBounds(member,camera).fullyFramed
+  )
+  coach?.updateWorldMatrix(true,true)
   const activeBiome=Object.entries(transition.worlds)
     .reduce((active,[name,weight])=>weight>active.weight?{name,weight}:active,{name:null,weight:-1})
     .name
@@ -231,6 +330,25 @@ export const getJourneyQASnapshot=({
     visibleMembers:{
       guides:members.filter(member=>(member.role||member.userData?.role)==='guide').length,
       tourists:members.filter(member=>(member.role||member.userData?.role)==='tourist').length,
+    },
+    opening:{
+      departureWeight:transition.opening?.departureWeight??1,
+      coach:{
+        mounted:Boolean(coach?.parent),
+        rendered:coachProjection.rendered,
+        fullyFramed:coachProjection.fullyFramed,
+        worldMatrix:coach
+          ?coach.matrixWorld.elements.map(rounded)
+          :[],
+      },
+      fullyFramedMembers:{
+        guides:fullyFramedMembers.filter(
+          member=>(member.role||member.userData?.role)==='guide'
+        ).length,
+        tourists:fullyFramedMembers.filter(
+          member=>(member.role||member.userData?.role)==='tourist'
+        ).length,
+      },
     },
     distantVisibility:{
       nextBiome:nextBiomeName?renderedWorlds[nextBiomeName]===true:null,
@@ -252,7 +370,7 @@ const getProjectedVisualDebug=(scene,camera,cameraTarget,desiredCamera,desiredTa
     if(
       object.visible===false||
       !object.name||
-      !/^(jungle-tree-|crown-silhouette-|mist-veil|jungle-mist|jungle-sun-shafts|hill-mist-pocket)/.test(object.name)
+      !/^(jungle-tree-|crown-silhouette-|mist-veil|jungle-mist|jungle-sun-shafts|hill-mist-pocket|tour-coach|trailhead-)/.test(object.name)
     ) return
     const bounds=new THREE.Box3().setFromObject(object)
     if(bounds.isEmpty()) return
@@ -330,8 +448,19 @@ export function createIndiaJourney(canvas,{reducedMotion=false,onContextLost=()=
   sun.castShadow=quality==='desktop'
   scene.add(hemisphere,sun)
 
-  const cameraTarget=new THREE.Vector3(...initialState.cameraTarget)
-  camera.position.set(...initialState.cameraPosition)
+  const initialTransport=expedition.transports[initialState.expedition.activeTransport]
+  const initialTransportPosition=getTransportWorldPosition(
+    initialState.expedition.activeTransport,
+    initialTransport,
+  ).toArray()
+  const initialFrame=getResolvedCameraFrame({
+    quality,
+    progress:0,
+    state:initialState,
+    transportPosition:initialTransportPosition,
+  })
+  const cameraTarget=new THREE.Vector3(...initialFrame.target)
+  camera.position.set(...initialFrame.camera)
   camera.lookAt(cameraTarget)
   const cameraJumpTracker=createCameraJumpTracker()
   cameraJumpTracker.reset(camera.position,cameraTarget)
@@ -369,22 +498,19 @@ export function createIndiaJourney(canvas,{reducedMotion=false,onContextLost=()=
     const state=getJourneyState(progress)
     const transition=expedition.update(state.expedition,elapsed,reducedMotion)
     const damping=getCameraDampingFactor(delta,quality)
-    desiredCamera.set(...state.cameraPosition)
-    desiredTarget.set(...state.cameraTarget)
-
-    if(quality==='mobile'){
-      const transport=expedition.transports[state.expedition.activeTransport]
-      const transportPosition=getTransportWorldPosition(
-        state.expedition.activeTransport,
-        transport,
-      )
-      const framing=getMobileTransportCamera(
-        state.expedition.activeTransport,
-        transportPosition.toArray(),
-      )
-      desiredCamera.set(...framing.camera)
-      desiredTarget.set(...framing.target)
-    }
+    const transport=expedition.transports[state.expedition.activeTransport]
+    const transportPosition=getTransportWorldPosition(
+      state.expedition.activeTransport,
+      transport,
+    ).toArray()
+    const resolvedFrame=getResolvedCameraFrame({
+      quality,
+      progress,
+      state,
+      transportPosition,
+    })
+    desiredCamera.set(...resolvedFrame.camera)
+    desiredTarget.set(...resolvedFrame.target)
     if(!reducedMotion){
       desiredCamera.x+=pointer.x*.45
       desiredCamera.y-=pointer.y*.25
@@ -444,6 +570,7 @@ export function createIndiaJourney(canvas,{reducedMotion=false,onContextLost=()=
           camera,
         ),
         transports:expedition.transports,
+        scenery:expedition.scenery,
         camera,
         cameraJump:cameraJumpTracker.value(),
         ...extras,

@@ -21,9 +21,10 @@ export const clamp01 = (value) => Math.min(1, Math.max(0, Number.isFinite(value)
 const lerp = (a, b, t) => a + (b - a) * t
 const lerp3 = (a, b, t) => a.map((value, index) => lerp(value, b[index], t))
 const CINEMATIC_KEYFRAMES=[
-  {p:0,camera:[5,15,18],target:[0,3,8]},
-  {p:.08,camera:[4.2,13,4],target:[0,4,-3.5]},
-  {p:.18,camera:[4.5,9.8,-10],target:[0,3,-20]},
+  {p:0,camera:[8.5,3.8,46],target:[-2,1.55,34.8]},
+  {p:.08,camera:[8,5.6,39.5],target:[2.6,1.9,28.5]},
+  {p:.12,camera:[7,8.4,30.5],target:[2,4.2,20]},
+  {p:.18,camera:[4.5,9.8,6],target:[0,3,-4]},
   {p:.28,camera:[8,7,-18],target:[2,1,-31.5]},
   {p:.35,camera:[7,6,-19],target:[2,1,-33]},
   {p:.42,camera:[-4,4,-27],target:[2,1,-34]},
@@ -40,6 +41,9 @@ const cinematicState=value=>{
   const nextIndex=Math.max(1,found<0?CINEMATIC_KEYFRAMES.length-1:found)
   const a=CINEMATIC_KEYFRAMES[nextIndex-1]
   const b=CINEMATIC_KEYFRAMES[nextIndex]
+  if(value===b.p){
+    return{cameraPosition:[...b.camera],cameraTarget:[...b.target]}
+  }
   const t=smootherstep(a.p,b.p,value)
   return{cameraPosition:lerp3(a.camera,b.camera,t),cameraTarget:lerp3(a.target,b.target,t)}
 }
