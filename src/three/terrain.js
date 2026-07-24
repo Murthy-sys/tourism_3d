@@ -1,6 +1,8 @@
 import * as THREE from 'three'
 
 export const LANDMARKS=Object.freeze({
+  trailheadStart:Object.freeze([3.2,.35,34]),
+  mountainEntry:Object.freeze([2,3.1,22]),
   mountainStart:Object.freeze([0,5,12]),
   mountainLanding:Object.freeze([2,.35,-34]),
   forestLanding:Object.freeze([-2,.25,-86]),
@@ -12,9 +14,33 @@ export const smootherstep=(a,b,value)=>{
   return t*t*t*(t*(t*6-15)+10)
 }
 
-const ridge=(x,z)=>Math.sin(x*.17+Math.sin(z*.08))*2.5+Math.cos(z*.11-x*.09)*1.8+Math.sin((x+z)*.29)*.65
+const ridge=(x,z)=>
+  Math.sin(x*.17+Math.sin(z*.08))*2.5+
+  Math.cos(z*.11-x*.09)*1.8+
+  Math.sin((x+z)*.29)*.65
 
-export const sampleMountainHeight=(x,z)=>Math.max(0,(ridge(x,z)+4.4)*smootherstep(-38,8,z))
+const baseMountainHeight=(x,z)=>
+  Math.max(0,(ridge(x,z)+4.4)*smootherstep(-38,8,z))
+
+const openingCenterX=z=>
+  THREE.MathUtils.lerp(0,3.2,smootherstep(12,34,z))
+
+const openingFloor=z=>
+  THREE.MathUtils.lerp(5,.35,smootherstep(12,34,z))
+
+export const sampleMountainHeight=(x,z)=>{
+  const base=baseMountainHeight(x,z)
+  const corridorEnvelope=
+    smootherstep(8,12,z)*
+    (1-smootherstep(35,41,z))
+  const corridor=
+    (1-smootherstep(1.1,5.8,Math.abs(x-openingCenterX(z))))*
+    corridorEnvelope
+  const turnoutDistance=Math.hypot((x+2)/12,(z-34)/9)
+  const turnout=1-smootherstep(.72,1.25,turnoutDistance)
+  const weight=Math.max(corridor,turnout)
+  return THREE.MathUtils.lerp(base,openingFloor(z),weight)
+}
 
 export const sampleMountainSlope=(x,z)=>{
   const d=.15
