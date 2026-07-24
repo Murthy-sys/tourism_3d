@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import ChapterContent from './ChapterContent'
 import {
@@ -73,30 +73,26 @@ describe('cinematic chapter content',()=>{
       .toBeInTheDocument()
   })
 
-  it('renders three accessible monument plan actions',()=>{
-    const chapter=CHAPTERS.find(({id})=>id==='plans')
-    render(<ChapterContent chapter={chapter} progress={.5} onPlan={vi.fn()}/>)
-    expect(screen.getAllByRole('button',{name:/plan .* journey/i})).toHaveLength(3)
-  })
-
-  it('activates plan overlays at the expedition transport boundaries',()=>{
-    const chapter=CHAPTERS.find(({id})=>id==='plans')
-    const {rerender}=render(<ChapterContent chapter={chapter} progress={.45} onPlan={vi.fn()}/>)
-    expect(screen.getByRole('button',{name:'Plan Heritage India journey'})).toHaveClass('active')
-    rerender(<ChapterContent chapter={chapter} progress={.75} onPlan={vi.fn()}/>)
-    expect(screen.getByRole('button',{name:'Plan Southern Discovery journey'})).toHaveClass('active')
+  it('removes the Expedition Chapters UI while preserving the 3D interval',()=>{
+    const plans=CHAPTERS.find(({id})=>id==='plans')
+    const {container}=render(
+      <ChapterContent chapter={plans} progress={.5} onPlan={vi.fn()}/>,
+    )
+    expect(container).toBeEmptyDOMElement()
+    expect(screen.queryByText(/Three expedition chapters/i))
+      .not.toBeInTheDocument()
   })
 
   it('replaces only the tail of Plans with social performance',()=>{
     const plans=CHAPTERS.find(({id})=>id==='plans')
-    const {rerender}=render(
+    const {container,rerender}=render(
       <ChapterContent
         chapter={plans}
         progress={.879999}
         onPlan={vi.fn()}
       />,
     )
-    expect(screen.getByText('Three expedition chapters.')).toBeInTheDocument()
+    expect(container).toBeEmptyDOMElement()
     expect(screen.queryByLabelText('Social media performance'))
       .not.toBeInTheDocument()
     rerender(
@@ -111,6 +107,31 @@ describe('cinematic chapter content',()=>{
       .toBeInTheDocument()
     expect(screen.queryByText('Three expedition chapters.'))
       .not.toBeInTheDocument()
+  })
+
+  it('renders all five packages under Contact and selects the exact package',()=>{
+    const onPlan=vi.fn()
+    render(
+      <ChapterContent
+        chapter={CHAPTERS.find(({id})=>id==='contact')}
+        progress={.97}
+        onPlan={onPlan}
+      />,
+    )
+    expect(screen.getByText('Where should we take you next?'))
+      .toBeInTheDocument()
+    expect(screen.getAllByRole('button',{name:/Select .* package/i}))
+      .toHaveLength(5)
+    fireEvent.click(
+      screen.getByRole('button',{name:'Select Netravati Peak Trek package'}),
+    )
+    expect(onPlan).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id:'netravati-peak-trek',
+        name:'Netravati Peak Trek',
+        priceLabel:'₹3,499',
+      }),
+    )
   })
 
   it('keeps social performance below Contact at the existing final boundary',()=>{

@@ -1,9 +1,8 @@
 import {
   BRAND_CAPABILITIES,
   SOCIAL_PERFORMANCE_START,
-  TRAVEL_PLANS,
+  TREK_PACKAGES,
 } from '../journey/chapters'
-import { getJourneyState } from '../three/journeyData'
 import SocialMediaPerformance from './SocialMediaPerformance'
 
 export default function ChapterContent({
@@ -11,17 +10,17 @@ export default function ChapterContent({
   progress,
   reducedMotion=false,
   onPlan,
-  onBook,
 }){
-  const planFocus=getJourneyState(progress).planFocus
   if(chapter.layout==='drive')return null
-  if(
-    chapter.layout==='monument-plans'&&
-    progress>=SOCIAL_PERFORMANCE_START
-  )return <SocialMediaPerformance
-    progress={progress}
-    reducedMotion={reducedMotion}
-  />
+  if(chapter.layout==='monument-plans'){
+    if(progress>=SOCIAL_PERFORMANCE_START){
+      return <SocialMediaPerformance
+        progress={progress}
+        reducedMotion={reducedMotion}
+      />
+    }
+    return null
+  }
   const isOperations=chapter.layout==='operations'
   const brandValueBeat=isOperations&&progress>=.25
   const creatorBeat=isOperations&&progress>=.22&&!brandValueBeat
@@ -63,7 +62,29 @@ export default function ChapterContent({
     <p className="chapter__kicker">{content.kicker}</p><h1 id={`chapter-${chapter.id}`}>{content.title}</h1><p className="chapter__body">{content.body}</p>
     {chapter.layout==='operations'&&!creatorBeat&&<div className="operations-proof" aria-label="What we do">{BRAND_CAPABILITIES.map(capability=><span key={capability}>{capability}</span>)}</div>}
     {creatorBeat&&<div className="creator-pillars" aria-label="Creator coverage">{content.pillars.map(pillar=><span key={pillar}>{pillar}</span>)}</div>}
-    {chapter.layout==='monument-plans'&&<div className="monument-plan-actions">{TRAVEL_PLANS.map((p,i)=><button className={planFocus===i?'active':''} aria-label={`Plan ${p.name} journey`} key={p.id} onClick={()=>onPlan(p)}><span>0{i+1} · {p.style}</span><strong>{p.name}</strong><small>{p.days} · {p.route}</small><b>Plan this journey ↗</b></button>)}</div>}
-    {chapter.layout==='pavilion-contact'&&<div className="contact-finale"><button onClick={onBook}>Plan your India journey</button><a href="mailto:journeys@wanderlux.in">journeys@wanderlux.in</a><p>India specialists · Available worldwide · Support throughout your journey</p></div>}
+    {chapter.layout==='pavilion-contact'&&
+      <div className="package-card-rail" aria-label="Available trek packages">
+        {TREK_PACKAGES.map(pkg=>
+          <article className="package-card" key={pkg.id}>
+            <p className="package-card__duration">{pkg.duration}</p>
+            <h2>{pkg.name}</h2>
+            <strong className="package-card__price">
+              {pkg.priceLabel}<small> per person</small>
+            </strong>
+            <p className="package-card__transfer">{pkg.transfer}</p>
+            <ul>
+              {pkg.inclusions.map(item=><li key={item}>{item}</li>)}
+            </ul>
+            <button
+              type="button"
+              aria-label={`Select ${pkg.name} package`}
+              onClick={()=>onPlan(pkg)}
+            >
+              Select dates <span aria-hidden="true">↗</span>
+            </button>
+          </article>,
+        )}
+      </div>
+    }
   </article>
 }
