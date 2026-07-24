@@ -1,10 +1,73 @@
 export const SERVICES=[
   ['Curated Tours','Hand-built journeys across iconic and lesser-known India.'],['Stay & Transport','Vetted stays and seamless local movement.'],['Travel Documents','Guidance for permits, insurance and documentation.'],['Local Concierge','Certified guides and round-the-clock assistance.'],['Custom Itineraries','Trips shaped around your pace, budget and interests.'],['Groups & Corporate','Retreats and group logistics managed end to end.']
 ]
-export const TRAVEL_PLANS=[
-  {id:'mountain-trail',name:'Mountain Trail Expedition',days:'8 days',route:'Munnar · Coorg · Nilgiris',style:'Mountains on foot'},
-  {id:'heritage-india',name:'Heritage India',days:'9 days',route:'Backwaters · Lakes · River country',style:'Water by boat'},
-  {id:'southern-discovery',name:'Southern Discovery',days:'10 days',route:'Kerala · Tamil Nadu · Hampi · Goa',style:'Forest by jeep'},
+const STANDARD_INCLUSIONS=[
+  'Adventurous Jeep Ride',
+  '2 Times Local Cuisine Food',
+  '1 Time Coffee, Tea or Snacks',
+  'Bangalore-to-Bangalore Pickup/Drop by TT or Mini Bus',
+  'Trek Entry',
+  'Trek Guide',
+  'Group Fun Activities',
+]
+export const TREK_PACKAGES=[
+  {
+    id:'bandaje-waterfalls',
+    name:'Bandaje Waterfalls',
+    price:3299,
+    priceLabel:'₹3,299',
+    duration:'1 Night · 1 Day',
+    transfer:'Bengaluru pickup & drop',
+    inclusions:[
+      'Adventurous Jeep Ride',
+      '2 Times Local Cuisine Food',
+      '1 Time Coffee or Snacks',
+      'Bangalore-to-Bangalore Pickup/Drop by TT or Mini Bus',
+      'Trek Entry',
+      'Trek Guide',
+      'Group Fun Activities',
+    ],
+  },
+  {
+    id:'kurinjal-trek',
+    name:'Kurinjal Trek',
+    price:3399,
+    priceLabel:'₹3,399',
+    duration:'1 Night · 1 Day',
+    transfer:'Bengaluru pickup & drop',
+    inclusions:[...STANDARD_INCLUSIONS],
+  },
+  {
+    id:'netravati-peak-trek',
+    name:'Netravati Peak Trek',
+    price:3499,
+    priceLabel:'₹3,499',
+    duration:'1 Night · 1 Day',
+    transfer:'Bengaluru pickup & drop',
+    inclusions:[...STANDARD_INCLUSIONS],
+  },
+  {
+    id:'kuduremukha-trek',
+    name:'Kuduremukha Trek',
+    price:3399,
+    priceLabel:'₹3,399',
+    duration:'1 Night · 1 Day',
+    transfer:'Bengaluru pickup & drop',
+    inclusions:[
+      ...STANDARD_INCLUSIONS.slice(0,4),
+      'Homestay for Fresh Up & Luggage',
+      ...STANDARD_INCLUSIONS.slice(4),
+    ],
+  },
+  {
+    id:'gangadikallu-trek',
+    name:'Gangadikallu Trek',
+    price:3399,
+    priceLabel:'₹3,399',
+    duration:'1 Night · 1 Day',
+    transfer:'Bengaluru pickup & drop',
+    inclusions:STANDARD_INCLUSIONS.filter(item=>item!=='Trek Guide'),
+  },
 ]
 export const STORIES=[
   {quote:'Every transfer, stay and local experience felt effortless.',name:'Ananya Rao',trip:'Kerala to Goa'},

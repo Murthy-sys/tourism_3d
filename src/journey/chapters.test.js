@@ -7,7 +7,7 @@ import {
   SOCIAL_MEDIA_METRICS,
   SOCIAL_MEDIA_PROFILE,
   SOCIAL_PERFORMANCE_START,
-  TRAVEL_PLANS,
+  TREK_PACKAGES,
   getChapterAtProgress,
   getProgressForChapter,
 } from './chapters'
@@ -75,8 +75,60 @@ describe('journey chapters', () => {
   })
   it('contains the complete approved experience in order', () => {
     expect(CHAPTERS.map((chapter) => chapter.id)).toEqual(['home','who-we-are','plans','contact'])
-    expect(TRAVEL_PLANS.map((plan) => plan.id)).toEqual(['mountain-trail','heritage-india','southern-discovery'])
-    expect(TRAVEL_PLANS.map((plan) => plan.style)).toEqual(['Mountains on foot','Water by boat','Forest by jeep'])
+  })
+  it('owns the five deduplicated poster packages without poster dates',()=>{
+    expect(TREK_PACKAGES.map(({id,name,price,priceLabel,duration})=>({
+      id,name,price,priceLabel,duration,
+    }))).toEqual([
+      {id:'bandaje-waterfalls',name:'Bandaje Waterfalls',price:3299,priceLabel:'₹3,299',duration:'1 Night · 1 Day'},
+      {id:'kurinjal-trek',name:'Kurinjal Trek',price:3399,priceLabel:'₹3,399',duration:'1 Night · 1 Day'},
+      {id:'netravati-peak-trek',name:'Netravati Peak Trek',price:3499,priceLabel:'₹3,499',duration:'1 Night · 1 Day'},
+      {id:'kuduremukha-trek',name:'Kuduremukha Trek',price:3399,priceLabel:'₹3,399',duration:'1 Night · 1 Day'},
+      {id:'gangadikallu-trek',name:'Gangadikallu Trek',price:3399,priceLabel:'₹3,399',duration:'1 Night · 1 Day'},
+    ])
+    expect(new Set(TREK_PACKAGES.map(({id})=>id)).size).toBe(5)
+    expect(JSON.stringify(TREK_PACKAGES)).not.toMatch(/31st|july|2026/i)
+    expect(TREK_PACKAGES[0].inclusions).toEqual([
+      'Adventurous Jeep Ride',
+      '2 Times Local Cuisine Food',
+      '1 Time Coffee or Snacks',
+      'Bangalore-to-Bangalore Pickup/Drop by TT or Mini Bus',
+      'Trek Entry',
+      'Trek Guide',
+      'Group Fun Activities',
+    ])
+    expect(TREK_PACKAGES[1].inclusions).toEqual([
+      'Adventurous Jeep Ride',
+      '2 Times Local Cuisine Food',
+      '1 Time Coffee, Tea or Snacks',
+      'Bangalore-to-Bangalore Pickup/Drop by TT or Mini Bus',
+      'Trek Entry',
+      'Trek Guide',
+      'Group Fun Activities',
+    ])
+    expect(TREK_PACKAGES[2].inclusions).toEqual(TREK_PACKAGES[1].inclusions)
+    expect(
+      TREK_PACKAGES.find(({id})=>id==='gangadikallu-trek').inclusions,
+    ).toEqual([
+      'Adventurous Jeep Ride',
+      '2 Times Local Cuisine Food',
+      '1 Time Coffee, Tea or Snacks',
+      'Bangalore-to-Bangalore Pickup/Drop by TT or Mini Bus',
+      'Trek Entry',
+      'Group Fun Activities',
+    ])
+    expect(
+      TREK_PACKAGES.find(({id})=>id==='kuduremukha-trek').inclusions,
+    ).toEqual([
+      'Adventurous Jeep Ride',
+      '2 Times Local Cuisine Food',
+      '1 Time Coffee, Tea or Snacks',
+      'Bangalore-to-Bangalore Pickup/Drop by TT or Mini Bus',
+      'Homestay for Fresh Up & Luggage',
+      'Trek Entry',
+      'Trek Guide',
+      'Group Fun Activities',
+    ])
   })
   it('maps progress and menu targets to stable chapters', () => {
     expect(getChapterAtProgress(0).id).toBe('home')
@@ -156,6 +208,6 @@ describe('journey chapters', () => {
     )
   })
   it('contains no customer-facing Himalaya, snow, or ice semantics',()=>{
-    expect(JSON.stringify({chapters:CHAPTERS,plans:TRAVEL_PLANS})).not.toMatch(/himalaya|snow|ice/i)
+    expect(JSON.stringify({chapters:CHAPTERS,packages:TREK_PACKAGES})).not.toMatch(/\bhimalaya\b|\bsnow\b|\bice\b/i)
   })
 })
