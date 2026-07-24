@@ -14,6 +14,7 @@ export default function JourneyShell(){
   const track=useRef(null)
   const progressRef=useRef(0)
   const navigation=useRef({active:false,frame:null})
+  const bookingTrigger=useRef(null)
   const [progress,setProgress]=useState(0)
   const [menuOpen,setMenuOpen]=useState(false)
   const [booking,setBooking]=useState(false)
@@ -37,6 +38,12 @@ export default function JourneyShell(){
     return()=>removeEventListener('scroll',update)
   },[menuOpen,booking])
   useEffect(()=>()=>cancelAnimationFrame(navigation.current.frame),[])
+  useEffect(()=>{
+    if(booking||!bookingTrigger.current)return
+    const trigger=bookingTrigger.current
+    bookingTrigger.current=null
+    if(trigger.isConnected)trigger.focus()
+  },[booking])
   const chapter=getChapterAtProgress(progress)
   const goTo=id=>{
     const selected=CHAPTERS.find(item=>item.id===id)
@@ -67,6 +74,9 @@ export default function JourneyShell(){
     navigation.current.frame=requestAnimationFrame(advance)
   }
   const book=selected=>{
+    bookingTrigger.current=document.activeElement instanceof HTMLButtonElement
+      ?document.activeElement
+      :null
     setSelectedPackage(selected)
     setBooking(true)
   }

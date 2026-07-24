@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
-const WHATSAPP_NUMBER='917204033032'
+const WHATSAPP_NUMBER='917702327702'
 const blank={contactName:'',startDate:'',endDate:''}
 
 export const buildWhatsAppMessage=({
@@ -25,12 +25,22 @@ export const buildWhatsAppUrl=details=>
 const defaultOpenWhatsApp=url=>
   window.open(url,'_blank','noopener,noreferrer')
 
+const focusableSelector=[
+  'button:not([disabled])',
+  'input:not([disabled])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  'a[href]',
+  '[tabindex]:not([tabindex="-1"])',
+].join(',')
+
 export default function BookingOverlay({
   open,
   selectedPackage,
   onClose,
   openWhatsApp=defaultOpenWhatsApp,
 }){
+  const dialogRef=useRef(null)
   const [form,setForm]=useState(blank)
   const [error,setError]=useState('')
 
@@ -44,10 +54,37 @@ export default function BookingOverlay({
   useEffect(()=>{
     const key=event=>{
       if(event.key==='Escape'&&open) onClose?.()
+      if(event.key!=='Tab'||!open)return
+      const focusable=[...dialogRef.current?.querySelectorAll(focusableSelector)??[]]
+      const first=focusable[0]
+      const final=focusable.at(-1)
+      if(!first||!final)return
+      if(event.shiftKey&&document.activeElement===first){
+        event.preventDefault()
+        final.focus()
+      }else if(!event.shiftKey&&document.activeElement===final){
+        event.preventDefault()
+        first.focus()
+      }
     }
     document.addEventListener('keydown',key)
     return()=>document.removeEventListener('keydown',key)
   },[open,onClose])
+
+  useEffect(()=>{
+    if(!open||!selectedPackage)return
+    const dialog=dialogRef.current
+    const siblings=[...(dialog?.parentElement?.children??[])]
+      .filter(element=>element!==dialog)
+    const inertStates=siblings.map(element=>[element,Boolean(element.inert)])
+    const bodyOverflow=document.body.style.overflow
+    siblings.forEach(element=>{element.inert=true})
+    document.body.style.overflow='hidden'
+    return()=>{
+      inertStates.forEach(([element,inert])=>{element.inert=inert})
+      document.body.style.overflow=bodyOverflow
+    }
+  },[open,selectedPackage])
 
   if(!open||!selectedPackage)return null
 
@@ -77,6 +114,7 @@ export default function BookingOverlay({
     role="dialog"
     aria-modal="true"
     aria-labelledby="booking-title"
+    ref={dialogRef}
   >
     <button
       className="booking-overlay__close"

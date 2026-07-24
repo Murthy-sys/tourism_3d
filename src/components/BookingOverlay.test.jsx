@@ -63,6 +63,78 @@ describe('BookingOverlay', () => {
     )
   })
 
+  it('requires a non-whitespace contact name and both travel dates',()=>{
+    const openWhatsApp=vi.fn()
+    render(
+      <BookingOverlay
+        open
+        selectedPackage={selectedPackage}
+        onClose={vi.fn()}
+        openWhatsApp={openWhatsApp}
+      />,
+    )
+    fireEvent.change(screen.getByLabelText('Contact Person Name'),{
+      target:{value:'   '},
+    })
+    fireEvent.click(screen.getByRole('button',{name:'Continue on WhatsApp'}))
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Enter the contact person name and select both travel dates.',
+    )
+    expect(openWhatsApp).not.toHaveBeenCalled()
+  })
+
+  it('wraps Tab focus within the dialog',()=>{
+    render(
+      <BookingOverlay
+        open
+        selectedPackage={selectedPackage}
+        onClose={vi.fn()}
+      />,
+    )
+    const dialog=screen.getByRole('dialog')
+    const first=screen.getByRole('button',{name:'Close booking'})
+    const final=screen.getByRole('button',{name:'Continue on WhatsApp'})
+
+    final.focus()
+    fireEvent.keyDown(dialog,{key:'Tab'})
+    expect(first).toHaveFocus()
+
+    first.focus()
+    fireEvent.keyDown(dialog,{key:'Tab',shiftKey:true})
+    expect(final).toHaveFocus()
+  })
+
+  it('makes sibling journey UI inert and restores it with body scrolling',()=>{
+    document.body.style.overflow='scroll'
+    const {rerender}=render(
+      <main>
+        <section data-testid="journey-ui"/>
+        <BookingOverlay
+          open
+          selectedPackage={selectedPackage}
+          onClose={vi.fn()}
+        />
+      </main>,
+    )
+    const journeyUi=screen.getByTestId('journey-ui')
+    expect(journeyUi.inert).toBe(true)
+    expect(document.body.style.overflow).toBe('hidden')
+
+    rerender(
+      <main>
+        <section data-testid="journey-ui"/>
+        <BookingOverlay
+          open={false}
+          selectedPackage={selectedPackage}
+          onClose={vi.fn()}
+        />
+      </main>,
+    )
+    expect(journeyUi.inert).toBe(false)
+    expect(document.body.style.overflow).toBe('scroll')
+    document.body.style.overflow=''
+  })
+
   it('renders a cinematic dialog and closes with Escape', () => {
     const onClose=vi.fn()
     render(

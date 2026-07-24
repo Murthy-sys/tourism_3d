@@ -11,11 +11,21 @@ vi.mock('./Hero3D',()=>({default:({progress})=>{
 }}))
 vi.mock('./ChapterContent',()=>({default:props=>{
   renderChapter(props)
-  return null
+  return <button
+    type="button"
+    onClick={()=>props.onPlan({
+      id:'kurinjal-trek',
+      name:'Kurinjal Trek',
+      priceLabel:'₹3,399',
+      duration:'1 Night · 1 Day',
+    })}
+  >Book Kurinjal Trek</button>
 }}))
 vi.mock('./BookingOverlay',()=>({default:props=>{
   renderBooking(props)
-  return props.open?<div role="dialog" aria-label="Package booking"/>:null
+  return props.open?<div role="dialog" aria-label="Package booking">
+    <button type="button" onClick={props.onClose}>Close booking</button>
+  </div>:null
 }}))
 
 describe('JourneyShell',()=>{
@@ -84,5 +94,50 @@ describe('JourneyShell',()=>{
         selectedPackage,
       }),
     )
+  })
+
+  it('returns focus to the package button after booking closes',()=>{
+    render(<JourneyShell/>)
+    const trigger=screen.getByRole('button',{name:'Book Kurinjal Trek'})
+    trigger.focus()
+    fireEvent.click(trigger)
+    expect(screen.getByRole('dialog',{name:'Package booking'})).toBeInTheDocument()
+
+    const close=screen.getByRole('button',{name:'Close booking'})
+    close.focus()
+    fireEvent.click(close)
+
+    expect(screen.queryByRole('dialog',{name:'Package booking'})).not.toBeInTheDocument()
+    expect(trigger).toHaveFocus()
+  })
+
+  it('routes Plan a Trip to Contact without opening an empty booking overlay',()=>{
+    const frames=[]
+    vi.stubGlobal('requestAnimationFrame',vi.fn(callback=>{
+      frames.push(callback)
+      return frames.length
+    }))
+    vi.stubGlobal('cancelAnimationFrame',vi.fn())
+    vi.stubGlobal('scrollTo',vi.fn())
+    render(<JourneyShell/>)
+    fireEvent.click(screen.getByRole('button',{name:'Open journey menu'}))
+    const callsBeforeSelection=renderProgress.mock.calls.length
+
+    fireEvent.click(screen.getByRole('button',{name:'Plan a Trip'}))
+    ;[0,360,522,900].forEach(timestamp=>{
+      const frame=frames.shift()
+      act(()=>frame(timestamp))
+    })
+
+    const traversed=renderProgress.mock.calls.slice(callsBeforeSelection)
+      .map(([value])=>value)
+    expect(traversed.at(-1)).toBeCloseTo(.97,6)
+    expect(renderBooking.mock.calls.at(-1)[0]).toEqual(
+      expect.objectContaining({
+        open:false,
+        selectedPackage:null,
+      }),
+    )
+    expect(screen.queryByRole('dialog',{name:'Package booking'})).not.toBeInTheDocument()
   })
 })
