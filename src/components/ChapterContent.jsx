@@ -27,6 +27,16 @@ export default function ChapterContent({
   const mobilePlacementClass=mobilePlacement
     ?`chapter--mobile-safe-${mobilePlacement}`
     :''
+  if(chapter.layout==='operations'){
+    return <article
+      className={`chapter chapter--operations chapter--glass-card ${mobilePlacementClass}`}
+      aria-labelledby={`chapter-${chapter.id}`}
+    >
+      <p className="chapter__kicker">{chapter.kicker}</p>
+      <h1 id={`chapter-${chapter.id}`}>{chapter.title}</h1>
+      <p className="chapter__body">{chapter.body}</p>
+    </article>
+  }
   if(chapter.layout==='monument-plans'){
     if(progress>=SOCIAL_PERFORMANCE_START){
       return <SocialMediaPerformance
@@ -54,20 +64,14 @@ export default function ChapterContent({
     }
     return null
   }
-  const isOperations=chapter.layout==='operations'
-  const creatorBeat=isOperations&&progress>=.22
-  const content=creatorBeat?chapter.creator:chapter
+  const content=chapter
   const className=[
     'chapter',
     `chapter--${chapter.layout}`,
-    isOperations?'chapter--glass-card':'',
-    creatorBeat?'chapter--creator-card':'',
     mobilePlacementClass,
   ].filter(Boolean).join(' ')
-  return <article className={className} key={`${chapter.id}-${creatorBeat?'creator':'overview'}`} aria-labelledby={`chapter-${chapter.id}`}>
+  return <article className={className} key={chapter.id} aria-labelledby={`chapter-${chapter.id}`}>
     <p className="chapter__kicker">{content.kicker}</p><h1 id={`chapter-${chapter.id}`}>{content.title}</h1><p className="chapter__body">{content.body}</p>
-    {chapter.layout==='operations'&&!creatorBeat&&<div className="operations-proof" aria-label="What we do">{BRAND_CAPABILITIES.map(capability=><span key={capability}>{capability}</span>)}</div>}
-    {creatorBeat&&<div className="creator-pillars" aria-label="Creator coverage">{content.pillars.map(pillar=><span key={pillar}>{pillar}</span>)}</div>}
     {chapter.layout==='pavilion-contact'&&
       <div className="package-card-rail" aria-label="Available trek packages">
         {TREK_PACKAGES.map(pkg=>

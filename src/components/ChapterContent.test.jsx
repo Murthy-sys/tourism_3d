@@ -15,51 +15,26 @@ describe('cinematic chapter content',()=>{
     expect(container).toBeEmptyDOMElement()
   })
 
-  it('renders only the approved Who We Are promotion services in order',()=>{
+  it('renders the Who We Are heading and approved paragraph without services',()=>{
     const chapter=CHAPTERS.find(({id})=>id==='who-we-are')
     render(<ChapterContent chapter={chapter} progress={.19}/>)
     expect(screen.getByRole('article')).toHaveClass(
       'chapter--glass-card',
       'chapter--mobile-safe-top',
     )
-    const proof=screen.getByLabelText('What we do')
-    expect([...proof.children].map(item=>item.textContent)).toEqual([
-      'Destination Promotions',
-      'Tourism Campaigns',
-      'Hotel & Resort Promotions',
-      'Homestay Promotions',
-      'Adventure Activity Promotions',
-      'Travel Reels',
-      'Professional Photography',
-      'Cinematic Promotional Videos',
-      'Tourism Brand Collaborations',
-    ])
-    expect(screen.queryByText('Campaign concepts')).not.toBeInTheDocument()
-    expect(screen.queryByText('Audience-ready content')).not.toBeInTheDocument()
+    expect(screen.getByRole('article')).toHaveTextContent(chapter.body)
+    expect(screen.getByText(chapter.kicker)).toBeInTheDocument()
+    expect(screen.getByRole('heading',{name:chapter.title}))
+      .toBeInTheDocument()
+    expect(screen.queryByLabelText('What we do')).not.toBeInTheDocument()
   })
 
-  it('reveals the transparent creator card after the Who We Are beat',()=>{
+  it('keeps only the approved paragraph through the Who We Are interval',()=>{
     const chapter=CHAPTERS.find(({id})=>id==='who-we-are')
     render(<ChapterContent chapter={chapter} progress={.24}/>)
-    expect(screen.getByText('About the creator')).toBeInTheDocument()
-    expect(screen.getByText(/premium travel content across Karnataka/i))
-      .toBeInTheDocument()
-    expect(screen.getByLabelText('Creator coverage').children).toHaveLength(8)
-    expect(screen.getByRole('article')).toHaveClass(
-      'chapter--creator-card',
-      'chapter--glass-card',
-      'chapter--mobile-safe-top',
-    )
-    expect(screen.queryByLabelText('Brand collaboration value'))
-      .not.toBeInTheDocument()
-  })
-
-  it('keeps the creator card through the end of Who We Are',()=>{
-    const chapter=CHAPTERS.find(({id})=>id==='who-we-are')
-    render(<ChapterContent chapter={chapter} progress={.26}/>)
-    expect(screen.getByText('About the creator')).toBeInTheDocument()
-    expect(screen.queryByText('Why Brands Should Work With Us'))
-      .not.toBeInTheDocument()
+    expect(screen.getByRole('article')).toHaveTextContent(chapter.body)
+    expect(screen.queryByText('About the creator')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Creator coverage')).not.toBeInTheDocument()
   })
 
   it('shows one standard What We Offer card for the full boat interval',()=>{
