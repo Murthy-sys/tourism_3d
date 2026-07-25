@@ -1,6 +1,8 @@
 import * as THREE from 'three'
-import { describe, expect, it } from 'vitest'
+import * as IndiaJourney from './indiaJourney'
+import { describe, expect, it, vi } from 'vitest'
 import {
+  createAdaptivePixelRatioController,
   createCameraJumpTracker,
   dampCameraVector,
   getAtmosphere,
@@ -10,6 +12,7 @@ import {
   getJourneyQASnapshot,
   getMobileTransportCamera,
   getProjectedObjectBounds,
+  getRendererProfile,
   getRenderQuality,
   getRenderedWorldVisibility,
   getResolvedCameraFrame,
@@ -21,6 +24,116 @@ import { getJourneyState } from './journeyData'
 import { createMaterials,disposeObject3D } from './primitives'
 
 describe('renderer quality', () => {
+  it('ignores warm-up and isolated slow mobile frames',()=>{
+    const controller=createAdaptivePixelRatioController(1.75,{
+      warmupFrames:3,
+      sampleFrames:4,
+      cooldownFrames:3,
+      slowFrameMs:22,
+    })
+    ;[40,40,40,16,16,40,16].forEach(ms=>
+      expect(controller.observe(ms)).toBeNull()
+    )
+    expect(controller.value()).toBe(1.75)
+  })
+
+  it('ignores suspended and non-finite frame gaps in healthy samples',()=>{
+    ;[500,Infinity,NaN].forEach(gap=>{
+      const controller=createAdaptivePixelRatioController(1.75,{
+        warmupFrames:0,
+        sampleFrames:4,
+        cooldownFrames:0,
+        slowFrameMs:22,
+      })
+      expect([16,16,gap,16,16].map(ms=>controller.observe(ms)))
+        .toEqual([null,null,null,null,null])
+      expect(controller.value()).toBe(1.75)
+    })
+  })
+
+  it('steps down only after sustained slow rendering and respects its floor',()=>{
+    const controller=createAdaptivePixelRatioController(1.75,{
+      warmupFrames:0,
+      sampleFrames:3,
+      cooldownFrames:2,
+      slowFrameMs:22,
+    })
+    expect([30,30,30].map(ms=>controller.observe(ms)))
+      .toEqual([null,null,1.5])
+    expect([30,30].map(ms=>controller.observe(ms))).toEqual([null,null])
+    expect([30,30,30].map(ms=>controller.observe(ms)))
+      .toEqual([null,null,1.25])
+    expect([40,40,40].map(ms=>controller.observe(ms)))
+      .toEqual([null,null,null])
+    expect(controller.value()).toBe(1.25)
+  })
+
+  it('keeps default adaptation windows stable in wall time across frame rates',()=>{
+    const firstDowngradeAt=fps=>{
+      const controller=createAdaptivePixelRatioController(1.75,{
+        slowFrameMs:10,
+      })
+      const frameMs=1000/fps
+      for(let elapsed=frameMs;elapsed<=8000;elapsed+=frameMs){
+        if(controller.observe(frameMs)!==null) return elapsed
+      }
+      return null
+    }
+    const downgradeTimes=[20,30,60].map(firstDowngradeAt)
+    expect(downgradeTimes).not.toContain(null)
+    expect(downgradeTimes.every(elapsed=>elapsed<=3000)).toBe(true)
+    expect(Math.max(...downgradeTimes)-Math.min(...downgradeTimes))
+      .toBeLessThanOrEqual(100)
+  })
+
+  it('starts mobile rendering sharp without exceeding its safe cap',()=>{
+    expect(getRendererProfile(390,1)).toEqual({
+      quality:'mobile',
+      antialias:true,
+      pixelRatio:1.25,
+    })
+    expect(getRendererProfile(390,1.5).pixelRatio).toBe(1.5)
+    expect(getRendererProfile(390,3).pixelRatio).toBe(1.75)
+  })
+
+  it('preserves the desktop renderer profile',()=>{
+    expect(getRendererProfile(1440,3)).toEqual({
+      quality:'desktop',
+      antialias:true,
+      pixelRatio:2,
+    })
+  })
+
+  it('preserves a desktop device pixel ratio below one',()=>{
+    expect(getRendererProfile(1440,.8)).toEqual({
+      quality:'desktop',
+      antialias:true,
+      pixelRatio:.8,
+    })
+  })
+
+  it('keeps desktop resolution outside the adaptive mobile controller',()=>{
+    const desktop=getRendererProfile(1440,3)
+    expect(desktop.quality).toBe('desktop')
+    expect(desktop.pixelRatio).toBe(2)
+  })
+
+  it('applies a mobile adaptive downgrade from the frame delta and leaves desktop untouched',()=>{
+    expect(IndiaJourney.applyAdaptivePixelRatio).toBeTypeOf('function')
+    const renderer={setPixelRatio:vi.fn()}
+    const resize=vi.fn()
+    const mobileController={observe:vi.fn(()=>1.5)}
+    IndiaJourney.applyAdaptivePixelRatio(mobileController,.03,renderer,resize)
+    expect(mobileController.observe).toHaveBeenCalledWith(30)
+    expect(renderer.setPixelRatio).toHaveBeenCalledWith(1.5)
+    expect(resize).toHaveBeenCalledOnce()
+
+    const desktopController=null
+    IndiaJourney.applyAdaptivePixelRatio(desktopController,.03,renderer,resize)
+    expect(renderer.setPixelRatio).toHaveBeenCalledOnce()
+    expect(resize).toHaveBeenCalledOnce()
+  })
+
   it('selects the simplified mobile scene at narrow widths', () => {
     expect(getRenderQuality(390)).toBe('mobile')
     expect(getRenderQuality(1440)).toBe('desktop')

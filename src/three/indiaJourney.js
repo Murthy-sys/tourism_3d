@@ -5,6 +5,84 @@ import { createMaterials,disposeObject3D } from './primitives'
 import { smootherstep } from './terrain'
 
 export const getRenderQuality=width=>width<768?'mobile':'desktop'
+export const getRendererProfile=(width,devicePixelRatio=1)=>{
+  const quality=getRenderQuality(width)
+  const numericRatio=Number(devicePixelRatio)
+  const ratio=Number.isFinite(numericRatio)&&numericRatio>0?numericRatio:1
+  return{
+    quality,
+    antialias:true,
+    pixelRatio:quality==='mobile'
+      ?THREE.MathUtils.clamp(ratio,1.25,1.75)
+      :Math.min(ratio,2),
+  }
+}
+const MOBILE_PIXEL_RATIOS=[1.25,1.5,1.75]
+const MAX_MEASURABLE_FRAME_MS=250
+
+export const createAdaptivePixelRatioController=(
+  initialPixelRatio,
+  options={},
+)=>{
+  const{
+    warmupFrames,
+    sampleFrames,
+    cooldownFrames,
+    warmupMs=1000,
+    sampleMs=1000,
+    cooldownMs=3000,
+    slowFrameMs=22,
+  }=options
+  const timedWarmup=warmupFrames===undefined
+  const timedSample=sampleFrames===undefined
+  const timedCooldown=cooldownFrames===undefined
+  let ratio=THREE.MathUtils.clamp(
+    initialPixelRatio,
+    MOBILE_PIXEL_RATIOS[0],
+    MOBILE_PIXEL_RATIOS.at(-1),
+  )
+  let warmup=Math.max(0,timedWarmup?warmupMs:warmupFrames)
+  let cooldown=0
+  let samples=[]
+  let sampledMs=0
+  return{
+    observe(frameDurationMs){
+      if(
+        !Number.isFinite(frameDurationMs)||
+        frameDurationMs>MAX_MEASURABLE_FRAME_MS
+      ) return null
+      const duration=Math.max(0,frameDurationMs)
+      if(warmup>0){
+        warmup-=timedWarmup?duration:1
+        return null
+      }
+      if(cooldown>0){
+        cooldown-=timedCooldown?duration:1
+        return null
+      }
+      samples.push(duration)
+      sampledMs+=duration
+      if(timedSample?sampledMs<sampleMs:samples.length<sampleFrames) return null
+      const average=samples.reduce((sum,value)=>sum+value,0)/samples.length
+      samples=[]
+      sampledMs=0
+      if(average<=slowFrameMs||ratio<=MOBILE_PIXEL_RATIOS[0]) return null
+      ratio=MOBILE_PIXEL_RATIOS
+        .filter(candidate=>candidate<ratio)
+        .at(-1)??MOBILE_PIXEL_RATIOS[0]
+      cooldown=Math.max(0,timedCooldown?cooldownMs:cooldownFrames)
+      return ratio
+    },
+    value:()=>ratio,
+  }
+}
+export const applyAdaptivePixelRatio=(controller,delta,renderer,resize)=>{
+  const nextPixelRatio=controller?.observe(delta*1000)
+  if(nextPixelRatio!==null&&nextPixelRatio!==undefined){
+    renderer.setPixelRatio(nextPixelRatio)
+    resize()
+  }
+}
 export const getWorldVisibility=()=>[]
 export const getDampingFactor=delta=>1-Math.exp(-Math.max(0,delta)*4.5)
 export const getCameraDampingFactor=(delta,quality='desktop')=>{
@@ -432,16 +510,20 @@ export function createIndiaJourney(
   canvas,
   {reducedMotion=false,onContextLost=()=>{},onReady=()=>{}}={},
 ){
-  const quality=getRenderQuality(window.innerWidth)
+  const rendererProfile=getRendererProfile(
+    window.innerWidth,
+    window.devicePixelRatio,
+  )
+  const quality=rendererProfile.quality
   const scene=new THREE.Scene()
   const camera=new THREE.PerspectiveCamera(quality==='mobile'?60:48,1,.1,420)
   const renderer=new THREE.WebGLRenderer({
     canvas,
-    antialias:quality==='desktop',
+    antialias:rendererProfile.antialias,
     alpha:false,
     powerPreference:'high-performance',
   })
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,quality==='mobile'?1.25:2))
+  renderer.setPixelRatio(rendererProfile.pixelRatio)
   renderer.outputColorSpace=THREE.SRGBColorSpace
   renderer.toneMapping=THREE.ACESFilmicToneMapping
   renderer.shadowMap.enabled=quality==='desktop'
@@ -490,6 +572,9 @@ export function createIndiaJourney(
     camera.aspect=parent.clientWidth/Math.max(1,parent.clientHeight)
     camera.updateProjectionMatrix()
   }
+  const adaptivePixelRatio=quality==='mobile'
+    ?createAdaptivePixelRatioController(rendererProfile.pixelRatio)
+    :null
   const resizeObserver=new ResizeObserver(resize)
   if(canvas.parentElement) resizeObserver.observe(canvas.parentElement)
   resize()
@@ -563,6 +648,7 @@ export function createIndiaJourney(
     sun.color.lerp(directionalColor,damping)
 
     renderer.render(scene,camera)
+    applyAdaptivePixelRatio(adaptivePixelRatio,delta,renderer,resize)
     if(!ready){
       ready=true
       onReady()
