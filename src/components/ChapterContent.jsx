@@ -7,6 +7,16 @@ import {
 } from '../journey/chapters'
 import SocialMediaPerformance from './SocialMediaPerformance'
 
+export const getMobileCardPlacement=(layout,progress)=>{
+  if(layout==='operations') return 'top'
+  if(layout==='monument-plans'){
+    if(progress>=SOCIAL_PERFORMANCE_START) return 'bottom'
+    if(progress>=BOAT_OFFER_START&&progress<BOAT_OFFER_END) return 'top'
+  }
+  if(layout==='pavilion-contact') return 'bottom'
+  return null
+}
+
 export default function ChapterContent({
   chapter,
   progress,
@@ -14,16 +24,21 @@ export default function ChapterContent({
   onPlan,
 }){
   if(chapter.layout==='drive')return null
+  const mobilePlacement=getMobileCardPlacement(chapter.layout,progress)
+  const mobilePlacementClass=mobilePlacement
+    ?`chapter--mobile-safe-${mobilePlacement}`
+    :''
   if(chapter.layout==='monument-plans'){
     if(progress>=SOCIAL_PERFORMANCE_START){
       return <SocialMediaPerformance
         progress={progress}
         reducedMotion={reducedMotion}
+        className={mobilePlacementClass}
       />
     }
     if(progress>=BOAT_OFFER_START&&progress<BOAT_OFFER_END){
       return <article
-        className="chapter chapter--operations chapter--creator-card chapter--glass-card chapter--boat-offer"
+        className={`chapter chapter--operations chapter--creator-card chapter--glass-card chapter--boat-offer ${mobilePlacementClass}`}
         aria-labelledby="boat-offer-title"
       >
         <p className="chapter__kicker">Brand collaborations</p>
@@ -48,6 +63,7 @@ export default function ChapterContent({
     `chapter--${chapter.layout}`,
     isOperations?'chapter--glass-card':'',
     creatorBeat?'chapter--creator-card':'',
+    mobilePlacementClass,
   ].filter(Boolean).join(' ')
   return <article className={className} key={`${chapter.id}-${creatorBeat?'creator':'overview'}`} aria-labelledby={`chapter-${chapter.id}`}>
     <p className="chapter__kicker">{content.kicker}</p><h1 id={`chapter-${chapter.id}`}>{content.title}</h1><p className="chapter__body">{content.body}</p>

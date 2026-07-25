@@ -57,6 +57,18 @@ describe('SocialMediaPerformance',()=>{
     expect(screen.getAllByText('Updating soon')).toHaveLength(5)
   })
 
+  it('applies a transport-safe placement class to the dashboard root',()=>{
+    render(
+      <SocialMediaPerformance
+        progress={.9}
+        className="chapter--mobile-safe-bottom"
+      />,
+    )
+    expect(screen.getByRole('article',{
+      name:'Social media performance',
+    })).toHaveClass('chapter--mobile-safe-bottom')
+  })
+
   it('keeps dashboard motion solely controlled by scroll progress',()=>{
     const stylesheet=readFileSync(resolve(process.cwd(),'src/index.css'),'utf8')
     const dashboardRule=stylesheet.match(

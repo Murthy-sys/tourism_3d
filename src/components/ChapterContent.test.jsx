@@ -18,7 +18,10 @@ describe('cinematic chapter content',()=>{
   it('renders only the approved Who We Are promotion services in order',()=>{
     const chapter=CHAPTERS.find(({id})=>id==='who-we-are')
     render(<ChapterContent chapter={chapter} progress={.19}/>)
-    expect(screen.getByRole('article')).toHaveClass('chapter--glass-card')
+    expect(screen.getByRole('article')).toHaveClass(
+      'chapter--glass-card',
+      'chapter--mobile-safe-top',
+    )
     const proof=screen.getByLabelText('What we do')
     expect([...proof.children].map(item=>item.textContent)).toEqual([
       'Destination Promotions',
@@ -45,6 +48,7 @@ describe('cinematic chapter content',()=>{
     expect(screen.getByRole('article')).toHaveClass(
       'chapter--creator-card',
       'chapter--glass-card',
+      'chapter--mobile-safe-top',
     )
     expect(screen.queryByLabelText('Brand collaboration value'))
       .not.toBeInTheDocument()
@@ -69,6 +73,7 @@ describe('cinematic chapter content',()=>{
     expect(screen.getByRole('article')).toHaveClass(
       'chapter--creator-card',
       'chapter--boat-offer',
+      'chapter--mobile-safe-top',
     )
     expect([...screen.getByLabelText('What we offer').children]
       .map(item=>item.textContent)).toEqual(BRAND_CAPABILITIES)
@@ -113,7 +118,7 @@ describe('cinematic chapter content',()=>{
       />,
     )
     expect(screen.getByLabelText('Social media performance'))
-      .toBeInTheDocument()
+      .toHaveClass('chapter--mobile-safe-bottom')
     expect(screen.queryByText('Three expedition chapters.'))
       .not.toBeInTheDocument()
   })
@@ -129,6 +134,11 @@ describe('cinematic chapter content',()=>{
     )
     expect(screen.getByText('Where should we take you next?'))
       .toBeInTheDocument()
+    expect(
+      screen.getByRole('heading',{
+        name:'Where should we take you next?',
+      }).closest('article'),
+    ).toHaveClass('chapter--mobile-safe-bottom')
     expect(screen.getAllByRole('button',{name:/Select .* package/i}))
       .toHaveLength(5)
     fireEvent.click(

@@ -30,12 +30,13 @@ export const formatSocialMetric=(metric,weight=1)=>{
 export default function SocialMediaPerformance({
   progress,
   reducedMotion=false,
+  className='',
 }){
   const entrance=reducedMotion
     ?1
     :smootherstep((progress-SOCIAL_PERFORMANCE_START)/.01)
   return <article
-    className="chapter chapter--social-performance"
+    className={`chapter chapter--social-performance ${className}`.trim()}
     aria-label="Social media performance"
     style={{'--performance-progress':entrance}}
   >
