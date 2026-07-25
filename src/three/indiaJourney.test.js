@@ -24,6 +24,80 @@ import { createExpeditionController } from './expeditionController'
 import { getJourneyState } from './journeyData'
 import { createMaterials,disposeObject3D } from './primitives'
 
+describe('journey progress controller',()=>{
+  it('advances one controller once per frame and returns its rendered progress',()=>{
+    const controller=IndiaJourney.createJourneyProgressController({
+      quality:'desktop',
+    })
+    controller.setTarget(1)
+
+    const rendered=IndiaJourney.advanceJourneyFrame(controller,1/60)
+
+    expect(rendered).toBeCloseTo(.85/60,8)
+    expect(controller.value()).toBe(rendered)
+  })
+
+  it.each([
+    ['mobile',.65/60],
+    ['desktop',.85/60],
+  ])('bounds the first %s frame after a zero-to-one jump',(quality,maximum)=>{
+    const controller=IndiaJourney.createJourneyProgressController({quality})
+    controller.setTarget(1)
+    controller.advance(1/60)
+    expect(controller.value()).toBeGreaterThan(0)
+    expect(controller.value()).toBeLessThanOrEqual(maximum)
+  })
+
+  it('never advances past its target',()=>{
+    const controller=IndiaJourney.createJourneyProgressController({
+      quality:'desktop',
+      initial:.98,
+    })
+    controller.setTarget(1)
+    for(let frame=0;frame<100;frame++){
+      controller.advance(.25)
+      expect(controller.value()).toBeLessThanOrEqual(controller.target())
+    }
+    expect(controller.value()).toBe(1)
+  })
+
+  it('converges consistently over one second at common frame rates',()=>{
+    const values=[20,30,60,120].map(fps=>{
+      const controller=IndiaJourney.createJourneyProgressController({quality:'mobile'})
+      controller.setTarget(1)
+      for(let frame=0;frame<fps;frame++) controller.advance(1/fps)
+      return controller.value()
+    })
+    expect(Math.max(...values)-Math.min(...values)).toBeLessThanOrEqual(.02)
+  })
+
+  it('ignores invalid and suspended frame deltas',()=>{
+    const controller=IndiaJourney.createJourneyProgressController({quality:'desktop'})
+    controller.setTarget(1)
+    ;[Infinity,NaN,.251].forEach(delta=>controller.advance(delta))
+    expect(controller.value()).toBe(0)
+  })
+
+  it('snaps to its target when reduced motion is enabled',()=>{
+    const controller=IndiaJourney.createJourneyProgressController({quality:'mobile'})
+    controller.setTarget(1)
+    controller.setReducedMotion(true)
+    controller.advance(1/60)
+    expect(controller.value()).toBe(1)
+  })
+
+  it('clamps initial and target progress to the unit interval',()=>{
+    const controller=IndiaJourney.createJourneyProgressController({
+      quality:'mobile',
+      initial:2,
+    })
+    expect(controller.value()).toBe(1)
+    expect(controller.target()).toBe(1)
+    controller.setTarget(-3)
+    expect(controller.target()).toBe(0)
+  })
+})
+
 describe('renderer quality', () => {
   it('ignores warm-up and isolated slow mobile frames',()=>{
     const controller=createAdaptivePixelRatioController(1.75,{

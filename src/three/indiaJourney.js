@@ -20,6 +20,59 @@ export const getRendererProfile=(width,devicePixelRatio=1)=>{
 const MOBILE_PIXEL_RATIOS=[1.25,1.5,1.75]
 const MAX_MEASURABLE_FRAME_MS=250
 
+export const createJourneyProgressController=({
+  quality='desktop',
+  reducedMotion=false,
+  initial=0,
+}={})=>{
+  const response=quality==='mobile'?8:10
+  const velocity=quality==='mobile'?.65:.85
+  let current=clamp01(initial)
+  let target=current
+  let motionReduced=Boolean(reducedMotion)
+  const snap=()=>{current=target}
+  return{
+    setTarget(value){
+      target=clamp01(value)
+      if(motionReduced) snap()
+    },
+    setReducedMotion(value){
+      motionReduced=Boolean(value)
+      if(motionReduced) snap()
+    },
+    advance(deltaSeconds){
+      if(motionReduced){
+        snap()
+        return current
+      }
+      if(
+        !Number.isFinite(deltaSeconds)||
+        deltaSeconds<0||
+        deltaSeconds>.25
+      ) return current
+      const gap=target-current
+      if(Math.abs(gap)<.00001){
+        snap()
+        return current
+      }
+      const convergence=1-Math.exp(-deltaSeconds*response)
+      const maximumStep=velocity*deltaSeconds
+      const step=Math.sign(gap)*Math.min(
+        Math.abs(gap)*convergence,
+        maximumStep,
+        Math.abs(gap),
+      )
+      current=clamp01(current+step)
+      if(Math.abs(target-current)<.00001) snap()
+      return current
+    },
+    value:()=>current,
+    target:()=>target,
+  }
+}
+
+export const advanceJourneyFrame=(controller,delta)=>controller.advance(delta)
+
 export const createAdaptivePixelRatioController=(
   initialPixelRatio,
   options={},
@@ -538,6 +591,12 @@ export function createIndiaJourney(
     window.devicePixelRatio,
   )
   const quality=rendererProfile.quality
+  let rendererReducedMotion=Boolean(reducedMotion)
+  const progressController=createJourneyProgressController({
+    quality,
+    reducedMotion:rendererReducedMotion,
+    initial:0,
+  })
   const scene=new THREE.Scene()
   const camera=new THREE.PerspectiveCamera(quality==='mobile'?60:48,1,.1,420)
   const renderer=new THREE.WebGLRenderer({
@@ -555,7 +614,11 @@ export function createIndiaJourney(
   const initialState=getJourneyState(0)
   const materials=createMaterials()
   const expedition=createExpeditionController(scene,materials,quality)
-  const initialTransition=expedition.update(initialState.expedition,0,reducedMotion)
+  const initialTransition=expedition.update(
+    initialState.expedition,
+    0,
+    rendererReducedMotion,
+  )
   const initialAtmosphere=getAtmosphere(initialTransition.worlds)
   scene.background=initialAtmosphere.background.clone()
   scene.fog=new THREE.Fog(
@@ -608,7 +671,6 @@ export function createIndiaJourney(
   const desiredTarget=new THREE.Vector3()
   const atmosphereColor=new THREE.Color()
   const directionalColor=new THREE.Color()
-  let progress=0
   let latestState=initialState
   let latestTransition=initialTransition
   let pointer={x:0,y:0}
@@ -621,9 +683,14 @@ export function createIndiaJourney(
   const animate=()=>{
     if(paused||lost||disposed) return
     const delta=clock.getDelta()
+    const renderedProgress=advanceJourneyFrame(progressController,delta)
     const elapsed=clock.elapsedTime
-    const state=getJourneyState(progress)
-    const transition=expedition.update(state.expedition,elapsed,reducedMotion)
+    const state=getJourneyState(renderedProgress)
+    const transition=expedition.update(
+      state.expedition,
+      elapsed,
+      rendererReducedMotion,
+    )
     const damping=getCameraDampingFactor(delta,quality)
     const transport=expedition.transports[state.expedition.activeTransport]
     const transportPosition=getTransportWorldPosition(
@@ -632,13 +699,13 @@ export function createIndiaJourney(
     ).toArray()
     const resolvedFrame=getResolvedCameraFrame({
       quality,
-      progress,
+      progress:renderedProgress,
       state,
       transportPosition,
     })
     desiredCamera.set(...resolvedFrame.camera)
     desiredTarget.set(...resolvedFrame.target)
-    if(!reducedMotion){
+    if(!rendererReducedMotion){
       desiredCamera.x+=pointer.x*.45
       desiredCamera.y-=pointer.y*.25
     }
@@ -689,9 +756,12 @@ export function createIndiaJourney(
   animate()
 
   return{
-    setProgress:value=>{progress=clamp01(value)},
+    setProgress:value=>{progressController.setTarget(value)},
     setPointer:(x,y)=>{pointer={x,y}},
-    setReducedMotion:value=>{reducedMotion=value},
+    setReducedMotion:value=>{
+      rendererReducedMotion=Boolean(value)
+      progressController.setReducedMotion(rendererReducedMotion)
+    },
     getQASnapshot:extras=>({
       ...getJourneyQASnapshot({
         state:latestState,
