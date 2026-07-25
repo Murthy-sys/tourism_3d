@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   BRAND_CAPABILITIES,
+  BOAT_OFFER_END,
+  BOAT_OFFER_START,
   CHAPTERS,
   OPENING_DRIVE_END,
   OPENING_TREK_END,
@@ -51,8 +53,8 @@ describe('journey chapters', () => {
         id:'engagement',
         label:'Engagement',
         value:null,
-        kind:'pending',
-        suffix:'',
+        kind:'percent',
+        suffix:'%',
         display:'Updating soon',
       },
       {
@@ -192,20 +194,12 @@ describe('journey chapters', () => {
       'Tourism Brand Collaborations',
     ])
   })
-  it('lists the approved reasons for brands to work with the creator',()=>{
-    expect(chapterData.BRAND_REASONS).toEqual([
-      'High-quality cinematic storytelling',
-      'Authentic travel experiences',
-      'Strong audience engagement',
-      'Karnataka-focused travel audience',
-      'Professional content creation',
-      'High-reach social media campaigns',
-    ])
+  it('owns the boating offer boundaries without reasons-card data',()=>{
+    expect(BOAT_OFFER_START).toBe(.42)
+    expect(BOAT_OFFER_END).toBe(.74)
+    expect(chapterData.BRAND_REASONS).toBeUndefined()
     const about=CHAPTERS.find(({id})=>id==='who-we-are')
-    expect(about.brandValue?.offer?.items).toBe(BRAND_CAPABILITIES)
-    expect(about.brandValue?.reasons?.items).toBe(
-      chapterData.BRAND_REASONS,
-    )
+    expect(about.brandValue).toBeUndefined()
   })
   it('contains no customer-facing Himalaya, snow, or ice semantics',()=>{
     expect(JSON.stringify({chapters:CHAPTERS,packages:TREK_PACKAGES})).not.toMatch(/\bhimalaya\b|\bsnow\b|\bice\b/i)

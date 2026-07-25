@@ -1,5 +1,7 @@
 import {
   BRAND_CAPABILITIES,
+  BOAT_OFFER_END,
+  BOAT_OFFER_START,
   SOCIAL_PERFORMANCE_START,
   TREK_PACKAGES,
 } from '../journey/chapters'
@@ -19,39 +21,27 @@ export default function ChapterContent({
         reducedMotion={reducedMotion}
       />
     }
+    if(progress>=BOAT_OFFER_START&&progress<BOAT_OFFER_END){
+      return <article
+        className="chapter chapter--operations chapter--creator-card chapter--boat-offer"
+        aria-labelledby="boat-offer-title"
+      >
+        <p className="chapter__kicker">Brand collaborations</p>
+        <h1 id="boat-offer-title">What We Offer</h1>
+        <p className="chapter__body">
+          End-to-end travel storytelling shaped for destinations and brands.
+        </p>
+        <div className="operations-proof" aria-label="What we offer">
+          {BRAND_CAPABILITIES.map(capability=>
+            <span key={capability}>{capability}</span>,
+          )}
+        </div>
+      </article>
+    }
     return null
   }
   const isOperations=chapter.layout==='operations'
-  const brandValueBeat=isOperations&&progress>=.25
-  const creatorBeat=isOperations&&progress>=.22&&!brandValueBeat
-  if(brandValueBeat)return <article
-    className="chapter chapter--operations chapter--brand-value"
-    key={`${chapter.id}-brand-value`}
-    aria-label="Brand collaboration value"
-  >
-    <section
-      className="brand-value-card brand-value-card--offer"
-      aria-labelledby={`chapter-${chapter.id}-offer`}
-    >
-      <h1 id={`chapter-${chapter.id}-offer`}>
-        {chapter.brandValue.offer.title}
-      </h1>
-      <ul aria-label="What we offer">
-        {chapter.brandValue.offer.items.map(item=><li key={item}>{item}</li>)}
-      </ul>
-    </section>
-    <section
-      className="brand-value-card brand-value-card--reasons"
-      aria-labelledby={`chapter-${chapter.id}-reasons`}
-    >
-      <h2 id={`chapter-${chapter.id}-reasons`}>
-        {chapter.brandValue.reasons.title}
-      </h2>
-      <ul aria-label="Why brands should work with us">
-        {chapter.brandValue.reasons.items.map(item=><li key={item}>{item}</li>)}
-      </ul>
-    </section>
-  </article>
+  const creatorBeat=isOperations&&progress>=.22
   const content=creatorBeat?chapter.creator:chapter
   const className=[
     'chapter',

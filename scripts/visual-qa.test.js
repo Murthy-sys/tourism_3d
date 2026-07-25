@@ -31,27 +31,20 @@ describe('visual QA fail-closed corpus',()=>{
     expect(source).toContain("hasOwnProperty.call(snapshot.transportWeights,'coach')")
   })
 
-  it('verifies the live brand overview, creator card, and paired brand cards',()=>{
+  it('verifies the live brand overview, creator card, and boating offer card',()=>{
     expect(source).toContain("title:'Destination stories. Brand impact.'")
     expect(source).toContain("title:'Karnataka, experienced deeply.'")
     expect(source).toContain("title:'What We Offer'")
-    expect(source).toContain("title:'Why Brands Should Work With Us'")
     expect(source).toContain('layout.content.creatorCard')
     expect(source).toContain('body:WHO_WE_ARE.body')
     expect(source).toContain('items:BRAND_CAPABILITIES')
-    expect(source).toContain('items:BRAND_REASONS')
     expect(source).toContain('items:WHO_WE_ARE.creator.pillars')
+    expect(source).toContain("name:'water-corridor'")
     expect(source).toContain('layout.content.body!==state.content.body')
     expect(source).toContain('JSON.stringify(layout.content.items)')
-    expect(source).toContain("chapter.querySelectorAll('.brand-value-card')")
-    expect(source).toContain('JSON.stringify(actualCards)')
-    expect(source).toContain('offer.rect.left<viewport.width*.5')
-    expect(source).toContain('reasons.rect.bottom>viewport.height*.5')
-    expect(source).toContain('offer.rect.top<reasons.rect.top')
-    expect(source).toContain('itemFontSize')
-    expect(source).toContain('card.itemFontSize<10')
+    expect(source).not.toContain('BRAND_REASONS')
+    expect(source).not.toContain('Why Brands Should Work With Us')
     expect(source).toContain('layout.controls')
-    expect(source).toContain('rectanglesOverlap(card.rect,control.rect)')
   })
 
   it('rejects clipped overlays at both approved viewports',()=>{

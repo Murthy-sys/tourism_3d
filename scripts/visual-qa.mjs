@@ -3,7 +3,6 @@ import path from 'node:path'
 import { chromium } from '@playwright/test'
 import {
   BRAND_CAPABILITIES,
-  BRAND_REASONS,
   CHAPTERS,
   SOCIAL_MEDIA_METRICS,
   SOCIAL_MEDIA_PROFILE,
@@ -95,16 +94,6 @@ const states=[
     activeBiome:'mountain',
     activeTransport:'trekker',
     nextBiome:'water',
-    content:{
-      title:'What We Offer',
-      creatorCard:false,
-      body:'',
-      items:[],
-      brandCards:[
-        {title:'What We Offer',items:BRAND_CAPABILITIES},
-        {title:'Why Brands Should Work With Us',items:BRAND_REASONS},
-      ],
-    },
   },
   {
     name:'mountain-water-handoff',
@@ -114,7 +103,19 @@ const states=[
     activeTransport:'trekker',
     handoff:{biomes:['mountain','water'],transports:['trekker','boat']},
   },
-  {name:'water-corridor',progress:.50,phase:'water-boat',activeBiome:'water',activeTransport:'boat'},
+  {
+    name:'water-corridor',
+    progress:.50,
+    phase:'water-boat',
+    activeBiome:'water',
+    activeTransport:'boat',
+    content:{
+      title:'What We Offer',
+      creatorCard:true,
+      body:'End-to-end travel storytelling shaped for destinations and brands.',
+      items:BRAND_CAPABILITIES,
+    },
+  },
   {
     name:'distant-forest-reveal',
     progress:.59,
@@ -450,26 +451,6 @@ try{
           bottom:Math.round(performanceRect.bottom),
         }:null,
       }:null
-      const brandCards=chapter
-        ?[...chapter.querySelectorAll('.brand-value-card')].map(card=>{
-          const cardRect=card.getBoundingClientRect()
-           return{
-             title:card.querySelector('h1,h2')?.textContent?.trim()||'',
-             items:[...card.querySelectorAll('li')].map(
-               item=>item.textContent?.trim()||'',
-             ),
-             itemFontSize:parseFloat(
-               getComputedStyle(card.querySelector('li')).fontSize,
-             ),
-             rect:{
-              left:Math.round(cardRect.left),
-              top:Math.round(cardRect.top),
-              right:Math.round(cardRect.right),
-              bottom:Math.round(cardRect.bottom),
-            },
-          }
-          })
-          :[]
       const packageCards=chapter
         ?[...chapter.querySelectorAll('.package-card')].map(card=>{
           const cardRect=card.getBoundingClientRect()
@@ -523,7 +504,6 @@ try{
               '.operations-proof span, .creator-pillars span',
             ),
           ].map(item=>item.textContent?.trim()||''),
-          brandCards,
           performance,
           packageCards,
         }:null,
@@ -687,52 +667,6 @@ try{
               )
             }
           }
-        }
-      }
-      if(state.content.brandCards){
-        const actualCards=layout.content.brandCards.map(({title,items})=>({
-          title,
-          items,
-        }))
-        if(
-          JSON.stringify(actualCards)!==
-          JSON.stringify(state.content.brandCards)
-        ){
-          throw new Error(`${state.name} brand card content mismatch`)
-        }
-        for(const card of layout.content.brandCards){
-          if(
-            card.rect.left<0||
-            card.rect.top<0||
-            card.rect.right>viewport.width||
-            card.rect.bottom>viewport.height
-          ){
-            throw new Error(`${requested} brand card is clipped at ${state.name}`)
-          }
-          if(requested==='mobile'&&card.itemFontSize<10){
-            throw new Error(`Mobile brand-card type is too small: ${card.itemFontSize}px`)
-          }
-          for(const control of layout.controls){
-            if(rectanglesOverlap(card.rect,control.rect)){
-              throw new Error(
-                `${state.name} brand card overlaps ${control.name}`,
-              )
-            }
-          }
-        }
-        const [offer,reasons]=layout.content.brandCards
-        if(
-          requested==='desktop'&&!(
-            offer.rect.left<viewport.width*.5&&
-            offer.rect.top<viewport.height*.5&&
-            reasons.rect.right>viewport.width*.5&&
-            reasons.rect.bottom>viewport.height*.5
-          )
-        ){
-          throw new Error('Desktop brand cards lost their diagonal composition')
-        }
-        if(requested==='mobile'&&!(offer.rect.top<reasons.rect.top)){
-          throw new Error('Mobile brand cards are not stacked in reading order')
         }
       }
     }

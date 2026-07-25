@@ -76,6 +76,8 @@ export const STORIES=[
 ]
 export const OPENING_TREK_END=.14
 export const OPENING_DRIVE_END=OPENING_TREK_END
+export const BOAT_OFFER_START=.42
+export const BOAT_OFFER_END=.74
 export const SOCIAL_PERFORMANCE_START=.88
 export const SOCIAL_MEDIA_PROFILE={
   handle:'@sanchari.kannadiga',
@@ -102,14 +104,6 @@ export const BRAND_CAPABILITIES=[
   'Cinematic Promotional Videos',
   'Tourism Brand Collaborations',
 ]
-export const BRAND_REASONS=[
-  'High-quality cinematic storytelling',
-  'Authentic travel experiences',
-  'Strong audience engagement',
-  'Karnataka-focused travel audience',
-  'Professional content creation',
-  'High-reach social media campaigns',
-]
 export const CHAPTERS=[
   {id:'home',menuLabel:'Home',title:'The trail is calling.',kicker:'WanderLux',body:'A journey across India begins here.',progressStart:0,progressEnd:OPENING_TREK_END,layout:'drive'},
   {
@@ -132,13 +126,6 @@ export const CHAPTERS=[
         'Local culture & festivals',
         'Adventure experiences',
       ],
-    },
-    brandValue:{
-      offer:{title:'What We Offer',items:BRAND_CAPABILITIES},
-      reasons:{
-        title:'Why Brands Should Work With Us',
-        items:BRAND_REASONS,
-      },
     },
     progressStart:OPENING_TREK_END,
     progressEnd:.28,

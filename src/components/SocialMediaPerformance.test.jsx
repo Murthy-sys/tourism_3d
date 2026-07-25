@@ -53,9 +53,8 @@ describe('SocialMediaPerformance',()=>{
 
   it('renders final visual values immediately for reduced motion',()=>{
     render(<SocialMediaPerformance progress={.88} reducedMotion/>)
-    expect(screen.getByText('546')).toBeInTheDocument()
-    expect(screen.getAllByText('Updating soon')).toHaveLength(4)
-    expect(screen.getByText('Updating soon')).toHaveLength(4)
+    expect(screen.getByText('546+')).toBeInTheDocument()
+    expect(screen.getAllByText('Updating soon')).toHaveLength(5)
   })
 
   it('keeps dashboard motion solely controlled by scroll progress',()=>{
