@@ -81,7 +81,7 @@ export default function ChapterContent({
             <p className="package-card__duration">{pkg.duration}</p>
             <h2>{pkg.name}</h2>
             <strong className="package-card__price">
-              {pkg.priceLabel}<small> per person</small>
+              {pkg.priceLabel}<small> / day</small>
             </strong>
             <p className="package-card__transfer">{pkg.transfer}</p>
             <ul>

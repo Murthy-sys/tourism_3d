@@ -117,6 +117,7 @@ describe('cinematic chapter content',()=>{
     expect(contactCard).not.toHaveClass('chapter--mobile-safe-bottom')
     expect(screen.getAllByRole('button',{name:/Select .* package/i}))
       .toHaveLength(5)
+    expect(screen.getAllByText('/ day')).toHaveLength(5)
     fireEvent.click(
       screen.getByRole('button',{name:'Select Netravati Peak Trek package'}),
     )

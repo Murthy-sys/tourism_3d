@@ -94,11 +94,11 @@ describe('journey chapters', () => {
     expect(TREK_PACKAGES.map(({id,name,price,priceLabel,duration})=>({
       id,name,price,priceLabel,duration,
     }))).toEqual([
-      {id:'bandaje-waterfalls',name:'Bandaje Waterfalls',price:3299,priceLabel:'₹3,299',duration:'1 Night · 1 Day'},
-      {id:'kurinjal-trek',name:'Kurinjal Trek',price:3399,priceLabel:'₹3,399',duration:'1 Night · 1 Day'},
+      {id:'bandaje-waterfalls',name:'Bandaje Waterfalls',price:3499,priceLabel:'₹3,499',duration:'1 Night · 1 Day'},
+      {id:'kurinjal-trek',name:'Kurinjal Trek',price:3499,priceLabel:'₹3,499',duration:'1 Night · 1 Day'},
       {id:'netravati-peak-trek',name:'Netravati Peak Trek',price:3499,priceLabel:'₹3,499',duration:'1 Night · 1 Day'},
-      {id:'kuduremukha-trek',name:'Kuduremukha Trek',price:3399,priceLabel:'₹3,399',duration:'1 Night · 1 Day'},
-      {id:'gangadikallu-trek',name:'Gangadikallu Trek',price:3399,priceLabel:'₹3,399',duration:'1 Night · 1 Day'},
+      {id:'kuduremukha-trek',name:'Kuduremukha Trek',price:3599,priceLabel:'₹3,599',duration:'1 Night · 1 Day'},
+      {id:'gangadikallu-trek',name:'Gangadikallu Trek',price:3499,priceLabel:'₹3,499',duration:'1 Night · 1 Day'},
     ])
     expect(new Set(TREK_PACKAGES.map(({id})=>id)).size).toBe(5)
     expect(JSON.stringify(TREK_PACKAGES)).not.toMatch(/31st|july|2026/i)

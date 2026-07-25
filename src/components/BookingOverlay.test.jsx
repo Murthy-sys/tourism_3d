@@ -5,8 +5,8 @@ import BookingOverlay, { buildWhatsAppUrl } from './BookingOverlay'
 const selectedPackage={
   id:'bandaje-waterfalls',
   name:'Bandaje Waterfalls',
-  price:3299,
-  priceLabel:'₹3,299',
+  price:3499,
+  priceLabel:'₹3,499',
   duration:'1 Night · 1 Day',
   transfer:'Bengaluru pickup & drop',
   inclusions:['Trek Guide'],
@@ -24,7 +24,7 @@ describe('BookingOverlay', () => {
     const message=decodeURIComponent(url.split('?text=')[1])
     expect(message).toContain('Contact person: Ananya Rao')
     expect(message).toContain('Travel dates: 2026-08-14 to 2026-08-15')
-    expect(message).toContain('Package: Bandaje Waterfalls — 1 Night · 1 Day — ₹3,299 per person')
+    expect(message).toContain('Package: Bandaje Waterfalls — 1 Night · 1 Day — ₹3,499 per day')
     expect(url).not.toMatch(/7358369538|7404033032/)
   })
 

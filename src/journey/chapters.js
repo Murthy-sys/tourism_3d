@@ -14,8 +14,8 @@ export const TREK_PACKAGES=[
   {
     id:'bandaje-waterfalls',
     name:'Bandaje Waterfalls',
-    price:3299,
-    priceLabel:'₹3,299',
+    price:3499,
+    priceLabel:'₹3,499',
     duration:'1 Night · 1 Day',
     transfer:'Bengaluru pickup & drop',
     inclusions:[
@@ -31,8 +31,8 @@ export const TREK_PACKAGES=[
   {
     id:'kurinjal-trek',
     name:'Kurinjal Trek',
-    price:3399,
-    priceLabel:'₹3,399',
+    price:3499,
+    priceLabel:'₹3,499',
     duration:'1 Night · 1 Day',
     transfer:'Bengaluru pickup & drop',
     inclusions:[...STANDARD_INCLUSIONS],
@@ -49,8 +49,8 @@ export const TREK_PACKAGES=[
   {
     id:'kuduremukha-trek',
     name:'Kuduremukha Trek',
-    price:3399,
-    priceLabel:'₹3,399',
+    price:3599,
+    priceLabel:'₹3,599',
     duration:'1 Night · 1 Day',
     transfer:'Bengaluru pickup & drop',
     inclusions:[
@@ -62,8 +62,8 @@ export const TREK_PACKAGES=[
   {
     id:'gangadikallu-trek',
     name:'Gangadikallu Trek',
-    price:3399,
-    priceLabel:'₹3,399',
+    price:3499,
+    priceLabel:'₹3,499',
     duration:'1 Night · 1 Day',
     transfer:'Bengaluru pickup & drop',
     inclusions:STANDARD_INCLUSIONS.filter(item=>item!=='Trek Guide'),

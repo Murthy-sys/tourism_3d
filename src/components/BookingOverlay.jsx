@@ -13,7 +13,7 @@ export const buildWhatsAppMessage=({
   `I would like to enquire about the ${selectedPackage.name} package.`,
   `Contact person: ${contactName.trim()}`,
   `Travel dates: ${startDate} to ${endDate}`,
-  `Package: ${selectedPackage.name} — ${selectedPackage.duration} — ${selectedPackage.priceLabel} per person`,
+  `Package: ${selectedPackage.name} — ${selectedPackage.duration} — ${selectedPackage.priceLabel} per day`,
   'Please confirm availability and share the booking details.',
 ].join('\n')
 
@@ -127,7 +127,7 @@ export default function BookingOverlay({
       <h2 id="booking-title">{selectedPackage.name}</h2>
       <div className="booking-overlay__package">
         <strong>{selectedPackage.priceLabel}</strong>
-        <span>{selectedPackage.duration} · Per person</span>
+        <span>{selectedPackage.duration} · Per day</span>
       </div>
     </div>
     <form onSubmit={submit} noValidate>
