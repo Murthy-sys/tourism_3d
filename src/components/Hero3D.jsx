@@ -6,6 +6,7 @@ export default function Hero3D({
   reducedMotion,
   onFallback,
   onReady,
+  sceneRef,
 }) {
   const canvasRef = useRef(null)
   const apiRef = useRef(null)
@@ -22,6 +23,7 @@ export default function Hero3D({
         onReady,
       })
       apiRef.current = sceneApi
+      if (sceneRef) sceneRef.current = sceneApi
       window.__journeyQA=()=>sceneApi.getQASnapshot({
         consoleFailures:Array.isArray(window.__journeyConsoleFailures)
           ?window.__journeyConsoleFailures
@@ -60,6 +62,7 @@ export default function Hero3D({
       delete window.__resetJourneyQA
       sceneApi.dispose()
       apiRef.current = null
+      if (sceneRef) sceneRef.current = null
     }
   }, [])
 

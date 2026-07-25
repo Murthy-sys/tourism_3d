@@ -69,6 +69,28 @@ describe('renderer quality', () => {
     expect(controller.value()).toBe(1.25)
   })
 
+  it('recovers pixel ratio toward its ceiling once frames run comfortably fast',()=>{
+    const controller=createAdaptivePixelRatioController(1.75,{
+      warmupFrames:0,
+      sampleFrames:3,
+      cooldownFrames:0,
+      slowFrameMs:22,
+      fastFrameMs:12,
+    })
+    expect([30,30,30].map(ms=>controller.observe(ms)))
+      .toEqual([null,null,1.5])
+    expect([30,30,30].map(ms=>controller.observe(ms)))
+      .toEqual([null,null,1.25])
+    expect([10,10,10].map(ms=>controller.observe(ms)))
+      .toEqual([null,null,1.5])
+    expect([10,10,10].map(ms=>controller.observe(ms)))
+      .toEqual([null,null,1.75])
+    // never climbs above the initial ceiling
+    expect([10,10,10].map(ms=>controller.observe(ms)))
+      .toEqual([null,null,null])
+    expect(controller.value()).toBe(1.75)
+  })
+
   it('keeps default adaptation windows stable in wall time across frame rates',()=>{
     const firstDowngradeAt=fps=>{
       const controller=createAdaptivePixelRatioController(1.75,{

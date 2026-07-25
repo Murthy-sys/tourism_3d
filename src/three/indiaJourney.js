@@ -32,6 +32,7 @@ export const createAdaptivePixelRatioController=(
     sampleMs=1000,
     cooldownMs=3000,
     slowFrameMs=22,
+    fastFrameMs=slowFrameMs*.6,
   }=options
   const timedWarmup=warmupFrames===undefined
   const timedSample=sampleFrames===undefined
@@ -41,6 +42,7 @@ export const createAdaptivePixelRatioController=(
     MOBILE_PIXEL_RATIOS[0],
     MOBILE_PIXEL_RATIOS.at(-1),
   )
+  const ceiling=ratio
   let warmup=Math.max(0,timedWarmup?warmupMs:warmupFrames)
   let cooldown=0
   let samples=[]
@@ -66,12 +68,22 @@ export const createAdaptivePixelRatioController=(
       const average=samples.reduce((sum,value)=>sum+value,0)/samples.length
       samples=[]
       sampledMs=0
-      if(average<=slowFrameMs||ratio<=MOBILE_PIXEL_RATIOS[0]) return null
-      ratio=MOBILE_PIXEL_RATIOS
-        .filter(candidate=>candidate<ratio)
-        .at(-1)??MOBILE_PIXEL_RATIOS[0]
-      cooldown=Math.max(0,timedCooldown?cooldownMs:cooldownFrames)
-      return ratio
+      if(average>slowFrameMs&&ratio>MOBILE_PIXEL_RATIOS[0]){
+        ratio=MOBILE_PIXEL_RATIOS
+          .filter(candidate=>candidate<ratio)
+          .at(-1)??MOBILE_PIXEL_RATIOS[0]
+        cooldown=Math.max(0,timedCooldown?cooldownMs:cooldownFrames)
+        return ratio
+      }
+      if(average<=fastFrameMs&&ratio<ceiling){
+        const nextRatio=MOBILE_PIXEL_RATIOS
+          .find(candidate=>candidate>ratio&&candidate<=ceiling)
+        if(nextRatio===undefined) return null
+        ratio=nextRatio
+        cooldown=Math.max(0,timedCooldown?cooldownMs:cooldownFrames)
+        return ratio
+      }
+      return null
     },
     value:()=>ratio,
   }
