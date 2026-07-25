@@ -134,11 +134,12 @@ describe('cinematic chapter content',()=>{
     )
     expect(screen.getByText('Where should we take you next?'))
       .toBeInTheDocument()
-    expect(
+    const contactCard=
       screen.getByRole('heading',{
         name:'Where should we take you next?',
-      }).closest('article'),
-    ).toHaveClass('chapter--mobile-safe-bottom')
+      }).closest('article')
+    expect(contactCard).not.toHaveClass('chapter--mobile-safe-top')
+    expect(contactCard).not.toHaveClass('chapter--mobile-safe-bottom')
     expect(screen.getAllByRole('button',{name:/Select .* package/i}))
       .toHaveLength(5)
     fireEvent.click(

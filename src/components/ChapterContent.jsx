@@ -13,7 +13,6 @@ export const getMobileCardPlacement=(layout,progress)=>{
     if(progress>=SOCIAL_PERFORMANCE_START) return 'bottom'
     if(progress>=BOAT_OFFER_START&&progress<BOAT_OFFER_END) return 'top'
   }
-  if(layout==='pavilion-contact') return 'bottom'
   return null
 }
 
