@@ -264,23 +264,34 @@ export const createCameraJumpTracker=()=>{
   }
 }
 
-const MOBILE_FRAMING={
-  trekker:{camera:[7,12,15],targetY:-.2},
-  boat:{camera:[2.4,1.5,5.5],targetY:.5},
-  jeep:{camera:[.4,1.7,5.7],targetY:.9},
+const TRANSPORT_FRAMING={
+  mobile:{
+    trekker:{camera:[6,12,20],targetY:-.2,lookAheadZ:-2},
+    boat:{camera:[7.5,3.5,19.8],targetY:.5,lookAheadZ:-.5},
+    jeep:{camera:[4,4,25],targetY:.9,lookAheadZ:-1.5},
+  },
+  desktop:{
+    trekker:{camera:[6,8.5,14.1],targetY:-.2,lookAheadZ:-2.5},
+    boat:{camera:[4,3.5,13],targetY:.5,lookAheadZ:-.5},
+    jeep:{camera:[3,4,13.5],targetY:.9,lookAheadZ:-2},
+  },
 }
 
-export const getMobileTransportCamera=(transport,[x,y,z])=>{
-  const framing=MOBILE_FRAMING[transport]||MOBILE_FRAMING.trekker
+export const getTransportCamera=(quality,transport,[x,y,z])=>{
+  const framing=(TRANSPORT_FRAMING[quality]||TRANSPORT_FRAMING.desktop)[transport]||
+    (TRANSPORT_FRAMING[quality]||TRANSPORT_FRAMING.desktop).trekker
   return{
     camera:[
       rounded(x+framing.camera[0]),
       rounded(y+framing.camera[1]),
       rounded(z+framing.camera[2]),
     ],
-    target:[x,rounded(y+framing.targetY),z],
+    target:[rounded(x),rounded(y+framing.targetY),rounded(z+framing.lookAheadZ)],
   }
 }
+
+export const getMobileTransportCamera=(transport,position)=>
+  getTransportCamera('mobile',transport,position)
 
 const MOBILE_OPENING_FRAME=Object.freeze({
   camera:Object.freeze([3.5,5.1,67]),
@@ -302,21 +313,21 @@ export const getResolvedCameraFrame=({
   state,
   transportPosition,
 })=>{
-  const desktop={
+  const cinematicFrame={
     camera:[...state.cameraPosition],
     target:[...state.cameraTarget],
   }
-  if(quality!=='mobile') return desktop
-  const transport=getMobileTransportCamera(
+  const transportFrame=getTransportCamera(
+    quality,
     state.expedition.activeTransport,
     transportPosition,
   )
   if(state.expedition.activeTransport!=='trekker'||progress>=.12){
-    return transport
+    return transportFrame
   }
   return lerpFrame(
-    MOBILE_OPENING_FRAME,
-    transport,
+    quality==='mobile'?MOBILE_OPENING_FRAME:cinematicFrame,
+    transportFrame,
     smootherstep(.045,.12,progress),
   )
 }

@@ -5,7 +5,11 @@ import { createMaterials,disposeObject3D } from './primitives'
 import { LANDMARKS } from './terrain'
 import { createWaterWorld } from './waterWorld'
 import { getJourneyState } from './journeyData'
-import { getMobileTransportCamera } from './indiaJourney'
+import {
+  getMobileTransportCamera,
+  getResolvedCameraFrame,
+  getTransportCamera,
+} from './indiaJourney'
 
 const objectsNamed=(world,names)=>{
   const objects=[]
@@ -167,12 +171,21 @@ describe('jungle world',()=>{
     disposeObject3D(world)
   })
 
-  it('keeps full tree crowns outside the protected camera-to-jeep sight corridor',()=>{
-    const world=createJungleWorld(createMaterials(),'desktop')
+  it.each(['mobile','desktop'])(
+    'keeps full tree crowns outside the runtime %s camera-to-jeep sight corridor',
+    quality=>{
+    const world=createJungleWorld(createMaterials(),quality)
     world.updateMatrixWorld(true)
     const state=getJourneyState(.84)
-    const camera=new THREE.Vector3(...state.cameraPosition)
     const jeep=world.userData.route.getPointAt(.5)
+    const frame=getResolvedCameraFrame({
+      quality,
+      progress:.84,
+      state,
+      transportPosition:jeep.toArray(),
+    })
+    expect(frame).toEqual(getTransportCamera(quality,'jeep',jeep.toArray()))
+    const camera=new THREE.Vector3(...frame.camera)
     const clearances=[]
     const cameraClearances=[]
     world.traverse(object=>{

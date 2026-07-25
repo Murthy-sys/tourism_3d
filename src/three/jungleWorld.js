@@ -1,7 +1,6 @@
 import * as THREE from 'three'
 import { mesh } from './primitives'
 import { LANDMARKS } from './terrain'
-import { getJourneyState } from './journeyData'
 
 const ROUTE_CLEARANCE=1.4
 const nameGroup=name=>{const group=new THREE.Group();group.name=name;return group}
@@ -308,22 +307,16 @@ export function createJungleWorld(m,quality='desktop'){
     new THREE.Vector3(...LANDMARKS.forestEnd),
   ]
   const route=new THREE.CatmullRomCurve3(routePoints)
-  const forestState=getJourneyState(.84)
   const jeepSightlineEnd=route.getPointAt(.5)
   const sightlines=[
-    {
-      start:new THREE.Vector3(...forestState.cameraPosition),
+    [4,4,25],
+    [3,4,13.5],
+  ].map(cameraOffset=>({
+      start:jeepSightlineEnd.clone().add(new THREE.Vector3(...cameraOffset)),
       end:jeepSightlineEnd,
       clearance:1.1,
       cameraClearance:8.2,
-    },
-    {
-      start:jeepSightlineEnd.clone().add(new THREE.Vector3(.4,1.7,5.7)),
-      end:jeepSightlineEnd,
-      clearance:1.1,
-      cameraClearance:8.2,
-    },
-  ]
+    }))
   const track=nameGroup('forest-track')
   const trackSurface=mesh(createTrackGeometry(route),new THREE.MeshStandardMaterial({color:'#4a3524',roughness:1}))
   trackSurface.name='jeep-track-surface'
