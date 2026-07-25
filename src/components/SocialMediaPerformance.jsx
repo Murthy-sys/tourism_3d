@@ -23,6 +23,7 @@ export const formatSocialMetric=(metric,weight=1)=>{
   if(metric.value===null) return metric.display
   const value=metric.value*clamp(weight)
   if(metric.kind==='percent') return `${value.toFixed(1)}${metric.suffix}`
+  if(metric.value<1000) return `${Math.floor(value)}${metric.suffix}`
   return `${Math.floor(value/1000)}K${metric.suffix}`
 }
 

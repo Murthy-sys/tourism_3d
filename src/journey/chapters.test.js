@@ -18,18 +18,18 @@ describe('journey chapters', () => {
     expect(SOCIAL_PERFORMANCE_START).toBe(.88)
     expect(SOCIAL_MEDIA_PROFILE).toEqual({
       handle:'@sanchari.kannadiga',
-      url:'https://www.instagram.com/sanchari.kannadiga/',
+      url:'https://www.instagram.com/_sanchari_kannadiga_?igsh=bWM0NGNja3E3dzZx',
       sourceLabel:'Public estimates · July 2026',
-      sourceUrl:'https://getreelax.com/instagram/sanchari.kannadiga/',
+      sourceUrl:'https://www.instagram.com/_sanchari_kannadiga_?igsh=bWM0NGNja3E3dzZx',
     })
     expect(SOCIAL_MEDIA_METRICS).toEqual([
       {
         id:'followers',
         label:'Followers',
-        value:156200,
+        value:546,
         kind:'compact',
         suffix:'+',
-        display:'156K+',
+        display:'546+',
       },
       {
         id:'total-reach',
@@ -50,10 +50,10 @@ describe('journey chapters', () => {
       {
         id:'engagement',
         label:'Engagement',
-        value:46.7,
-        kind:'percent',
-        suffix:'%',
-        display:'46.7%',
+        value:null,
+        kind:'pending',
+        suffix:'',
+        display:'Updating soon',
       },
       {
         id:'viral-reels',
