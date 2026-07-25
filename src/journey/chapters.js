@@ -132,7 +132,8 @@ export const CHAPTERS=[
     layout:'operations',
   },
   {id:'plans',menuLabel:'Plans',title:'Three expedition chapters.',kicker:'Curated journeys',body:'Choose a direction. We will shape every detail around you.',progressStart:.28,progressEnd:.94,layout:'monument-plans'},
-  {id:'contact',menuLabel:'Contact',title:'Where should we take you next?',kicker:'Begin a journey',body:'Tell us what you imagine. We will make the route real.',progressStart:.94,progressEnd:1,layout:'pavilion-contact'},
+  {id:'packages',menuLabel:'Packages',title:'Where should we take you next?',kicker:'Begin a journey',body:'Tell us what you imagine. We will make the route real.',progressStart:.94,progressEnd:.975,layout:'pavilion-contact'},
+  {id:'contact',menuLabel:'Contact',title:'Sanchari Kannadiga',kicker:'Contact',body:'',progressStart:.975,progressEnd:1,layout:'contact-card'},
 ]
 export const getChapterAtProgress=(progress)=>{const p=Math.min(1,Math.max(0,progress));return CHAPTERS.find(c=>p>=c.progressStart&&p<(c.progressEnd))||CHAPTERS.at(-1)}
 export const getProgressForChapter=(id)=>CHAPTERS.find(c=>c.id===id)?.progressStart??0

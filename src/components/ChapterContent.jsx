@@ -6,6 +6,7 @@ import {
   TREK_PACKAGES,
 } from '../journey/chapters'
 import SocialMediaPerformance from './SocialMediaPerformance'
+import ContactCard from './ContactCard'
 
 export const getMobileCardPlacement=(layout,progress)=>{
   if(layout==='operations') return 'top'
@@ -27,6 +28,7 @@ export default function ChapterContent({
   const mobilePlacementClass=mobilePlacement
     ?`chapter--mobile-safe-${mobilePlacement}`
     :''
+  if(chapter.layout==='contact-card') return <ContactCard/>
   if(chapter.layout==='operations'){
     return <article
       className={`chapter chapter--operations chapter--glass-card ${mobilePlacementClass}`}

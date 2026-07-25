@@ -7,9 +7,14 @@ describe('JourneyMenu', () => {
     const onSelect = vi.fn()
     render(<JourneyMenu open onClose={()=>{}} onSelect={onSelect} onBook={()=>{}} />)
     expect(screen.getByRole('button',{name:'Who We Are'})).toBeInTheDocument()
+    expect(screen.getByRole('button',{name:'Packages'})).toBeInTheDocument()
     expect(screen.getByRole('button',{name:'Contact'})).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button',{name:'Plans'}))
     expect(onSelect).toHaveBeenCalledWith('plans')
+    fireEvent.click(screen.getByRole('button',{name:'Packages'}))
+    expect(onSelect).toHaveBeenCalledWith('packages')
+    fireEvent.click(screen.getByRole('button',{name:'Contact'}))
+    expect(onSelect).toHaveBeenCalledWith('contact')
   })
 
   it('retains Plans and routes Plan a Trip through its callback',()=>{

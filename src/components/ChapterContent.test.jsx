@@ -98,11 +98,11 @@ describe('cinematic chapter content',()=>{
       .not.toBeInTheDocument()
   })
 
-  it('renders all five packages under Contact and selects the exact package',()=>{
+  it('renders all five packages under Packages and selects the exact package',()=>{
     const onPlan=vi.fn()
     render(
       <ChapterContent
-        chapter={CHAPTERS.find(({id})=>id==='contact')}
+        chapter={CHAPTERS.find(({id})=>id==='packages')}
         progress={.97}
         onPlan={onPlan}
       />,
@@ -129,9 +129,9 @@ describe('cinematic chapter content',()=>{
     )
   })
 
-  it('keeps social performance below Contact at the existing final boundary',()=>{
+  it('places Packages after social performance and Contact last',()=>{
     expect(getChapterAtProgress(.939999).id).toBe('plans')
-    expect(getChapterAtProgress(.94).id).toBe('contact')
+    expect(getChapterAtProgress(.94).id).toBe('packages')
     const {rerender}=render(
       <ChapterContent
         chapter={getChapterAtProgress(.939999)}
@@ -143,6 +143,17 @@ describe('cinematic chapter content',()=>{
     rerender(<ChapterContent chapter={getChapterAtProgress(.94)} progress={.94}/>)
     expect(screen.getByText('Where should we take you next?')).toBeInTheDocument()
     expect(screen.queryByLabelText('Social media performance'))
+      .not.toBeInTheDocument()
+    rerender(
+      <ChapterContent
+        chapter={getChapterAtProgress(.975)}
+        progress={.975}
+      />,
+    )
+    expect(screen.getByRole('article',{
+      name:'Contact Sanchari Kannadiga',
+    })).toBeInTheDocument()
+    expect(screen.queryByText('Where should we take you next?'))
       .not.toBeInTheDocument()
   })
 })

@@ -76,7 +76,19 @@ describe('journey chapters', () => {
     ])
   })
   it('contains the complete approved experience in order', () => {
-    expect(CHAPTERS.map((chapter) => chapter.id)).toEqual(['home','who-we-are','plans','contact'])
+    expect(CHAPTERS.map((chapter) => chapter.id)).toEqual([
+      'home',
+      'who-we-are',
+      'plans',
+      'packages',
+      'contact',
+    ])
+    expect(CHAPTERS.find(({id})=>id==='packages').title)
+      .toBe('Where should we take you next?')
+    expect(CHAPTERS.at(-1)).toEqual(expect.objectContaining({
+      id:'contact',
+      layout:'contact-card',
+    }))
   })
   it('owns the five deduplicated poster packages without poster dates',()=>{
     expect(TREK_PACKAGES.map(({id,name,price,priceLabel,duration})=>({
@@ -153,7 +165,8 @@ describe('journey chapters', () => {
       ['home',0,.14],
       ['who-we-are',.14,.28],
       ['plans',.28,.94],
-      ['contact',.94,1],
+      ['packages',.94,.975],
+      ['contact',.975,1],
     ])
   })
   it('positions Sanchari Kannadiga as a nationwide brand-collaboration partner', () => {

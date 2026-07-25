@@ -74,7 +74,7 @@ describe('JourneyShell',()=>{
       act(()=>frame(timestamp))
     })
     const traversed=renderProgress.mock.calls.slice(callsBeforeSelection).map(([value])=>value)
-    expect(traversed.at(-1)).toBeCloseTo(.97,6)
+    expect(traversed.at(-1)).toBeCloseTo(.9875,6)
     expect(traversed.some(value=>value>.28&&value<.42)).toBe(true)
     expect(traversed.some(value=>value>.60&&value<.74)).toBe(true)
     expect(traversed.every((value,index)=>index===0||value>=traversed[index-1])).toBe(true)
@@ -118,7 +118,7 @@ describe('JourneyShell',()=>{
     expect(trigger).toHaveFocus()
   })
 
-  it('routes Plan a Trip to Contact without opening an empty booking overlay',()=>{
+  it('routes Plan a Trip to Packages without opening an empty booking overlay',()=>{
     const frames=[]
     vi.stubGlobal('requestAnimationFrame',vi.fn(callback=>{
       frames.push(callback)
@@ -138,7 +138,7 @@ describe('JourneyShell',()=>{
 
     const traversed=renderProgress.mock.calls.slice(callsBeforeSelection)
       .map(([value])=>value)
-    expect(traversed.at(-1)).toBeCloseTo(.97,6)
+    expect(traversed.at(-1)).toBeCloseTo(.9575,6)
     expect(renderBooking.mock.calls.at(-1)[0]).toEqual(
       expect.objectContaining({
         open:false,
