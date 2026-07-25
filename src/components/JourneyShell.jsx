@@ -10,7 +10,7 @@ const smootherstep=value=>{
   return t*t*t*(t*(t*6-15)+10)
 }
 
-export default function JourneyShell(){
+export default function JourneyShell({onReady}){
   const track=useRef(null)
   const progressRef=useRef(0)
   const navigation=useRef({active:false,frame:null})
@@ -80,7 +80,7 @@ export default function JourneyShell(){
     setSelectedPackage(selected)
     setBooking(true)
   }
-  return <main className="experience"><section className="experience__track" ref={track}><div className="experience__stage"><div className="experience__sky"/><Hero3D progress={progress} reducedMotion={reducedMotion} onFallback={()=>setFallback(true)}/><div className="experience__grade"/>
+  return <main className="experience"><section className="experience__track" ref={track}><div className="experience__stage"><div className="experience__sky"/><Hero3D progress={progress} reducedMotion={reducedMotion} onFallback={()=>setFallback(true)} onReady={onReady}/><div className="experience__grade"/>
     <ChapterContent chapter={chapter} progress={progress} reducedMotion={reducedMotion} onPlan={book}/><div className="chapter-counter">{String(CHAPTERS.indexOf(chapter)+1).padStart(2,'0')} / {String(CHAPTERS.length).padStart(2,'0')}</div><div className="scroll-signal">SCROLL TO TRAVEL<i/></div>
     {fallback&&<div className="journey-fallback" role="status">Cinematic fallback active.</div>}</div></section>
     <div className="edge-controls"><JourneyMenu open={menuOpen} onOpen={()=>setMenuOpen(true)} onClose={()=>setMenuOpen(false)} onSelect={goTo} onBook={()=>goTo('contact')}/></div>

@@ -1,7 +1,12 @@
 import { useEffect, useRef } from 'react'
 import { createIndiaJourney } from '../three/indiaJourney'
 
-export default function Hero3D({progress,reducedMotion,onFallback}) {
+export default function Hero3D({
+  progress,
+  reducedMotion,
+  onFallback,
+  onReady,
+}) {
   const canvasRef = useRef(null)
   const apiRef = useRef(null)
 
@@ -11,7 +16,11 @@ export default function Hero3D({progress,reducedMotion,onFallback}) {
 
     let sceneApi
     try {
-      sceneApi = createIndiaJourney(canvas,{reducedMotion,onContextLost:onFallback})
+      sceneApi = createIndiaJourney(canvas,{
+        reducedMotion,
+        onContextLost:onFallback,
+        onReady,
+      })
       apiRef.current = sceneApi
       window.__journeyQA=()=>sceneApi.getQASnapshot({
         consoleFailures:Array.isArray(window.__journeyConsoleFailures)
@@ -34,6 +43,7 @@ export default function Hero3D({progress,reducedMotion,onFallback}) {
       // WebGL unavailable — fail silently, CSS hero background still works
       console.warn('India 3D journey failed to initialize:', err)
       onFallback?.()
+      onReady?.()
       return
     }
 

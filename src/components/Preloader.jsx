@@ -1,24 +1,26 @@
 import { useEffect, useState } from 'react'
 
-export default function Preloader({ onDone }) {
+export default function Preloader({ready=false,onDone}) {
   const [count, setCount] = useState(0)
   const [leaving, setLeaving] = useState(false)
 
   useEffect(() => {
     const interval = setInterval(() => {
-      setCount((c) => {
-        const next = c + Math.ceil(Math.random() * 9) + 3
-        if (next >= 100) {
-          clearInterval(interval)
-          setTimeout(() => setLeaving(true), 300)
-          setTimeout(() => onDone(), 1000)
-          return 100
-        }
-        return next
-      })
+      setCount(c=>c>=95?c:c+Math.max(1,Math.ceil((95-c)*.08)))
     }, 90)
     return () => clearInterval(interval)
-  }, [onDone])
+  }, [])
+
+  useEffect(()=>{
+    if(!ready) return
+    setCount(100)
+    const leaveTimer=setTimeout(()=>setLeaving(true),200)
+    const doneTimer=setTimeout(()=>onDone(),750)
+    return ()=>{
+      clearTimeout(leaveTimer)
+      clearTimeout(doneTimer)
+    }
+  },[ready,onDone])
 
   return (
     <div className={`preloader ${leaving ? 'preloader--leaving' : ''}`}>

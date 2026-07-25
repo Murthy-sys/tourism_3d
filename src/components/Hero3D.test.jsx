@@ -46,4 +46,35 @@ describe('Hero3D visual QA interface',()=>{
     expect(window.__journeyQA).toBeUndefined()
     expect(window.__resetJourneyQA).toBeUndefined()
   })
+
+  it('forwards first-frame readiness to the journey renderer',()=>{
+    const onReady=vi.fn()
+    render(
+      <Hero3D
+        progress={0}
+        reducedMotion={false}
+        onFallback={vi.fn()}
+        onReady={onReady}
+      />,
+    )
+    const options=createIndiaJourney.mock.calls[0][1]
+    options.onReady()
+    expect(onReady).toHaveBeenCalledOnce()
+  })
+
+  it('reports readiness when WebGL initialization falls back',()=>{
+    createIndiaJourney.mockImplementationOnce(()=>{throw new Error('WebGL')})
+    const onFallback=vi.fn()
+    const onReady=vi.fn()
+    render(
+      <Hero3D
+        progress={0}
+        reducedMotion={false}
+        onFallback={onFallback}
+        onReady={onReady}
+      />,
+    )
+    expect(onFallback).toHaveBeenCalledOnce()
+    expect(onReady).toHaveBeenCalledOnce()
+  })
 })

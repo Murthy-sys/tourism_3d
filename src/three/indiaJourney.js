@@ -428,7 +428,10 @@ const getProjectedVisualDebug=(scene,camera,cameraTarget,desiredCamera,desiredTa
   }
 }
 
-export function createIndiaJourney(canvas,{reducedMotion=false,onContextLost=()=>{}}={}){
+export function createIndiaJourney(
+  canvas,
+  {reducedMotion=false,onContextLost=()=>{},onReady=()=>{}}={},
+){
   const quality=getRenderQuality(window.innerWidth)
   const scene=new THREE.Scene()
   const camera=new THREE.PerspectiveCamera(quality==='mobile'?60:48,1,.1,420)
@@ -505,6 +508,7 @@ export function createIndiaJourney(canvas,{reducedMotion=false,onContextLost=()=
   let paused=false
   let lost=false
   let disposed=false
+  let ready=false
 
   const animate=()=>{
     if(paused||lost||disposed) return
@@ -559,6 +563,10 @@ export function createIndiaJourney(canvas,{reducedMotion=false,onContextLost=()=
     sun.color.lerp(directionalColor,damping)
 
     renderer.render(scene,camera)
+    if(!ready){
+      ready=true
+      onReady()
+    }
     frame=requestAnimationFrame(animate)
   }
 

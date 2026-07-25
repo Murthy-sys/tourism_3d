@@ -7,17 +7,23 @@ import JourneyShell from './components/JourneyShell'
 // phase: 'loading' -> 'gate' -> 'site'
 export default function App() {
   const [phase, setPhase] = useState('loading')
+  const [journeyReady,setJourneyReady]=useState(false)
 
   return (
     <>
-      {phase === 'loading' && <Preloader onDone={() => setPhase('gate')} />}
+      <JourneyShell onReady={()=>setJourneyReady(true)}/>
+      {phase === 'loading' && (
+        <Preloader
+          ready={journeyReady}
+          onDone={()=>setPhase('gate')}
+        />
+      )}
       {phase === 'gate' && (
         <IntroGate
           onEnter={() => setPhase('site')}
         />
       )}
       <CustomCursor />
-      {phase === 'site' && <JourneyShell />}
     </>
   )
 }

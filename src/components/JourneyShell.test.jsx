@@ -5,9 +5,9 @@ import JourneyShell from './JourneyShell'
 const renderProgress=vi.hoisted(()=>vi.fn())
 const renderChapter=vi.hoisted(()=>vi.fn())
 const renderBooking=vi.hoisted(()=>vi.fn())
-vi.mock('./Hero3D',()=>({default:({progress})=>{
+vi.mock('./Hero3D',()=>({default:({progress,onReady})=>{
   renderProgress(progress)
-  return <canvas className="journey__canvas"/>
+  return <button type="button" onClick={onReady}>Ready journey</button>
 }}))
 vi.mock('./ChapterContent',()=>({default:props=>{
   renderChapter(props)
@@ -43,6 +43,13 @@ describe('JourneyShell',()=>{
     expect(screen.queryByRole('heading')).not.toBeInTheDocument()
     expect(container.querySelector('#services')).not.toBeInTheDocument()
     expect(container.querySelector('footer')).not.toBeInTheDocument()
+  })
+
+  it('forwards the rendered-journey readiness signal',()=>{
+    const onReady=vi.fn()
+    render(<JourneyShell onReady={onReady}/>)
+    fireEvent.click(screen.getByRole('button',{name:'Ready journey'}))
+    expect(onReady).toHaveBeenCalledOnce()
   })
 
   it('tweens menu navigation through monotonic intermediate progress',()=>{
