@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { describe,expect,it } from 'vitest'
 
 const source=readFileSync('scripts/visual-qa.mjs','utf8')
+const styles=readFileSync('src/index.css','utf8')
 
 describe('visual QA fail-closed corpus',()=>{
   it('captures every approved trailhead beat before the retained journey states',()=>{
@@ -49,6 +50,16 @@ describe('visual QA fail-closed corpus',()=>{
 
   it('rejects clipped overlays at both approved viewports',()=>{
     expect(source).toContain('if(layout.overlay?.clipped)')
+  })
+
+  it('keeps cards transparent without clearing screen-level backdrops',()=>{
+    expect(styles).toMatch(
+      /\.chapter--glass-card[^}]*background:transparent/,
+    )
+    expect(styles).toMatch(/\.package-card[^}]*background:transparent/)
+    expect(styles).toMatch(/\.chapter--social-performance[^}]*background:transparent/)
+    expect(styles).toMatch(/\.booking-overlay[^}]*background:rgba/)
+    expect(styles).toMatch(/\.journey-menu[^}]*background:rgba/)
   })
 
   it('clears stale output and validates evidence before writing screenshots',()=>{

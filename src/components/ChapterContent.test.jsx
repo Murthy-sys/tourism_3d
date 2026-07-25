@@ -18,6 +18,7 @@ describe('cinematic chapter content',()=>{
   it('renders only the approved Who We Are promotion services in order',()=>{
     const chapter=CHAPTERS.find(({id})=>id==='who-we-are')
     render(<ChapterContent chapter={chapter} progress={.19}/>)
+    expect(screen.getByRole('article')).toHaveClass('chapter--glass-card')
     const proof=screen.getByLabelText('What we do')
     expect([...proof.children].map(item=>item.textContent)).toEqual([
       'Destination Promotions',
@@ -41,7 +42,10 @@ describe('cinematic chapter content',()=>{
     expect(screen.getByText(/premium travel content across Karnataka/i))
       .toBeInTheDocument()
     expect(screen.getByLabelText('Creator coverage').children).toHaveLength(8)
-    expect(screen.getByRole('article')).toHaveClass('chapter--creator-card')
+    expect(screen.getByRole('article')).toHaveClass(
+      'chapter--creator-card',
+      'chapter--glass-card',
+    )
     expect(screen.queryByLabelText('Brand collaboration value'))
       .not.toBeInTheDocument()
   })

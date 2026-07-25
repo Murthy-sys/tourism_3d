@@ -23,7 +23,7 @@ export default function ChapterContent({
     }
     if(progress>=BOAT_OFFER_START&&progress<BOAT_OFFER_END){
       return <article
-        className="chapter chapter--operations chapter--creator-card chapter--boat-offer"
+        className="chapter chapter--operations chapter--creator-card chapter--glass-card chapter--boat-offer"
         aria-labelledby="boat-offer-title"
       >
         <p className="chapter__kicker">Brand collaborations</p>
@@ -46,6 +46,7 @@ export default function ChapterContent({
   const className=[
     'chapter',
     `chapter--${chapter.layout}`,
+    isOperations?'chapter--glass-card':'',
     creatorBeat?'chapter--creator-card':'',
   ].filter(Boolean).join(' ')
   return <article className={className} key={`${chapter.id}-${creatorBeat?'creator':'overview'}`} aria-labelledby={`chapter-${chapter.id}`}>
