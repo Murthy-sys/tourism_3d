@@ -1,0 +1,38 @@
+traveller.glb
+
+Source: Relaxed Walk - Sam, 3D Person (Animated), by Innerscene.
+https://www.innerscene.com/tools/library/3d-parts/relaxed-walk-sam-3d-person-animated-732f1206
+Downloaded 2026-10-24. The publisher identifies the body, rig and skin as
+MakeHuman / MPFB assets and licenses the complete model under CC0 1.0.
+https://www.innerscene.com/tools/library/terms
+https://creativecommons.org/publicdomain/zero/1.0/
+
+CC0 permits copying, modification and commercial redistribution without
+attribution. No warranties are provided. Copyright and related rights have
+been waived to the extent permitted by law.
+
+Local modifications: resized/compressed embedded textures, runtime clothing
+variants, pose retargeting and hiking equipment. Rebuild the optimized GLB
+with scripts/prepare-traveller.mjs and the original downloaded GLB.
+
+
+utility-jeep.glb
+
+tour-bus.glb / tour-bus-mobile.glb
+
+Sources: Generic 1940s 4x4 Utility Car and 12 m Low-Floor City Bus,
+original models published by Innerscene under CC0 1.0.
+https://www.innerscene.com/tools/library/3d-parts/generic-1940s-4x4-utility-car-5d09c7cb
+https://www.innerscene.com/tools/library/3d-parts/12-m-low-floor-city-bus-8e3c7229
+https://www.innerscene.com/tools/library/terms
+https://creativecommons.org/publicdomain/zero/1.0/
+Downloaded 2026-10-24. CC0 permits copying, modification and commercial
+redistribution without attribution. No warranties are provided.
+
+Local modifications: merged geometry by material, separated wheel and door
+pivots, resized embedded textures to at most 512px, removed inappropriate
+fabric maps from paint and glass, neutral tour livery, removed source route
+lettering and small hidden components, normalized vehicle dimensions and
+forward axes, quantized vertices using KHR_mesh_quantization. The mobile bus
+omits selected small interior components. No external decoder is required.
+Rebuild with scripts/prepare-vehicles.mjs and the original downloaded GLBs.

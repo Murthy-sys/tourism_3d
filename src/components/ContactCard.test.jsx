@@ -1,42 +1,53 @@
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
-import ContactCard, {
-  CONTACT_MESSAGE,
-  buildContactWhatsAppUrl,
-} from './ContactCard'
-import { SOCIAL_MEDIA_PROFILE } from '../journey/chapters'
+import ContactCard from './ContactCard'
+import {
+  FINALE_CONTACT_START,
+  FINALE_QUOTE,
+  FINALE_QUOTE_START,
+  SOCIAL_MEDIA_PROFILE,
+} from '../journey/chapters'
+import { DEMO_CONTACT } from '../data'
 
 describe('ContactCard',()=>{
-  it('builds separate exact-number WhatsApp destinations',()=>{
-    expect(buildContactWhatsAppUrl('7204033032')).toBe(
-      `https://wa.me/917204033032?text=${encodeURIComponent(CONTACT_MESSAGE)}`,
-    )
-    expect(buildContactWhatsAppUrl('7358369538')).toBe(
-      `https://wa.me/917358369538?text=${encodeURIComponent(CONTACT_MESSAGE)}`,
-    )
+  it('shows clearly marked dummy contacts without live phone or social destinations',()=>{
+    render(<ContactCard/>)
+    const card=screen.getByRole('region',{name:'Contact XYZ Travellers'})
+    expect(card).toContainElement(screen.getByRole('heading',{name:'XYZ Travellers'}))
+    expect(card).toContainElement(screen.getByText(DEMO_CONTACT.phone))
+    expect(card).toContainElement(screen.getByText(DEMO_CONTACT.email))
+    expect(card).toContainElement(screen.getByText(SOCIAL_MEDIA_PROFILE.handle))
+    expect(screen.getByText('Demo contact details. Enquiries are not sent.')).toBeInTheDocument()
+    expect(screen.queryByRole('link')).not.toBeInTheDocument()
   })
 
-  it('keeps every contact action together in one card',()=>{
-    render(<ContactCard/>)
-    const card=screen.getByRole('article',{name:'Contact Sanchari Kannadiga'})
-    expect(card).toContainElement(
-      screen.getByRole('heading',{name:'Sanchari Kannadiga'}),
-    )
+  it('leaves the walk clear, reveals the quote, then brings in contact details beneath it',()=>{
+    const view=render(<ContactCard progress={.94}/>)
+    expect(view.container).toBeEmptyDOMElement()
 
-    for(const number of ['7204033032','7358369538']){
-      const link=screen.getByRole('link',{name:`WhatsApp ${number}`})
-      expect(card).toContainElement(link)
-      expect(link).toHaveAttribute('href',buildContactWhatsAppUrl(number))
-      expect(link).toHaveAttribute('target','_blank')
-      expect(link).toHaveAttribute('rel','noreferrer')
-    }
+    view.rerender(<ContactCard progress={.965}/>)
+    const quote=screen.getByRole('heading',{name:FINALE_QUOTE})
+    expect(Number(quote.style.opacity)).toBeCloseTo(.5,5)
+    expect(screen.queryByRole('region',{name:'Contact XYZ Travellers'})).not.toBeInTheDocument()
+    expect(screen.getByRole('article')).not.toHaveClass('chapter--glass-card')
 
-    const instagram=screen.getByRole('link',{
-      name:'Instagram @sanchari.kannadiga',
-    })
-    expect(card).toContainElement(instagram)
-    expect(instagram).toHaveAttribute('href',SOCIAL_MEDIA_PROFILE.url)
-    expect(instagram).toHaveAttribute('target','_blank')
-    expect(instagram).toHaveAttribute('rel','noreferrer')
+    view.rerender(<ContactCard progress={.9875}/>)
+    expect(screen.getByRole('heading',{name:FINALE_QUOTE})).toHaveStyle({opacity:'1'})
+    expect(Number(screen.getByRole('region',{name:'Contact XYZ Travellers'}).style.opacity)).toBeCloseTo(.5,5)
+
+    view.rerender(<ContactCard progress={1}/>)
+    expect(screen.getByRole('region',{name:'Contact XYZ Travellers'})).toHaveStyle({opacity:'1'})
+    view.rerender(<ContactCard progress={.95}/>)
+    expect(view.container).toBeEmptyDOMElement()
+  })
+
+  it('shows semantic stages immediately for reduced motion without exposing future contacts',()=>{
+    const view=render(<ContactCard progress={FINALE_QUOTE_START-.001} reducedMotion/>)
+    expect(view.container).toBeEmptyDOMElement()
+    view.rerender(<ContactCard progress={FINALE_QUOTE_START} reducedMotion/>)
+    expect(screen.getByRole('heading',{name:FINALE_QUOTE})).toHaveStyle({opacity:'1'})
+    expect(screen.queryByRole('region',{name:'Contact XYZ Travellers'})).not.toBeInTheDocument()
+    view.rerender(<ContactCard progress={FINALE_CONTACT_START} reducedMotion/>)
+    expect(screen.getByRole('region',{name:'Contact XYZ Travellers'})).toHaveStyle({opacity:'1'})
   })
 })

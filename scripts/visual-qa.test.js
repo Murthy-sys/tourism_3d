@@ -96,7 +96,7 @@ describe('visual QA fail-closed corpus',()=>{
 
   it('verifies the social performance dashboard before Contact',()=>{
     expect(source).toContain("name:'social-performance'")
-    expect(source).toContain('progress:.91')
+    expect(source).toContain('progress:.835')
     expect(source).toContain('labels:SOCIAL_MEDIA_METRICS.map')
     expect(source).toContain('values:SOCIAL_MEDIA_METRICS.map')
     expect(source).toContain('accessibleValues:SOCIAL_MEDIA_METRICS.map')
@@ -135,9 +135,9 @@ describe('visual QA fail-closed corpus',()=>{
 
   it('verifies the responsive Contact package catalog',()=>{
     expect(source).toContain("name:'contact-packages'")
-    expect(source).toContain('progress:.97')
+    expect(source).toContain('progress:.87')
     expect(source).toContain(
-      "name:'contact-packages',\n    progress:.97,\n    phase:'contact'",
+      "name:'contact-packages',\n    progress:.87,\n    phase:'forest-jeep'",
     )
     expect(source).toContain('packages:TREK_PACKAGES.map')
     expect(source).toContain("chapter.querySelectorAll('.package-card')")

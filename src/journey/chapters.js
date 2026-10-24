@@ -78,15 +78,21 @@ export const OPENING_TREK_END=.14
 export const OPENING_DRIVE_END=OPENING_TREK_END
 export const BOAT_OFFER_START=.42
 export const BOAT_OFFER_END=.74
-export const SOCIAL_PERFORMANCE_START=.88
+export const SOCIAL_PERFORMANCE_START=.80
+export const SOCIAL_PERFORMANCE_SETTLED=.83
+export const FINALE_QUOTE_START=.955
+export const FINALE_QUOTE_SETTLED=.975
+export const FINALE_CONTACT_START=.98
+export const FINALE_CONTACT_SETTLED=.995
+export const FINALE_QUOTE='Some journeys end. This feeling stays.'
 export const SOCIAL_MEDIA_PROFILE={
-  handle:'@sanchari.kannadiga',
-  url:'https://www.instagram.com/_sanchari_kannadiga_?igsh=bWM0NGNja3E3dzZx',
-  sourceLabel:'Public estimates · July 2026',
-  sourceUrl:'https://www.instagram.com/_sanchari_kannadiga_?igsh=bWM0NGNja3E3dzZx',
+  handle:'@xyz.travellers.demo',
+  url:null,
+  sourceLabel:'Sample data · Demo profile',
+  sourceUrl:null,
 }
 export const SOCIAL_MEDIA_METRICS=[
-  {id:'followers',label:'Followers',value:546,kind:'compact',suffix:'+',display:'546+'},
+  {id:'followers',label:'Followers',value:500,kind:'compact',suffix:'+',display:'500+'},
   {id:'total-reach',label:'Total Reach',value:null,kind:'pending',suffix:'',display:'Updating soon'},
   {id:'reel-views',label:'Reel Views',value:null,kind:'pending',suffix:'',display:'Updating soon'},
   {id:'engagement',label:'Engagement',value:null,kind:'percent',suffix:'%',display:'Updating soon'},
@@ -105,17 +111,17 @@ export const BRAND_CAPABILITIES=[
   'Tourism Brand Collaborations',
 ]
 export const CHAPTERS=[
-  {id:'home',menuLabel:'Home',title:'The trail is calling.',kicker:'WanderLux',body:'A journey across India begins here.',progressStart:0,progressEnd:OPENING_TREK_END,layout:'drive'},
+  {id:'home',menuLabel:'Home',title:'The trail is calling.',kicker:'XYZ Travellers',body:'A journey across India begins here.',progressStart:0,progressEnd:OPENING_TREK_END,layout:'drive'},
   {
     id:'who-we-are',
     menuLabel:'Who We Are',
     title:'Destination stories. Brand impact.',
     kicker:'Who we are',
-    body:'Sanchari Kannadiga is built for brand collaborations with tourism boards, hotels, resorts, travel companies, adventure brands and government tourism departments. More than a travel montage, the portfolio offers campaign concepts, on-location production, experience-led storytelling and audience-ready assets designed to build attention, trust and travel intent.',
+    body:'XYZ Travellers is built for brand collaborations with tourism boards, hotels, resorts, travel companies, adventure brands and government tourism departments. More than a travel montage, the portfolio offers campaign concepts, on-location production, experience-led storytelling and audience-ready assets designed to build attention, trust and travel intent.',
     creator:{
       kicker:'About the creator',
       title:'Karnataka, experienced deeply.',
-      body:'Sanchari Kannadiga creates premium travel content across Karnataka—turning its landscapes, heritage, people and adventures into cinematic, brand-ready stories.',
+      body:'XYZ Travellers creates premium travel content across Karnataka, turning its landscapes, heritage, people and adventures into cinematic, brand-ready stories.',
       pillars:[
         'Hidden destinations',
         'Waterfalls',
@@ -131,9 +137,12 @@ export const CHAPTERS=[
     progressEnd:.28,
     layout:'operations',
   },
-  {id:'plans',menuLabel:'Plans',title:'Three expedition chapters.',kicker:'Curated journeys',body:'Choose a direction. We will shape every detail around you.',progressStart:.28,progressEnd:.94,layout:'monument-plans'},
-  {id:'packages',menuLabel:'Packages',title:'Where should we take you next?',kicker:'Begin a journey',body:'Tell us what you imagine. We will make the route real.',progressStart:.94,progressEnd:.975,layout:'pavilion-contact'},
-  {id:'contact',menuLabel:'Contact',title:'Sanchari Kannadiga',kicker:'Contact',body:'',progressStart:.975,progressEnd:1,layout:'contact-card'},
+  {id:'plans',menuLabel:'Plans',title:'Three expedition chapters.',kicker:'Curated journeys',body:'Choose a direction. We will shape every detail around you.',progressStart:.28,progressEnd:.84,layout:'monument-plans'},
+  {id:'packages',menuLabel:'Packages',title:'Where should we take you next?',kicker:'Begin a journey',body:'Tell us what you imagine. We will make the route real.',progressStart:.84,progressEnd:.90,layout:'pavilion-contact'},
+  {id:'contact',menuLabel:'Contact',title:'XYZ Travellers',kicker:'Contact',body:'',progressStart:.90,progressEnd:1,navigationProgress:FINALE_CONTACT_SETTLED,layout:'contact-card'},
 ]
 export const getChapterAtProgress=(progress)=>{const p=Math.min(1,Math.max(0,progress));return CHAPTERS.find(c=>p>=c.progressStart&&p<(c.progressEnd))||CHAPTERS.at(-1)}
-export const getProgressForChapter=(id)=>CHAPTERS.find(c=>c.id===id)?.progressStart??0
+export const getProgressForChapter=id=>{
+  const chapter=CHAPTERS.find(item=>item.id===id)
+  return chapter?.navigationProgress??chapter?.progressStart??0
+}

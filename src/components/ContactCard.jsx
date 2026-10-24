@@ -1,40 +1,43 @@
-import { SOCIAL_MEDIA_PROFILE } from '../journey/chapters'
+import {
+  FINALE_CONTACT_SETTLED,
+  FINALE_CONTACT_START,
+  FINALE_QUOTE,
+  FINALE_QUOTE_SETTLED,
+  FINALE_QUOTE_START,
+  SOCIAL_MEDIA_PROFILE,
+} from '../journey/chapters'
+import { DEMO_CONTACT } from '../data'
 
-export const CONTACT_MESSAGE=
-  'Hello Sanchari Kannadiga, I would like to know more about your travel services.'
+const reveal=(progress,start,end,reducedMotion)=>{
+  if(progress<start) return 0
+  if(reducedMotion) return 1
+  const t=Math.min(1,Math.max(0,(progress-start)/(end-start)))
+  return t*t*t*(t*(t*6-15)+10)
+}
 
-export const buildContactWhatsAppUrl=number=>
-  `https://wa.me/91${number}?text=${encodeURIComponent(CONTACT_MESSAGE)}`
+export default function ContactCard({progress=1,reducedMotion=false}){
+  const quoteOpacity=reveal(progress,FINALE_QUOTE_START,FINALE_QUOTE_SETTLED,reducedMotion)
+  const contactOpacity=reveal(progress,FINALE_CONTACT_START,FINALE_CONTACT_SETTLED,reducedMotion)
+  if(quoteOpacity===0) return null
 
-const CONTACT_NUMBERS=['7204033032','7358369538']
-
-export default function ContactCard(){
   return <article
-    className="chapter chapter--operations chapter--glass-card chapter--contact-card chapter--mobile-safe-bottom"
-    aria-label="Contact Sanchari Kannadiga"
+    className="chapter chapter--finale"
+    aria-label="Journey finale"
+    data-finale-stage={contactOpacity>0?'contact':'quote'}
   >
-    <p className="chapter__kicker">Contact</p>
-    <h1>Sanchari Kannadiga</h1>
-    <div className="contact-card__actions" aria-label="Contact options">
-      {CONTACT_NUMBERS.map(number=>
-        <a
-          key={number}
-          href={buildContactWhatsAppUrl(number)}
-          target="_blank"
-          rel="noreferrer"
-          aria-label={`WhatsApp ${number}`}
-        >
-          WhatsApp <strong>{number}</strong>
-        </a>,
-      )}
-      <a
-        href={SOCIAL_MEDIA_PROFILE.url}
-        target="_blank"
-        rel="noreferrer"
-        aria-label={`Instagram ${SOCIAL_MEDIA_PROFILE.handle}`}
-      >
-        Instagram <strong>{SOCIAL_MEDIA_PROFILE.handle}</strong>
-      </a>
-    </div>
+    <h1 className="finale-quote" style={{opacity:quoteOpacity}}>{FINALE_QUOTE}</h1>
+    {contactOpacity>0&&<section
+      className="finale-contact"
+      aria-label="Contact XYZ Travellers"
+      style={{opacity:contactOpacity}}
+    >
+      <h2>XYZ Travellers</h2>
+      <dl className="finale-contact__details" aria-label="Demo contact details">
+        <div><dt>WhatsApp</dt><dd>{DEMO_CONTACT.phone}</dd></div>
+        <div><dt>Email</dt><dd>{DEMO_CONTACT.email}</dd></div>
+        <div><dt>Instagram</dt><dd>{SOCIAL_MEDIA_PROFILE.handle}</dd></div>
+      </dl>
+      <p className="finale-contact__note">Demo contact details. Enquiries are not sent.</p>
+    </section>}
   </article>
 }

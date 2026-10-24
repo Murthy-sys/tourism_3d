@@ -7,6 +7,7 @@ import {
   dampCameraVector,
   getAtmosphere,
   getCameraDampingFactor,
+  getCameraMaximumStep,
   getCameraRailJump,
   getDampingFactor,
   getJourneyQASnapshot,
@@ -209,13 +210,20 @@ describe('renderer quality', () => {
     })
   })
 
-  it('keeps desktop resolution outside the adaptive mobile controller',()=>{
+  it('adapts desktop resolution after sustained pressure and can recover',()=>{
     const desktop=getRendererProfile(1440,3)
     expect(desktop.quality).toBe('desktop')
-    expect(desktop.pixelRatio).toBe(2)
+    const controller=createAdaptivePixelRatioController(desktop.pixelRatio,{
+      pixelRatios:[.75,1,1.25,1.5,1.75,2],warmupFrames:0,sampleFrames:3,cooldownFrames:0,
+    })
+    expect([30,30,30].map(ms=>controller.observe(ms))).toEqual([null,null,1.75])
+    for(let i=0;i<12;i++) controller.observe(30)
+    expect(controller.value()).toBe(.75)
+    for(let i=0;i<3;i++) controller.observe(10)
+    expect(controller.value()).toBe(1)
   })
 
-  it('applies a mobile adaptive downgrade from the frame delta and leaves desktop untouched',()=>{
+  it('applies an adaptive downgrade from the frame delta and ignores absent controllers',()=>{
     expect(IndiaJourney.applyAdaptivePixelRatio).toBeTypeOf('function')
     const renderer={setPixelRatio:vi.fn()}
     const resize=vi.fn()
@@ -235,6 +243,11 @@ describe('renderer quality', () => {
     expect(getRenderQuality(390)).toBe('mobile')
     expect(getRenderQuality(1440)).toBe('desktop')
   })
+  it('uses hardware budgets independently of screen width',()=>{
+    expect(getRendererProfile(1440,3,{quality:'mobile',constrainedDevice:true})).toEqual({
+      quality:'mobile',antialias:true,pixelRatio:1.25,
+    })
+  })
   it('isolates cinematic architecture from competing legacy regions',()=>{
     expect(getWorldVisibility('mountain')).toEqual([])
     expect(getWorldVisibility('handoff')).toEqual([])
@@ -243,7 +256,7 @@ describe('renderer quality', () => {
   })
   it('frames the mobile party, boat, and jeep at readable trailing distances',()=>{
     expect(getMobileTransportCamera('trekker',[2,1,-30])).toEqual({camera:[8,13,-10],target:[2,.8,-32]})
-    expect(getMobileTransportCamera('boat',[-2,.25,-86])).toEqual({camera:[5.5,3.75,-66.2],target:[-2,.75,-86.5]})
+    expect(getMobileTransportCamera('boat',[-2,.25,-86])).toEqual({camera:[2,3.75,-66.2],target:[-2,.75,-86.5]})
     expect(getMobileTransportCamera('jeep',[1,.2,-120])).toEqual({camera:[5,4.2,-95],target:[1,1.1,-121.5]})
   })
   it.each(['mobile','desktop'])(
@@ -350,6 +363,37 @@ describe('renderer quality', () => {
     }
   })
   it.each([
+    ['trek-to-boat','trekker','boat',.35],
+    ['boat-to-jeep','boat','jeep',.67],
+  ])('shares the camera between visible subjects during %s',(
+    phase,
+    outgoing,
+    incoming,
+    progress,
+  )=>{
+    const positions={[outgoing]:[0,1,-30],[incoming]:[8,.3,-36]}
+    const weights={[outgoing]:.5,[incoming]:.5}
+    const state=getJourneyState(progress)
+    expect(state.expedition.phase).toBe(phase)
+    for(const quality of ['mobile','desktop']){
+      const from=getTransportCamera(quality,outgoing,positions[outgoing])
+      const to=getTransportCamera(quality,incoming,positions[incoming])
+      const frame=getResolvedCameraFrame({
+        quality,
+        progress,
+        state,
+        transportPosition:positions[outgoing],
+        transportPositions:positions,
+        transportWeights:weights,
+      })
+      for(const property of ['camera','target']){
+        frame[property].forEach((value,index)=>
+          expect(value).toBeCloseTo((from[property][index]+to[property][index])/2,6)
+        )
+      }
+    }
+  })
+  it.each([
     ['mobile',60,390/844],
     ['desktop',48,1440/900],
   ])('keeps production transports centered and fully framed on %s',(
@@ -401,28 +445,36 @@ describe('renderer quality', () => {
       const materials=createMaterials()
       const controller=createExpeditionController(scene,materials,quality)
       try{
-        for(const handoff of [.42,.74]){
+        for(const handoff of [.28,.42,.60,.74]){
           const frames=[handoff-.0001,handoff+.0001].map(progress=>{
             const state=getJourneyState(progress)
-            controller.update(state.expedition,0,true)
+            const transition=controller.update(state.expedition,0,true)
             const transport=controller.transports[state.expedition.activeTransport]
             const transportPosition=getTransportWorldPosition(
               state.expedition.activeTransport,
               transport,
             ).toArray()
+            const transportPositions=Object.fromEntries(
+              Object.entries(controller.transports).map(([name,subject])=>[
+                name,
+                getTransportWorldPosition(name,subject).toArray(),
+              ]),
+            )
             return getResolvedCameraFrame({
               quality,
               progress,
               state,
               transportPosition,
+              transportPositions,
+              transportWeights:transition.transports,
             })
           })
           const previousCamera=new THREE.Vector3(...frames[0].camera)
           const previousTarget=new THREE.Vector3(...frames[0].target)
           const desiredCamera=new THREE.Vector3(...frames[1].camera)
           const desiredTarget=new THREE.Vector3(...frames[1].target)
-          expect(previousCamera.distanceTo(desiredCamera)).toBeLessThan(12)
-          expect(previousTarget.distanceTo(desiredTarget)).toBeLessThan(8)
+          expect(previousCamera.distanceTo(desiredCamera)).toBeLessThan(.15)
+          expect(previousTarget.distanceTo(desiredTarget)).toBeLessThan(.15)
 
           const dampedCamera=previousCamera.clone()
           const dampedTarget=previousTarget.clone()
@@ -549,6 +601,41 @@ describe('renderer quality', () => {
       tourists:3,
     })
   })
+  it('frames the mobile waterfall and all four boat occupants above the bottom river card',()=>{
+    const scene=new THREE.Scene(),materials=createMaterials()
+    const controller=createExpeditionController(scene,materials,'mobile')
+    try{
+      for(const progress of [.44,.53,.62]){
+        const state=getJourneyState(progress)
+        controller.update(state.expedition,0,true)
+        scene.updateMatrixWorld(true)
+        const boat=controller.transports.boat
+        const frame=getTransportCamera('mobile','boat',getTransportWorldPosition('boat',boat).toArray())
+        const camera=new THREE.PerspectiveCamera(60,390/844,.1,420)
+        camera.position.set(...frame.camera)
+        camera.lookAt(...frame.target)
+        camera.updateMatrixWorld(true)
+        for(const height of [0,8,16]){
+          const fall=new THREE.Vector3(1,height,-151).project(camera)
+          expect(Math.abs(fall.x)).toBeLessThan(.9)
+          expect(fall.y).toBeGreaterThan(0)
+          expect(fall.y).toBeLessThan(.8)
+        }
+        expect(boat.userData.members).toHaveLength(4)
+        boat.userData.members.forEach(member=>{
+          const projection=getProjectedObjectBounds(member,camera)
+          expect(projection.fullyFramed).toBe(true)
+          // At 390×844 the complete 299px card starts at y477.
+          const feetY=(1-projection.ndcBounds.min[1])*844/2
+          expect(feetY).toBeLessThan(469)
+        })
+        expect(getProjectedObjectBounds(boat,camera).fullyFramed).toBe(true)
+      }
+    }finally{
+      controller.dispose()
+      Object.values(materials).forEach(material=>material.dispose())
+    }
+  })
   it('frames the party around its members instead of its origin',()=>{
     const party=new THREE.Group()
     const guide=new THREE.Object3D()
@@ -565,7 +652,8 @@ describe('renderer quality', () => {
     const atmosphere=getAtmosphere({mountain:.5,water:.5,forest:0})
     expect(atmosphere.fogNear).toBeGreaterThanOrEqual(18)
     expect(atmosphere.fogFar).toBeGreaterThan(100)
-    expect(atmosphere.exposure).toBeGreaterThan(1)
+    expect(atmosphere.exposure).toBeGreaterThan(.85)
+    expect(atmosphere.exposure).toBeLessThan(1)
     expect(atmosphere.background).toBeInstanceOf(THREE.Color)
   })
   it('keeps camera convergence tied to wall time when rendering stalls',()=>{
@@ -573,6 +661,41 @@ describe('renderer quality', () => {
     expect(getCameraDampingFactor(1/60)).toBeCloseTo(getDampingFactor(1/60),8)
     expect(getCameraDampingFactor(1/15,'mobile'))
       .toBeLessThan(getCameraDampingFactor(1/15,'desktop'))
+  })
+  it.each(['mobile','desktop'])(
+    'keeps %s camera damping consistent across display refresh rates',
+    quality=>{
+      const positions=[30,60,120].map(fps=>{
+        const position=new THREE.Vector3()
+        const destination=new THREE.Vector3(1,2,3)
+        for(let frame=0;frame<fps;frame++){
+          dampCameraVector(position,destination,getCameraDampingFactor(1/fps,quality))
+        }
+        return position
+      })
+      positions.slice(1).forEach(position=>
+        expect(position.distanceTo(positions[0])).toBeLessThan(1e-10)
+      )
+    },
+  )
+  it('limits high-refresh camera motion by elapsed time and bounds stalled frames',()=>{
+    const positions=[60,90,120,144].map(fps=>{
+      const position=new THREE.Vector3()
+      const destination=new THREE.Vector3(1000,0,0)
+      for(let frame=0;frame<fps;frame++){
+        dampCameraVector(
+          position,
+          destination,
+          getCameraDampingFactor(1/fps),
+          getCameraMaximumStep(1/fps),
+        )
+      }
+      return position.x
+    })
+    positions.forEach(position=>expect(position).toBeCloseTo(46.8,8))
+    expect(getCameraMaximumStep(.5)).toBe(.78)
+    expect(getCameraMaximumStep(-1)).toBe(0)
+    expect(getCameraMaximumStep(NaN)).toBe(0)
   })
   it('caps a mobile camera correction without changing its destination',()=>{
     const current=new THREE.Vector3(0,0,0)

@@ -12,7 +12,7 @@ export const getMobileCardPlacement=(layout,progress)=>{
   if(layout==='operations') return 'top'
   if(layout==='monument-plans'){
     if(progress>=SOCIAL_PERFORMANCE_START) return 'bottom'
-    if(progress>=BOAT_OFFER_START&&progress<BOAT_OFFER_END) return 'top'
+    if(progress>=BOAT_OFFER_START&&progress<BOAT_OFFER_END) return 'bottom'
   }
   return null
 }
@@ -28,7 +28,7 @@ export default function ChapterContent({
   const mobilePlacementClass=mobilePlacement
     ?`chapter--mobile-safe-${mobilePlacement}`
     :''
-  if(chapter.layout==='contact-card') return <ContactCard/>
+  if(chapter.layout==='contact-card') return <ContactCard progress={progress} reducedMotion={reducedMotion}/>
   if(chapter.layout==='operations'){
     return <article
       className={`chapter chapter--operations chapter--glass-card ${mobilePlacementClass}`}

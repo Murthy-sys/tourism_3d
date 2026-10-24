@@ -1,4 +1,5 @@
 import { smootherstep } from './terrain'
+import { FOREST_DRIVE_END } from './finaleConfig'
 
 const stop = (id, name, kicker, description, region, palette, camera, target) => ({
   id, name, kicker, description, region, href: '#destinations', palette, camera, target,
@@ -72,8 +73,8 @@ export function getExpeditionState(progress){
   if(p<.42)return{phase:'trek-to-boat',biome:'mountain-water',activeTransport:'trekker',localProgress:(p-.28)/.14}
   if(p<.60)return{phase:'water-boat',biome:'water',activeTransport:'boat',localProgress:(p-.42)/.18}
   if(p<.74)return{phase:'boat-to-jeep',biome:'water-forest',activeTransport:'boat',localProgress:(p-.60)/.14}
-  if(p<.94)return{phase:'forest-jeep',biome:'forest',activeTransport:'jeep',localProgress:(p-.74)/.20}
-  return{phase:'contact',biome:'forest',activeTransport:'jeep',localProgress:(p-.94)/.06}
+  if(p<FOREST_DRIVE_END)return{phase:'forest-jeep',biome:'forest',activeTransport:'jeep',localProgress:(p-.74)/(FOREST_DRIVE_END-.74)}
+  return{phase:'contact',biome:'forest',activeTransport:'jeep',localProgress:(p-FOREST_DRIVE_END)/(1-FOREST_DRIVE_END)}
 }
 
 export function getJourneyState(progress) {

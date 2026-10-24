@@ -1,3 +1,9 @@
+export const DEMO_CONTACT={
+  phone:'+91 XXXXX XXXXX',
+  email:'hello@xyztravellers.example',
+  address:'123 Example Road, Demo City',
+}
+
 export const services = [
   {
     id: '01',
@@ -70,7 +76,7 @@ export const testimonials = [
   },
   {
     id: 3,
-    quote: 'The visa process alone would’ve taken us weeks. WanderLux had it sorted in days, with updates the whole way through.',
+    quote: 'The visa process alone would’ve taken us weeks. XYZ Travellers had it sorted in days, with updates the whole way through.',
     name: 'Priya Menon',
     trip: 'Himachal Pradesh, 5 days',
   },

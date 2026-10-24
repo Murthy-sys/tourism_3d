@@ -1,10 +1,12 @@
+import { DEMO_CONTACT } from '../data'
+
 export default function Footer() {
   const year = new Date().getFullYear()
   return (
     <footer className="footer">
       <div className="footer__inner">
         <div className="footer__brand">
-          Wander<span>Lux</span>
+          XYZ <span>Travellers</span>
           <p>Tourism &amp; travel management, done beautifully.</p>
         </div>
 
@@ -17,20 +19,21 @@ export default function Footer() {
 
         <div className="footer__col">
           <h4>Contact</h4>
-          <a href="mailto:hello@wanderlux.travel">hello@wanderlux.travel</a>
-          <a href="tel:+18005551234">+1 (800) 555-1234</a>
-          <span>128 Harbor Ave, Suite 400</span>
+          <span>{DEMO_CONTACT.email}</span>
+          <span>{DEMO_CONTACT.phone}</span>
+          <span>{DEMO_CONTACT.address}</span>
+          <span>Demo contact details</span>
         </div>
 
         <div className="footer__col">
           <h4>Follow</h4>
-          <a href="#top">Instagram</a>
-          <a href="#top">Pinterest</a>
-          <a href="#top">LinkedIn</a>
+          <span>Instagram · Demo profile</span>
+          <span>Pinterest · Demo profile</span>
+          <span>LinkedIn · Demo profile</span>
         </div>
       </div>
       <div className="footer__bottom">
-        <span>© {year} WanderLux Journeys. All rights reserved.</span>
+        <span>© {year} XYZ Travellers. All rights reserved.</span>
       </div>
     </footer>
   )

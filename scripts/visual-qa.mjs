@@ -23,6 +23,7 @@ const outputRoot=path.resolve(
 )
 const viewport=requested==='mobile'?{width:390,height:844}:{width:1440,height:900}
 const captureTravel=10000
+const startupTimeout=30000
 const WHO_WE_ARE=CHAPTERS.find(chapter=>chapter.id==='who-we-are')
 const states=[
   {
@@ -132,10 +133,10 @@ const states=[
     activeTransport:'boat',
     handoff:{biomes:['water','forest'],transports:['boat','jeep']},
   },
-  {name:'forest-finale',progress:.84,phase:'forest-jeep',activeBiome:'forest',activeTransport:'jeep'},
+  {name:'forest-finale',progress:.79,phase:'forest-jeep',activeBiome:'forest',activeTransport:'jeep'},
   {
     name:'social-performance',
-    progress:.91,
+    progress:.835,
     phase:'forest-jeep',
     activeBiome:'forest',
     activeTransport:'jeep',
@@ -155,8 +156,8 @@ const states=[
   },
   {
     name:'contact-packages',
-    progress:.97,
-    phase:'contact',
+    progress:.87,
+    phase:'forest-jeep',
     activeBiome:'forest',
     activeTransport:'jeep',
     content:{
@@ -172,6 +173,9 @@ const states=[
       })),
     },
   },
+  {name:'waterfall-disembark',progress:.93,phase:'contact',activeBiome:'forest',activeTransport:'jeep'},
+  {name:'waterfall-quote',progress:.975,phase:'contact',activeBiome:'forest',activeTransport:'jeep'},
+  {name:'waterfall-contact',progress:.995,phase:'contact',activeBiome:'forest',activeTransport:'jeep'},
 ]
 const requestedState=process.env.QA_STATE
 const captureStates=requestedState
@@ -334,10 +338,15 @@ try{
   page.on('pageerror',error=>externalFailures.push(`pageerror: ${error.message}`))
 
   await page.goto(baseUrl,{waitUntil:'networkidle'})
-  await page.getByRole('button',{name:'Start'}).waitFor({timeout:20000})
+  await page.getByRole('button',{name:'Start'}).waitFor({timeout:startupTimeout})
   await page.getByRole('button',{name:'Start'}).click()
-  await page.waitForFunction(()=>typeof window.__journeyQA==='function',{timeout:20000})
-  await page.locator('.journey__canvas').waitFor({state:'visible',timeout:20000})
+  await page.waitForFunction(
+    ()=>window.__journeyQA?.().arrival.phase==='complete',
+    null,
+    {timeout:startupTimeout},
+  )
+  await page.getByRole('button',{name:'Open journey menu'}).waitFor({timeout:startupTimeout})
+  await page.locator('.journey__canvas').waitFor({state:'visible',timeout:startupTimeout})
   await page.evaluate(captureTravel=>{
     const track=document.querySelector('.experience__track')
     if(!track) throw new Error('Journey track is unavailable')
@@ -414,14 +423,14 @@ try{
         ?getComputedStyle(performanceElement)
         :null
       const handleElement=performanceElement?.querySelector(
-        '.social-performance__header>a',
+        '.social-performance__profile',
       )
       const sourceElement=performanceElement?.querySelector(
         '.social-performance__source',
       )
       const performance=performanceElement?{
         handle:performanceElement
-          .querySelector('.social-performance__header>a')
+          .querySelector('.social-performance__profile')
           ?.textContent?.replace('↗','').trim()||'',
         source:performanceElement
           .querySelector('.social-performance__source')

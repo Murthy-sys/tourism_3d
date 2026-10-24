@@ -16,22 +16,22 @@ import {
 import * as chapterData from './chapters'
 
 describe('journey chapters', () => {
-  it('owns the approved social performance data without invented insights',()=>{
-    expect(SOCIAL_PERFORMANCE_START).toBe(.88)
+  it('owns the explicit demo social data without a live profile destination',()=>{
+    expect(SOCIAL_PERFORMANCE_START).toBe(.80)
     expect(SOCIAL_MEDIA_PROFILE).toEqual({
-      handle:'@sanchari.kannadiga',
-      url:'https://www.instagram.com/_sanchari_kannadiga_?igsh=bWM0NGNja3E3dzZx',
-      sourceLabel:'Public estimates · July 2026',
-      sourceUrl:'https://www.instagram.com/_sanchari_kannadiga_?igsh=bWM0NGNja3E3dzZx',
+      handle:'@xyz.travellers.demo',
+      url:null,
+      sourceLabel:'Sample data · Demo profile',
+      sourceUrl:null,
     })
     expect(SOCIAL_MEDIA_METRICS).toEqual([
       {
         id:'followers',
         label:'Followers',
-        value:546,
+        value:500,
         kind:'compact',
         suffix:'+',
-        display:'546+',
+        display:'500+',
       },
       {
         id:'total-reach',
@@ -148,6 +148,8 @@ describe('journey chapters', () => {
     expect(getChapterAtProgress(0).id).toBe('home')
     expect(getChapterAtProgress(1).id).toBe('contact')
     expect(getProgressForChapter('plans')).toBeGreaterThan(0)
+    expect(getProgressForChapter('contact')).toBe(.995)
+    expect(getChapterAtProgress(getProgressForChapter('contact')).id).toBe('contact')
   })
   it('reserves the opening for the mountain party before company content', () => {
     expect(OPENING_TREK_END).toBeGreaterThanOrEqual(.12)
@@ -155,7 +157,7 @@ describe('journey chapters', () => {
     expect(getChapterAtProgress(.08).layout).toBe('drive')
     expect(getChapterAtProgress(OPENING_TREK_END + .01).id).toBe('who-we-are')
   })
-  it('keeps all approved content ranges unchanged around the trailhead opening',()=>{
+  it('reserves the forest arrival for the closing quote and contact details',()=>{
     expect(OPENING_TREK_END).toBe(.14)
     expect(CHAPTERS.map(({id,progressStart,progressEnd})=>[
       id,
@@ -164,14 +166,14 @@ describe('journey chapters', () => {
     ])).toEqual([
       ['home',0,.14],
       ['who-we-are',.14,.28],
-      ['plans',.28,.94],
-      ['packages',.94,.975],
-      ['contact',.975,1],
+      ['plans',.28,.84],
+      ['packages',.84,.90],
+      ['contact',.90,1],
     ])
   })
-  it('positions Sanchari Kannadiga as a nationwide brand-collaboration partner', () => {
+  it('positions XYZ Travellers as a nationwide brand-collaboration partner', () => {
     const about = CHAPTERS.find(({ id }) => id === 'who-we-are')
-    expect(`${about.title} ${about.body}`).toMatch(/Sanchari Kannadiga/i)
+    expect(`${about.title} ${about.body}`).toMatch(/XYZ Travellers/i)
     expect(about.body).toMatch(/tourism boards/i)
     expect(about.body).toMatch(/hotels|resorts/i)
     expect(about.body).toMatch(/travel companies|adventure brands/i)

@@ -1,51 +1,218 @@
 import * as THREE from 'three'
+import { syncExpeditionPerson } from './realisticTravellers'
 import { mesh } from './primitives'
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js'
+import { createContactShadow,createExpeditionPerson } from './expeditionPeople'
+import { createRealisticVehicle } from './realisticVehicles'
+import { createEnvironmentMaterial } from './environmentSurface'
 
 const material=(color,roughness=.55,metalness=.08,extra={})=>new THREE.MeshStandardMaterial({color,roughness,metalness,...extra})
-const routeUpdate=(object,curve,progress,y=0)=>{const p=THREE.MathUtils.clamp(progress,0,1),point=curve.getPointAt(p),tangent=curve.getTangentAt(Math.min(.999,p+.002));object.position.copy(point);object.position.y+=y;object.rotation.y=Math.atan2(tangent.x,tangent.z);return{p,tangent}}
+const routeUpdate=(object,curve,progress,y=0,orient=true)=>{const p=THREE.MathUtils.clamp(progress,0,1),point=curve.getPointAt(p),tangent=curve.getTangentAt(Math.min(.999,p+.002));object.position.copy(point);object.position.y+=y;if(orient) object.rotation.y=Math.atan2(tangent.x,tangent.z);return{p,tangent}}
 const smooth01=value=>{const t=THREE.MathUtils.clamp(value,0,1);return t*t*t*(t*(t*6-15)+10)}
 const BOAT_DOCK_MERGE_END=.12
+const DIRECTION_CHANGE_DISTANCE=.025
+const HEADING_MOVEMENT_DISTANCE=.002
+const MAX_TURN_SPEED=Math.PI*2
+const headingDifference=(from,to)=>Math.atan2(Math.sin(to-from),Math.cos(to-from))
+
+// Vehicle noses face local -Z. Route movement, rather than input events, owns
+// their heading so damped scrolling and reversed anchor navigation agree.
+const updateVehicleHeading=(object,curve,p,tangent,reducedMotion,options)=>{
+  const forwardHeading=Math.atan2(-tangent.x,-tangent.z)
+  if(!options){
+    object.rotation.y=forwardHeading
+    return
+  }
+  let motion=object.userData.travelMotion
+  if(!motion){
+    motion=object.userData.travelMotion={
+      direction:1,extremum:p,lastProgress:p,headingProgress:p,
+      heading:forwardHeading,targetHeading:forwardHeading,
+      moving:false,turning:false,headingTime:0,
+    }
+    object.rotation.y=forwardHeading
+    return
+  }
+  const distance=curve.getLength()
+  const delta=Number.isFinite(options.deltaSeconds)
+    ?THREE.MathUtils.clamp(options.deltaSeconds,0,.05):0
+  if(options.lockHeading){
+    motion.extremum=p
+    motion.headingProgress=p
+    motion.lastProgress=p
+    motion.headingTime=0
+    motion.moving=false
+    motion.turning=false
+    return
+  }
+  motion.extremum=motion.direction>0?Math.max(motion.extremum,p):Math.min(motion.extremum,p)
+  if((motion.extremum-p)*motion.direction*distance>=DIRECTION_CHANGE_DISTANCE){
+    motion.direction*=-1
+    motion.extremum=p
+  }
+  motion.moving=Math.abs(p-motion.headingProgress)*distance>=HEADING_MOVEMENT_DISTANCE
+  motion.headingTime=Math.abs(p-motion.lastProgress)*distance>1e-6
+    ?Math.min(.05,motion.headingTime+delta):0
+  if(motion.moving){
+    motion.targetHeading=forwardHeading+(motion.direction<0?Math.PI:0)
+    const error=headingDifference(motion.heading,motion.targetHeading)
+    const maxStep=MAX_TURN_SPEED*motion.headingTime
+    motion.heading+=reducedMotion?error:THREE.MathUtils.clamp(
+      error*(1-Math.exp(-8*motion.headingTime)),
+      -maxStep,maxStep,
+    )
+    object.rotation.y=motion.heading
+    motion.headingProgress=p
+    motion.headingTime=0
+  }
+  motion.lastProgress=p
+  motion.turning=Math.abs(headingDifference(motion.heading,motion.targetHeading))>.01
+}
+// Forest track geometry sits this far below the authored route centerline.
+const FOREST_TRACK_ROUTE_CLEARANCE=.015
 const boatLateralScratch=new THREE.Vector3()
-const traveller=(m)=>{const g=new THREE.Group();g.name='expedition-traveller';g.add(mesh(new THREE.CapsuleGeometry(.16,.36,4,8),m.gold,[0,.38,0]),mesh(new THREE.SphereGeometry(.16,12,9),m.sand,[0,.78,0]),mesh(new THREE.SphereGeometry(.17,12,7,0,Math.PI*2,0,Math.PI/2),m.dark,[0,.86,0]));return g}
+const traveller=index=>createExpeditionPerson(index,{seated:true})
 const setRole=(member,role)=>{
   member.role=role
   member.userData.role=role
   return member
 }
-const wheel=()=>{const g=new THREE.Group();g.add(mesh(new THREE.CylinderGeometry(.38,.38,.22,20),material('#111318',.92),[0,0,0],[0,0,Math.PI/2]),mesh(new THREE.CylinderGeometry(.21,.21,.24,14),material('#9c9d92',.25,.65),[0,0,0],[0,0,Math.PI/2]));return g}
+const wheel=()=>{
+  const group=new THREE.Group()
+  const rubber=material('#242522',.98,0),alloy=material('#95958b',.32,.78)
+  group.add(
+    mesh(new THREE.CylinderGeometry(.38,.38,.24,28),rubber,[0,0,0],[0,0,Math.PI/2]),
+    mesh(new THREE.TorusGeometry(.3,.079,8,28),rubber,[.125,0,0],[0,Math.PI/2,0]),
+    mesh(new THREE.TorusGeometry(.3,.079,8,28),rubber,[-.125,0,0],[0,Math.PI/2,0]),
+    mesh(new THREE.CylinderGeometry(.235,.235,.25,24),alloy,[0,0,0],[0,0,Math.PI/2]),
+    mesh(new THREE.CylinderGeometry(.075,.075,.275,12),alloy,[0,0,0],[0,0,Math.PI/2]),
+  )
+  return group
+}
+
+const createDetailedJeep=model=>{
+  model.name='jungle-jeep'
+  const sprungBody=model.getObjectByName('body')
+  sprungBody.name='jeep-sprung-body'
+  const wheels=[0,1,2,3].map(index=>model.getObjectByName(`wheel-${index}`))
+  const members=model.userData.vehicleSpecs.seats.map((position,index)=>{
+    const person=setRole(traveller(index),index===0?'guide':'tourist')
+    person.name=index?`jeep-passenger-${index}`:'jeep-guide'
+    person.position.fromArray(position)
+    person.rotation.y=Math.PI
+    if(index===0){
+      person.userData.arms.forEach(arm=>{arm.rotation.x=.15})
+      person.userData.elbows.forEach(elbow=>{elbow.rotation.x=-2})
+      syncExpeditionPerson(person)
+    }
+    sprungBody.add(person)
+    return person
+  })
+  model.updateMatrixWorld(true)
+  const tireBounds=wheels.map(wheel=>new THREE.Box3().setFromObject(wheel))
+  const tireBottom=Math.min(...tireBounds.map(bounds=>bounds.min.y))
+  const wheelRadius=tireBounds[0].getSize(new THREE.Vector3()).y/2
+  const shadow=createContactShadow(2.1,4.05,.28)
+  shadow.position.y=tireBottom+.004
+  model.add(shadow)
+  Object.assign(model.userData,{wheels,wheelRadius,doors:[],doorlessEntry:true,sprungBody,
+    contactShadow:shadow,lastProgress:0,traveller:members[0],members,groundOffset:-tireBottom})
+  return model
+}
 
 export function createExpeditionJeep(m){
-  const jeep=new THREE.Group();jeep.name='jungle-jeep';const green=material('#374c32',.6,.12),canvas=material('#928063',.82),steel=material('#272b27',.32,.62)
-  jeep.add(mesh(new THREE.BoxGeometry(1.9,.55,3.2),green,[0,.75,0]),mesh(new THREE.BoxGeometry(1.75,.34,1.08),green,[0,1.06,-1.2]),mesh(new THREE.BoxGeometry(1.7,.18,.16),steel,[0,.65,-1.72]))
-  const cage=new THREE.Group();cage.name='jeep-roll-cage';[-.78,.78].forEach(x=>[-.45,.85].forEach(z=>cage.add(mesh(new THREE.CylinderGeometry(.035,.035,1.25,8),steel,[x,1.55,z]))));cage.add(mesh(new THREE.BoxGeometry(1.65,.06,1.45),steel,[0,2.15,.2]),mesh(new THREE.BoxGeometry(1.55,.04,1.3),canvas,[0,2.2,.2]));jeep.add(cage)
-  const wheels=[];[-1.02,1.02].forEach(x=>[-1.12,1.08].forEach(z=>{const w=wheel();w.position.set(x,.55,z);jeep.add(w);wheels.push(w)}))
-  jeep.add(mesh(new THREE.TorusGeometry(.42,.12,10,20),material('#151718',.9),[0,1.1,1.66],[0,Math.PI/2,0]),mesh(new THREE.BoxGeometry(1.4,.18,.45),material('#624b36',.75),[0,1.08,.48]))
-  const person=setRole(traveller(m),'guide');person.position.set(-.38,1.08,-.12);jeep.add(person)
+  const detailed=createRealisticVehicle('jeep')
+  if(detailed) return createDetailedJeep(detailed)
+  const jeep=new THREE.Group()
+  jeep.name='jungle-jeep'
+  const green=new THREE.MeshPhysicalMaterial({color:'#535b42',roughness:.39,metalness:.17,clearcoat:.32,clearcoatRoughness:.32})
+  const canvas=material('#8a8167',.97,0),steel=material('#353a35',.38,.63)
+  const rubber=material('#272b26',.96,0),upholstery=material('#655d48',.91,0)
+  jeep.add(
+    namedMesh('jeep-body',new RoundedBoxGeometry(1.9,.55,3.2,2,.07),green,[0,.75,0]),
+    namedMesh('jeep-bonnet',new RoundedBoxGeometry(1.76,.3,1.12,2,.055),green,[0,1.07,-1.08]),
+    namedMesh('jeep-front-bumper',new RoundedBoxGeometry(1.96,.16,.19,1,.035),steel,[0,.64,-1.72]),
+    namedMesh('jeep-rear-bumper',new RoundedBoxGeometry(1.96,.16,.19,1,.035),steel,[0,.64,1.7]),
+  )
+  const cage=new THREE.Group()
+  cage.name='jeep-roll-cage'
+  ;[-.79,.79].forEach(x=>[-.55,.98].forEach(z=>cage.add(mesh(new THREE.CylinderGeometry(.033,.033,1.16,10),steel,[x,1.57,z]))))
+  cage.add(mesh(new RoundedBoxGeometry(1.76,.07,1.86,2,.035),canvas,[0,2.16,.22]))
+  jeep.add(cage)
+  const glass=new THREE.MeshPhysicalMaterial({color:'#a7b9b8',roughness:.12,metalness:.05,transparent:true,opacity:.18,depthWrite:false,clearcoat:.7})
+  jeep.add(namedMesh('jeep-windscreen',new THREE.BoxGeometry(1.48,.72,.018),glass,[0,1.65,-.56],[-.12,0,0]))
+  const wheels=[]
+  ;[-1.02,1.02].forEach(x=>[-1.12,1.08].forEach(z=>{
+    const wheelRoot=wheel()
+    wheelRoot.position.set(x,.55,z)
+    jeep.add(wheelRoot)
+    wheels.push(wheelRoot)
+    jeep.add(namedMesh('jeep-wheel-arch',new THREE.TorusGeometry(.43,.055,8,24,Math.PI),rubber,[x,.55,z],[0,Math.PI/2,0]))
+  }))
+  const doors=[]
+  ;[-1,1].forEach(side=>{
+    const door=new THREE.Group()
+    door.name=side<0?'jeep-left-door':'jeep-right-door'
+    door.position.set(side*.964,1.09,-.51)
+    door.add(
+      namedMesh('jeep-door-inset',new RoundedBoxGeometry(.025,.35,.96,1,.025),green,[0,0,.48]),
+      namedMesh('jeep-door-handle',new THREE.BoxGeometry(.04,.035,.19),steel,[side*.024,.11,.71]),
+    )
+    doors.push({object:door,side})
+    jeep.add(
+      door,
+      namedMesh('jeep-side-step',new RoundedBoxGeometry(.22,.07,1.53,1,.025),steel,[side*1.02,.53,-.02]),
+      namedMesh('jeep-mirror',new RoundedBoxGeometry(.09,.19,.23,2,.04),steel,[side*.98,1.65,-.59]),
+      namedMesh('jeep-headlight',new THREE.CylinderGeometry(.13,.13,.035,20),material('#d6d2b9',.18,.2),[side*.65,1,-1.675],[Math.PI/2,0,0]),
+    )
+  })
+  jeep.add(namedMesh('jeep-radiator',new THREE.BoxGeometry(.86,.31,.028),rubber,[0,.99,-1.665]))
+  for(let slot=-3;slot<=3;slot++) jeep.add(mesh(new THREE.BoxGeometry(.05,.28,.04),steel,[slot*.105,.99,-1.69]))
+  jeep.add(mesh(new THREE.TorusGeometry(.29,.1,10,24),rubber,[0,1.14,1.74]))
+  const person=setRole(traveller(0),'guide')
+  person.position.set(-.39,1.04,-.17)
+  person.rotation.y=Math.PI
+  jeep.add(person)
   const passengers=[
-    [.38,1.08,-.12],
-    [-.38,1.08,.66],
-    [.38,1.08,.66],
+    [.39,1.04,-.17],[-.39,1.04,.65],[.39,1.04,.65],
   ].map((position,index)=>{
-    const passenger=setRole(traveller(m),'tourist')
+    const passenger=setRole(traveller(index+1),'tourist')
     passenger.name=`jeep-passenger-${index+1}`
     passenger.position.set(...position)
-    passenger.scale.setScalar(.88)
+    passenger.rotation.y=Math.PI
     jeep.add(passenger)
     return passenger
   })
+  ;[person,...passengers].forEach(member=>{
+    jeep.add(namedMesh('jeep-seat-cushion',new RoundedBoxGeometry(.49,.1,.43,2,.045),upholstery,[member.position.x,1.02,member.position.z]))
+  })
+  const steering=mesh(new THREE.TorusGeometry(.16,.018,6,18),rubber,[-.39,1.42,-.59],[-.5,0,0])
+  steering.name='jeep-steering-wheel'
+  jeep.add(steering)
+  const shadow=createContactShadow(2.5,4,.28)
+  jeep.add(shadow)
+  const sprungBody=new THREE.Group()
+  sprungBody.name='jeep-sprung-body'
+  sprungBody.add(...jeep.children.filter(child=>child!==shadow&&!wheels.includes(child)))
+  jeep.add(sprungBody)
   jeep.updateMatrixWorld(true)
   const tireBottom=Math.min(...wheels.map(candidate=>new THREE.Box3().setFromObject(candidate).min.y))
-  jeep.userData={
-    wheels,
-    lastProgress:0,
-    traveller:person,
-    members:[person,...passengers],
-    groundOffset:-tireBottom,
-  }
+  shadow.position.y=tireBottom+.004
+  jeep.userData={wheels,doors,sprungBody,contactShadow:shadow,lastProgress:0,traveller:person,members:[person,...passengers],groundOffset:-tireBottom}
   return jeep
 }
 
-export function updateJeep(jeep,curve,progress,elapsed,reducedMotion){const {p}=routeUpdate(jeep,curve,progress,jeep.userData.groundOffset+(reducedMotion?0:Math.sin(elapsed*7)*.025));const distance=Math.abs(p-jeep.userData.lastProgress)*curve.getLength();jeep.userData.wheels.forEach(w=>w.rotation.x-=distance/.32);jeep.userData.lastProgress=p}
+export function updateJeep(jeep,curve,progress,elapsed,reducedMotion,motionOptions){
+  const {p,tangent}=routeUpdate(jeep,curve,progress,jeep.userData.groundOffset-FOREST_TRACK_ROUTE_CLEARANCE,false)
+  updateVehicleHeading(jeep,curve,p,tangent,reducedMotion,motionOptions)
+  // Roll according to travel along the current nose, including the brief
+  // backwards roll while a direction change is still turning the vehicle.
+  const facingTravel=-Math.sin(jeep.rotation.y)*tangent.x-Math.cos(jeep.rotation.y)*tangent.z
+  const distance=(p-jeep.userData.lastProgress)*curve.getLength()*facingTravel
+  jeep.userData.wheels.forEach(wheel=>{wheel.rotation.x-=distance/(jeep.userData.wheelRadius||.38)})
+  jeep.userData.sprungBody.position.y=reducedMotion?0:Math.sin(elapsed*7)*.012
+  jeep.userData.lastProgress=p
+}
 
 const namedMesh=(name,geometry,mat,position=[0,0,0],rotation=[0,0,0])=>{const object=mesh(geometry,mat,position,rotation);object.name=name;return object}
 
@@ -86,41 +253,49 @@ function createBoatWake(){
 }
 
 function createBoatRower(){
-  const root=new THREE.Group();root.name='boat-rower';root.position.set(0,.32,.22);root.rotation.y=Math.PI;root.scale.setScalar(.86)
-  const skin=material('#9b5d42',.62),shirt=material('#e86524',.54),shorts=material('#273039',.78),hair=material('#2a1a15',.92),shoe=material('#ece8dc',.66),eye=material('#151718',.72)
-  const torsoPivot=new THREE.Group();torsoPivot.name='boat-rower-torso-pivot';torsoPivot.position.set(0,.58,0)
-  const torso=namedMesh('boat-rower-torso',new THREE.CapsuleGeometry(.25,.58,10,24),shirt,[0,.28,0]);torso.scale.set(1,.98,.72);torsoPivot.add(torso)
-  const neck=namedMesh('boat-rower-neck',new THREE.CylinderGeometry(.075,.085,.16,16),skin,[0,.69,0]);const head=namedMesh('boat-rower-head',new THREE.SphereGeometry(.2,28,20),skin,[0,.91,0]);head.scale.set(.88,1.08,.9)
-  const hairCap=namedMesh('boat-rower-hair',new THREE.SphereGeometry(.205,24,12,0,Math.PI*2,0,Math.PI/2),hair,[0,1.01,0])
-  const beard=namedMesh('boat-rower-beard',new THREE.SphereGeometry(.15,20,12,0,Math.PI*2,Math.PI*.38,Math.PI*.5),hair,[0,.84,-.12],[Math.PI,0,0]);beard.scale.set(.85,.8,.42)
-  const nose=namedMesh('boat-rower-nose',new THREE.ConeGeometry(.035,.09,12),skin,[0,.91,-.19],[Math.PI/2,0,0]);torsoPivot.add(neck,head,hairCap,beard,nose)
-  ;[-1,1].forEach(side=>{
-    const eyeMesh=namedMesh(`boat-rower-eye-${side<0?'left':'right'}`,new THREE.SphereGeometry(.018,12,8),eye,[side*.065,.95,-.178]);torsoPivot.add(eyeMesh)
-    const shoulder=new THREE.Group();shoulder.name=`boat-rower-${side<0?'left':'right'}-shoulder`;shoulder.position.set(side*.27,.57,-.02);shoulder.rotation.z=side<0?-.42:.42
-    const upper=namedMesh(`${shoulder.name}-upper`,new THREE.CapsuleGeometry(.07,.34,8,16),skin,[0,-.18,0]);upper.rotation.z=side<0?.22:-.22
-    const elbow=new THREE.Group();elbow.name=`boat-rower-${side<0?'left':'right'}-elbow`;elbow.position.set(side*.08,-.43,0)
-    const forearm=namedMesh(`${elbow.name}-forearm`,new THREE.CapsuleGeometry(.06,.31,8,16),skin,[side*.1,-.17,-.04]);forearm.rotation.z=side<0?-.38:.38
-    const hand=namedMesh(`${elbow.name}-hand`,new THREE.SphereGeometry(.072,16,12),skin,[side*.2,-.35,-.08]);elbow.add(forearm,hand);shoulder.add(upper,elbow);torsoPivot.add(shoulder)
+  const root=createExpeditionPerson(0,{seated:true})
+  root.name='boat-rower'
+  root.position.set(0,.46,.22)
+  root.rotation.y=Math.PI
+  const torsoPivot=root.userData.torso
+  torsoPivot.name='boat-rower-torso-pivot'
+  torsoPivot.getObjectByName('layered-torso-shell').name='boat-rower-torso'
+  torsoPivot.attach(root.userData.head)
+  torsoPivot.attach(root.getObjectByName('neck'))
+  torsoPivot.attach(root.getObjectByName('arms'))
+  const [leftElbow,rightElbow]=root.userData.elbows
+  leftElbow.name='boat-rower-left-elbow'
+  rightElbow.name='boat-rower-right-elbow'
+  root.userData.arms.forEach((arm,index)=>{
+    arm.rotation.x=-.48
+    arm.rotation.z=index===0?.36:-.36
   })
-  root.add(torsoPivot)
-  ;[-1,1].forEach(side=>{
-    const hip=new THREE.Group();hip.name=`boat-rower-${side<0?'left':'right'}-hip`;hip.position.set(side*.16,.5,.04);hip.rotation.x=-1.1
-    hip.add(namedMesh(`${hip.name}-thigh`,new THREE.CapsuleGeometry(.09,.42,8,16),shorts,[0,-.22,0]))
-    const shin=namedMesh(`${hip.name}-shin`,new THREE.CapsuleGeometry(.075,.38,8,16),skin,[0,-.53,-.19],[.8,0,0]);const foot=namedMesh(`${hip.name}-shoe`,new THREE.CapsuleGeometry(.08,.22,8,16),shoe,[0,-.68,-.38],[Math.PI/2,0,0]);hip.add(shin,foot);root.add(hip)
-  })
-  root.userData={torsoPivot,leftElbow:root.getObjectByName('boat-rower-left-elbow'),rightElbow:root.getObjectByName('boat-rower-right-elbow')};return root
+  Object.assign(root.userData,{torsoPivot,leftElbow,rightElbow})
+  return root
 }
 
 export function createExpeditionBoat(m){
   const boat=new THREE.Group();boat.name='water-boat'
-  const hullMat=new THREE.MeshPhysicalMaterial({color:'#176f70',roughness:.24,metalness:.12,clearcoat:.72,clearcoatRoughness:.2}),innerMat=material('#0b4e52',.38,.08),trim=material('#72b7ad',.3,.18),wood=material('#73513a',.66),metal=material('#c6d4d0',.2,.72),shaft=material('#269a9b',.32,.16),blade=material('#f2a229',.38,.08)
+  const hullMat=new THREE.MeshPhysicalMaterial({color:'#35645e',roughness:.37,metalness:.02,clearcoat:.38,clearcoatRoughness:.3}),innerMat=material('#425850',.6,.02),trim=material('#89998a',.42,.18),wood=createEnvironmentMaterial('#b8a48b','wood',{roughness:.82,bumpScale:.016}),metal=material('#a6ada6',.28,.72),shaft=createEnvironmentMaterial('#b8aa91','wood',{roughness:.74,bumpScale:.012}),blade=createEnvironmentMaterial('#ae9576','wood',{roughness:.71,bumpScale:.014})
   const shape=new THREE.Shape();shape.moveTo(-1.28,.08);shape.bezierCurveTo(-1.16,-.36,-.92,-.72,-.56,-.78);shape.lineTo(.56,-.78);shape.bezierCurveTo(.92,-.72,1.16,-.36,1.28,.08);shape.lineTo(.98,.32);shape.bezierCurveTo(.52,.18,-.52,.18,-.98,.32);shape.closePath()
-  const hull=namedMesh('boat-hull',new THREE.ExtrudeGeometry(shape,{depth:4.55,bevelEnabled:true,bevelSize:.1,bevelThickness:.1,bevelSegments:5,curveSegments:20}),hullMat,[0,-.02,-2.28]);hull.scale.set(.65,.72,.92);boat.add(hull)
+  const hull=namedMesh('boat-hull',new THREE.ExtrudeGeometry(shape,{depth:4.55,bevelEnabled:true,bevelSize:.1,bevelThickness:.1,bevelSegments:5,curveSegments:20}),hullMat,[0,-.02,-2.28]);hull.scale.set(.65,.72,.92)
+  const hullVertices=hull.geometry.attributes.position
+  for(let vertex=0;vertex<hullVertices.count;vertex++){
+    const z=hullVertices.getZ(vertex),end=Math.min(1,Math.abs((z-2.275)/2.275))
+    hullVertices.setX(vertex,hullVertices.getX(vertex)*(1-.48*end**3))
+    hullVertices.setY(vertex,hullVertices.getY(vertex)+.18*end**4)
+  }
+  hull.geometry.computeVertexNormals()
+  boat.add(hull)
   const interior=namedMesh('boat-interior',new THREE.BoxGeometry(1.58,.1,3.45),innerMat,[0,.39,0]);boat.add(interior)
   ;[-1,1].forEach(side=>{
-    boat.add(namedMesh(`boat-gunwale-${side<0?'port':'starboard'}`,new THREE.CapsuleGeometry(.055,4.18,8,18),trim,[side*.91,.55,0],[Math.PI/2,0,0]))
-    for(let z=-1.45;z<=1.45;z+=.58){const rib=namedMesh('boat-rib',new THREE.CapsuleGeometry(.025,1.55,5,10),trim,[0,.47,z],[0,0,Math.PI/2]);rib.scale.y=.95;boat.add(rib)}
+    const rail=new THREE.CatmullRomCurve3([-2.18,-1.65,-.85,0,.85,1.65,2.18].map(z=>{
+      const end=Math.abs(z)/2.18
+      return new THREE.Vector3(side*.91*(1-.48*end**3),.55+.13*end**4,z)
+    }))
+    boat.add(namedMesh(`boat-gunwale-${side<0?'port':'starboard'}`,new THREE.TubeGeometry(rail,32,.043,8,false),trim))
   })
+  for(let z=-1.45;z<=1.45;z+=.58){const rib=namedMesh('boat-rib',new THREE.CapsuleGeometry(.025,1.46,5,10),trim,[0,.47,z],[0,0,Math.PI/2]);boat.add(rib)}
   ;[-.72,.18,.98].forEach((z,i)=>boat.add(namedMesh(`boat-bench-${i+1}`,new THREE.BoxGeometry(1.58,.1,.4),wood,[0,.58,z])))
   boat.add(namedMesh('boat-bow-cap',new THREE.SphereGeometry(.13,20,12),trim,[0,.55,-2.18]),namedMesh('boat-stern-cap',new THREE.SphereGeometry(.11,20,12),trim,[0,.53,2.18]))
   const port=createBoatOar(-1,shaft,blade,metal),starboard=createBoatOar(1,shaft,blade,metal)
@@ -132,10 +307,10 @@ export function createExpeditionBoat(m){
     [.42,.55,-1.05],
     [0,.55,1.02],
   ].map((position,index)=>{
-    const passenger=setRole(traveller(m),'tourist')
+    const passenger=setRole(traveller(index+1),'tourist')
     passenger.name=`boat-passenger-${index+1}`
     passenger.position.set(...position)
-    passenger.scale.setScalar(.68)
+    passenger.scale.setScalar(1)
     passenger.rotation.y=Math.PI
     boat.add(passenger)
     return passenger
@@ -152,19 +327,21 @@ export function createExpeditionBoat(m){
   return boat
 }
 
-export function updateBoat(boat,curve,progress,elapsed,reducedMotion){
-  const {p,tangent}=routeUpdate(boat,curve,progress,reducedMotion?0:Math.sin(elapsed*1.8)*.035)
+export function updateBoat(boat,curve,progress,elapsed,reducedMotion,motionOptions){
+  const {p,tangent}=routeUpdate(boat,curve,progress,reducedMotion?0:Math.sin(elapsed*1.8)*.035,false)
   const dockBlend=1-smooth01(p/BOAT_DOCK_MERGE_END)
   boatLateralScratch.set(tangent.z,0,-tangent.x).normalize()
   boat.position.addScaledVector(boatLateralScratch,(boat.userData.dockLateralOffset||0)*dockBlend)
-  boat.rotation.y+=Math.PI;boat.rotation.z=reducedMotion?0:Math.sin(elapsed*1.3)*.025;boat.rotation.x=reducedMotion?0:Math.sin(elapsed*1.7)*.018
+  updateVehicleHeading(boat,curve,p,tangent,reducedMotion,motionOptions)
+  boat.rotation.z=reducedMotion?0:Math.sin(elapsed*1.3)*.025;boat.rotation.x=reducedMotion?0:Math.sin(elapsed*1.7)*.018
   boat.userData.routeTangent=tangent.clone()
   const stroke=reducedMotion?0:Math.sin(elapsed*2.8),recovery=reducedMotion?0:Math.cos(elapsed*2.8)
   const port=boat.getObjectByName('boat-oar-left'),starboard=boat.getObjectByName('boat-oar-right'),rower=boat.getObjectByName('boat-rower')
   if(port&&starboard){
     port.rotation.x=-.18+stroke*.42;starboard.rotation.x=port.rotation.x;port.rotation.y=.12+recovery*.08;starboard.rotation.y=-port.rotation.y
   }
-  if(rower){const torso=rower.userData.torsoPivot,left=rower.userData.leftElbow,right=rower.userData.rightElbow;torso.rotation.x=-.04-stroke*.18;left.rotation.x=.32+recovery*.38;right.rotation.x=left.rotation.x}
+  if(rower){const torso=rower.userData.torsoPivot,left=rower.userData.leftElbow,right=rower.userData.rightElbow;torso.rotation.x=-.04-stroke*.18;left.rotation.x=-1.05+recovery*.28;right.rotation.x=left.rotation.x}
+  if(rower) syncExpeditionPerson(rower)
   const wake=boat.userData.wake
   if(wake&&!reducedMotion){
     wake.scale.x=1+Math.sin(elapsed*2.1)*.06

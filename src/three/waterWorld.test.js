@@ -1,9 +1,13 @@
-import { describe,expect,it } from 'vitest'
+import { describe,expect,it,vi } from 'vitest'
 import * as THREE from 'three'
 import { createMaterials,disposeObject3D } from './primitives'
 import { LANDMARKS } from './terrain'
 import { createExpeditionBoat,updateBoat } from './expeditionVehicles'
 import { createWaterWorld,updateWaterWorld } from './waterWorld'
+import { createForestRoute,distanceToForestRoute,sampleForestGroundHeight,sampleLandingGroundHeight } from './forestTerrain'
+import { sampleRiverCrossSection,sampleRiverSurface } from './riverConfig'
+import { getTransportCamera } from './indiaJourney'
+import { createJungleWorld } from './jungleWorld'
 
 const averageNormalY=object=>{
   const normals=object.geometry.getAttribute('normal')
@@ -20,44 +24,31 @@ const rowWidth=(water,row)=>{
     .distanceTo(new THREE.Vector3().fromBufferAttribute(position,offset+columns-1))
 }
 
-const maximumBankWidth=bank=>{
-  const positions=bank.geometry.getAttribute('position')
-  let maximum=0
-  for(let index=0;index<positions.count;index+=2){
-    maximum=Math.max(
-      maximum,
-      new THREE.Vector3().fromBufferAttribute(positions,index)
-        .distanceTo(new THREE.Vector3().fromBufferAttribute(positions,index+1)),
-    )
-  }
-  return maximum
-}
-
 describe('water world',()=>{
-  it('keeps the basin level and layers transparent depth, reflection, and shoreline detail',()=>{
+  it('keeps a level basin with restrained freshwater reflections and shoreline detail',()=>{
     const water=createWaterWorld(createMaterials(),'mobile')
     const basin=water.getObjectByName('water-basin-ground')
     const surface=water.getObjectByName('reflective-water').material
-    const depth=water.getObjectByName('water-depth-layer').material
-    const reflection=water.getObjectByName('water-reflection-layer').material
     expect(basin.rotation.x).toBe(0)
     expect(basin.rotation.y).toBe(0)
     expect(basin.rotation.z).toBe(0)
-    expect(surface.opacity).toBeLessThanOrEqual(.74)
-    expect(surface.transmission).toBeGreaterThanOrEqual(.2)
-    expect(surface.reflectivity).toBeGreaterThanOrEqual(.75)
-    expect(surface.roughness).toBeLessThanOrEqual(.07)
-    expect(surface.clearcoatRoughness).toBeLessThanOrEqual(.02)
-    expect(depth.isMeshPhysicalMaterial).toBe(true)
-    expect(depth.clearcoat).toBeGreaterThanOrEqual(.15)
-    expect(depth.roughness).toBeLessThan(.65)
-    expect(reflection.opacity).toBeGreaterThanOrEqual(.23)
-    expect(reflection.opacity).toBeLessThanOrEqual(.26)
-    expect(water.getObjectByName('water-shore-detail').children.length).toBeGreaterThanOrEqual(24)
+    expect(surface.opacity).toBeGreaterThan(.8)
+    expect(surface.transmission).toBe(0)
+    expect(surface.ior).toBeCloseTo(1.333,3)
+    expect(surface.roughness).toBeGreaterThan(.1)
+    expect(surface.roughness).toBeLessThan(.3)
+    expect(surface.clearcoat).toBeLessThan(.4)
+    expect(surface.metalness).toBe(0)
+    expect(water.getObjectByName('water-depth-layer')).toBeUndefined()
+    expect(water.getObjectByName('water-reflection-layer')).toBeUndefined()
+    expect(water.getObjectByName('water-shallows')).toBeUndefined()
+    const gravel=water.getObjectByName('water-shore-detail').children
+    expect(gravel.every(object=>object.isInstancedMesh)).toBe(true)
+    expect(gravel.reduce((sum,object)=>sum+object.count,0)).toBeGreaterThanOrEqual(80)
     water.updateMatrixWorld(true)
     const basinBounds=new THREE.Box3().setFromObject(basin)
     expect(basinBounds.max.z).toBeLessThanOrEqual(LANDMARKS.mountainLanding[2]+3)
-    expect(basinBounds.min.z).toBeLessThanOrEqual(LANDMARKS.forestLanding[2]-4)
+    expect(basinBounds.min.z).toBeCloseTo(LANDMARKS.forestLanding[2],5)
     disposeObject3D(water)
   })
 
@@ -71,7 +62,7 @@ describe('water world',()=>{
 
   it('creates a shaped reflective corridor with two aligned landings',()=>{
     const water=createWaterWorld(createMaterials(),'desktop')
-    ;['water-depth-layer','water-reflection-layer','water-shallows','curved-river-banks','mountain-water-landing','forest-water-landing','distant-forest-silhouette']
+    ;['water-basin-ground','reflective-water','curved-river-banks','mountain-water-landing','forest-water-landing','distant-forest-silhouette']
       .forEach(name=>expect(water.getObjectByName(name)).toBeTruthy())
     expect(water.userData.route.getPointAt(0).distanceTo(new THREE.Vector3(...LANDMARKS.mountainLanding))).toBeLessThan(2)
     expect(water.userData.route.getPointAt(1).distanceTo(new THREE.Vector3(...LANDMARKS.forestLanding))).toBeLessThan(2)
@@ -82,17 +73,40 @@ describe('water world',()=>{
     disposeObject3D(water)
   })
 
-  it('renders both curved banks with upward-facing normals',()=>{
+  it('uses one upward-facing continuous basin for both sculpted banks',()=>{
     const water=createWaterWorld(createMaterials(),'desktop')
-    expect(averageNormalY(water.getObjectByName('left-river-bank'))).toBeGreaterThan(.5)
-    expect(averageNormalY(water.getObjectByName('right-river-bank'))).toBeGreaterThan(.5)
+    expect(averageNormalY(water.getObjectByName('water-basin-ground'))).toBeGreaterThan(.7)
+    expect(averageNormalY(water.getObjectByName('reflective-water'))).toBeGreaterThan(.99)
+    ;['left-river-bank','right-river-bank'].forEach(name=>{
+      expect(water.getObjectByName(name).userData.surfaceOwner).toBe('water-basin-ground')
+      expect(water.getObjectByName(name).children).toHaveLength(0)
+    })
     disposeObject3D(water)
   })
 
-  it('keeps both bank ribbons narrow enough to avoid folding across bends',()=>{
-    const water=createWaterWorld(createMaterials(),'desktop')
-    expect(maximumBankWidth(water.getObjectByName('left-river-bank'))).toBeLessThan(4.2)
-    expect(maximumBankWidth(water.getObjectByName('right-river-bank'))).toBeLessThan(4.2)
+  it.each(['mobile','desktop'])('widens the %s channel without folded triangles at the boat-route bends',quality=>{
+    const water=createWaterWorld(createMaterials(),quality)
+    const geometry=water.userData.water.geometry,position=geometry.getAttribute('position')
+    const columns=geometry.userData.crossSectionColumns
+    for(let row=0;row<=geometry.userData.routeSegments;row++){
+      const z=position.getZ(row*columns)
+      const width=rowWidth(water.userData.water,row)
+      if(z<=-44&&z>=-75){
+        expect(width).toBeGreaterThan(30)
+        expect(width).toBeLessThan(46)
+      }
+      for(let column=1;column<columns;column++){
+        expect(position.getX(row*columns+column)).toBeGreaterThan(position.getX(row*columns+column-1))
+        expect(position.getZ(row*columns+column)).toBe(z)
+      }
+    }
+    const a=new THREE.Vector3(),b=new THREE.Vector3(),c=new THREE.Vector3()
+    for(let index=0;index<geometry.index.count;index+=3){
+      a.fromBufferAttribute(position,geometry.index.getX(index))
+      b.fromBufferAttribute(position,geometry.index.getX(index+1)).sub(a)
+      c.fromBufferAttribute(position,geometry.index.getX(index+2)).sub(a)
+      expect(b.cross(c).y).toBeGreaterThan(.001)
+    }
     disposeObject3D(water)
   })
 
@@ -100,10 +114,44 @@ describe('water world',()=>{
     const water=createWaterWorld(createMaterials(),'desktop')
     const forest=water.getObjectByName('distant-forest-silhouette')
     const sizes=[]
-    forest.children.forEach(band=>band.children.forEach(crown=>{
-      sizes.push(new THREE.Box3().setFromObject(crown).getSize(new THREE.Vector3()))
-    }))
+    forest.traverse(crown=>{
+      if(crown.name==='distant-forest-crown') sizes.push(new THREE.Box3().setFromObject(crown).getSize(new THREE.Vector3()))
+    })
+    expect(sizes).toHaveLength(45)
     expect(Math.max(...sizes.map(size=>Math.max(size.x,size.y,size.z)))).toBeLessThan(3.8)
+    disposeObject3D(water)
+  })
+
+  it.each(['mobile','desktop'])('roots the %s forest reveal outside the jeep route and camera corridor',quality=>{
+    const water=createWaterWorld(createMaterials(),quality)
+    water.updateMatrixWorld(true)
+    const route=createForestRoute()
+    const trees=[]
+    water.userData.forestSightline.traverse(object=>{
+      if(object.name.startsWith('forest-proxy-tree-')) trees.push(object)
+    })
+    expect(trees).toHaveLength(quality==='mobile'?27:45)
+    expect(water.userData.forestSightline.visible).toBe(true)
+    const routePoints=route.getSpacedPoints(40)
+    trees.forEach(tree=>{
+      const bounds=new THREE.Box3().setFromObject(tree)
+      const center=bounds.getCenter(new THREE.Vector3())
+      const size=bounds.getSize(new THREE.Vector3())
+      const radius=Math.hypot(size.x,size.z)/2
+      expect(distanceToForestRoute(route,center.x,center.z)-radius).toBeGreaterThanOrEqual(6)
+      routePoints.forEach(point=>{
+        const frame=getTransportCamera(quality,'jeep',point.toArray())
+        const from=new THREE.Vector3(...frame.camera)
+        const direction=point.clone().sub(from).setY(0)
+        const t=THREE.MathUtils.clamp(center.clone().sub(from).setY(0).dot(direction)/direction.lengthSq(),0,1)
+        const nearest=from.clone().addScaledVector(direction,t)
+        expect(Math.hypot(center.x-nearest.x,center.z-nearest.z)-radius).toBeGreaterThanOrEqual(6)
+      })
+      const trunkBounds=new THREE.Box3().setFromObject(tree.getObjectByName('distant-forest-trunk'))
+      const crownBounds=new THREE.Box3().setFromObject(tree.getObjectByName('distant-forest-crown'))
+      expect(trunkBounds.intersectsBox(crownBounds)).toBe(true)
+      expect(trunkBounds.min.y).toBeCloseTo(sampleForestGroundHeight(route,tree.position.x,tree.position.z)-.09,5)
+    })
     disposeObject3D(water)
   })
 
@@ -113,8 +161,14 @@ describe('water world',()=>{
     expect(geometry.userData.crossSectionSegments).toBeGreaterThanOrEqual(4)
     const columns=geometry.userData.crossSectionColumns,row=Math.floor(geometry.userData.routeSegments/2)
     const colors=geometry.getAttribute('color'),edge=row*columns,center=edge+Math.floor(columns/2)
-    expect(Math.abs(colors.getZ(center)-colors.getZ(edge))).toBeGreaterThan(.05)
+    expect(Math.abs(colors.getZ(center)-colors.getZ(edge))).toBeGreaterThan(.035)
+    for(let index=0;index<colors.count;index++){
+      expect(colors.getZ(index)).toBeGreaterThan(colors.getY(index))
+      expect(colors.getY(index)).toBeGreaterThan(colors.getX(index))
+    }
+    const rebuildNormals=vi.spyOn(geometry,'computeVertexNormals')
     updateWaterWorld(water,.83)
+    expect(rebuildNormals).not.toHaveBeenCalled()
     const normals=geometry.getAttribute('normal')
     const edgeNormal=new THREE.Vector3().fromBufferAttribute(normals,edge)
     const centerNormal=new THREE.Vector3().fromBufferAttribute(normals,center)
@@ -123,37 +177,142 @@ describe('water world',()=>{
     for(let index=0;index<geometry.getAttribute('position').count;index+=1){
       heights.push(geometry.getAttribute('position').getY(index))
     }
-    expect(Math.max(...heights)-Math.min(...heights)).toBeGreaterThan(.25)
+    expect(Math.max(...heights)-Math.min(...heights)).toBeGreaterThan(.05)
+    expect(Math.max(...heights)-Math.min(...heights)).toBeLessThan(.13)
+    for(let index=0;index<normals.count;index++){
+      const normal=new THREE.Vector3().fromBufferAttribute(normals,index)
+      expect(normal.length()).toBeCloseTo(1,5)
+      expect(normal.y).toBeGreaterThan(.9)
+    }
     disposeObject3D(water)
   })
 
-  it('adds a Fresnel terrain-and-sky reflection contribution to the physical surface',()=>{
+  it('advects the current on the same blue surface while preserving planar reflection hooks',()=>{
+    const world=createWaterWorld(createMaterials(),'mobile')
+    const material=world.userData.water.material
+    const shader={uniforms:{},vertexShader:'#include <common>\n#include <begin_vertex>\n#include <project_vertex>',fragmentShader:'#include <common>\n#include <color_fragment>\n#include <opaque_fragment>'}
+    material.onBeforeCompile(shader,{})
+    expect(shader.uniforms.riverCurrentTime).toBe(material.userData.currentTime)
+    expect(shader.uniforms.riverReflection).toBeTruthy()
+    expect(shader.fragmentShader).toContain('currentNoise')
+    expect(shader.fragmentShader).toContain('reflectedLandscape')
+    updateWaterWorld(world,3.2)
+    expect(shader.uniforms.riverCurrentTime.value).toBe(3.2)
+    expect(material.customProgramCacheKey()).toContain('river-current-v1|natural-water-planar')
+    expect(world.getObjectByName('water-reflection-layer')).toBeUndefined()
+    disposeObject3D(world)
+  })
+
+  it.each(['mobile','desktop'])('keeps the %s river to waterfall sightline clear through the forest',quality=>{
+    const water=createWaterWorld(createMaterials(),quality)
+    const forest=createJungleWorld(createMaterials(),quality)
+    water.updateMatrixWorld(true)
+    forest.updateMatrixWorld(true)
+    for(const routeProgress of [.35,.6,.9]){
+      const point=water.userData.route.getPointAt(routeProgress)
+      const frame=getTransportCamera(quality,'boat',point.toArray())
+      const origin=new THREE.Vector3(...frame.camera)
+      for(const height of [6,12,15.5]){
+        const direction=new THREE.Vector3(1,height,-151).sub(origin)
+        const ray=new THREE.Raycaster(origin,direction.clone().normalize(),0,direction.length()-.2)
+        const opaqueHits=ray.intersectObjects([water.userData.forestSightline,forest],true)
+          .filter(hit=>hit.object.material.depthWrite!==false)
+        expect(opaqueHits.map(hit=>hit.object.name)).toEqual([])
+      }
+    }
+    disposeObject3D(water)
+    disposeObject3D(forest)
+  })
+
+  it('uses physical environment reflection and flowing fine ripples without a transmission render pass',()=>{
     const water=createWaterWorld(createMaterials(),'desktop')
     const material=water.getObjectByName('reflective-water').material
-    expect(material.userData.reflectionMode).toBe('fresnel-sky-terrain')
-    const shader={uniforms:{},fragmentShader:'#include <common>\n#include <opaque_fragment>'}
-    material.onBeforeCompile(shader)
-    expect(shader.uniforms.reflectedSkyColor.value).toBeInstanceOf(THREE.Color)
-    expect(shader.uniforms.reflectedTerrainColor.value).toBeInstanceOf(THREE.Color)
-    expect(shader.fragmentShader).toContain('reflectionFresnel')
+    expect(material.userData.reflectionMode).toBe('planar-fresnel')
+    expect(material.userData.reflectionResolution).toBe(512)
+    expect(material.envMapIntensity).toBeGreaterThan(0)
+    expect(material.normalMap.isDataTexture).toBe(true)
+    expect(material.normalMap.generateMipmaps).toBe(true)
+    const before=material.normalMap.offset.clone()
+    updateWaterWorld(water,2)
+    expect(material.normalMap.offset.equals(before)).toBe(false)
+    expect(material.transmission).toBe(0)
     disposeObject3D(water)
   })
 
-  it('narrows the water into the forest inlet',()=>{
+  it('tapers only the landing coves while preserving a broad main channel',()=>{
     const water=createWaterWorld(createMaterials(),'desktop')
     const surface=water.getObjectByName('reflective-water')
-    const rows=surface.geometry.userData.routeSegments||76
+    const rows=surface.geometry.userData.routeSegments
     const start=rowWidth(surface,0),middle=rowWidth(surface,Math.floor(rows/2)),end=rowWidth(surface,rows)
-    expect(start).toBeLessThan(11)
-    expect(end).toBeLessThan(start)
-    expect(end).toBeLessThan(middle)
+    expect(middle).toBeGreaterThan(start*2.5)
+    expect(middle).toBeGreaterThan(end*3)
+    expect(end).toBeGreaterThan(6)
     disposeObject3D(water)
   })
 
-  it('builds shallows directly from the route edge without offset-curve overshoot',()=>{
+  it.each(['mobile','desktop'])('resolves the %s incoming shoreline without exposed bed strips or coarse steps',quality=>{
+    const water=createWaterWorld(createMaterials(),quality)
+    water.updateMatrixWorld(true)
+    const surface=water.getObjectByName('reflective-water')
+    const basin=water.getObjectByName('water-basin-ground')
+    const positions=basin.geometry.getAttribute('position')
+    const rows=new Map()
+    for(let index=0;index<positions.count;index+=1){
+      const x=positions.getX(index),z=positions.getZ(index)
+      if(z< -85.8||z> -76.2||Math.abs(x)>8) continue
+      if(!rows.has(z)) rows.set(z,[])
+      rows.get(z).push(x)
+    }
+    const depths=[...rows.keys()].sort((a,b)=>a-b)
+    expect(depths.length).toBeGreaterThan(30)
+    depths.slice(1).forEach((z,index)=>expect(z-depths[index]).toBeLessThan(.3))
+    rows.forEach(xs=>{
+      xs.sort((a,b)=>a-b)
+      xs.slice(1).forEach((x,index)=>expect(x-xs[index]).toBeLessThan(.86))
+    })
+    const route=createForestRoute()
+    const ray=new THREE.Raycaster()
+    for(let z=-76.4;z>-85.6;z-=.43){
+      const center=THREE.MathUtils.lerp(LANDMARKS.forestLanding[0],4.2,(z-LANDMARKS.forestLanding[2])/14)
+      for(const offset of [-4.8,-3.4,3.4,4.8]){
+        const x=center+offset
+        ray.set(new THREE.Vector3(x,20,z),new THREE.Vector3(0,-1,0))
+        expect(Math.abs(ray.intersectObject(basin)[0].point.y-sampleLandingGroundHeight(route,x,z))).toBeLessThan(.04)
+      }
+    }
+    disposeObject3D(water)
+  })
+
+  it('joins wet bed, exposed bars and dry banks without a floating shoreline sheet',()=>{
     const water=createWaterWorld(createMaterials(),'desktop')
-    expect(water.getObjectByName('left-water-shallows').geometry.userData.edgeRibbon).toBe(true)
-    expect(water.getObjectByName('right-water-shallows').geometry.userData.edgeRibbon).toBe(true)
+    const basin=water.getObjectByName('water-basin-ground')
+    water.updateMatrixWorld(true)
+    const ray=new THREE.Raycaster()
+    for(let z=-43;z>=-75;z-=3.7){
+      const section=sampleRiverCrossSection(z)
+      for(const side of [-1,1]){
+        const bank=side<0?section.leftX:section.rightX
+        const heights=[-3,-.5,0,.5,2].map(offset=>{
+          const x=bank+side*offset
+          ray.set(new THREE.Vector3(x,20,z),new THREE.Vector3(0,-1,0))
+          const hits=ray.intersectObject(basin)
+          expect(hits.length).toBeGreaterThan(0)
+          expect(Math.abs(hits[0].point.y-sampleRiverSurface(x,z).bedHeight)).toBeLessThan(.12)
+          return hits[0].point.y
+        })
+        expect(heights[0]).toBeLessThan(-.3)
+        expect(heights.at(-1)).toBeGreaterThan(.1)
+      }
+    }
+    const barSection=sampleRiverCrossSection(-59.5)
+    ray.set(new THREE.Vector3(barSection.leftX+1.6,20,-59.5),new THREE.Vector3(0,-1,0))
+    expect(ray.intersectObject(basin)[0].point.y).toBeGreaterThan(.04)
+    for(let progress=.12;progress<=.88;progress+=.08){
+      const point=water.userData.route.getPointAt(progress)
+      ray.set(new THREE.Vector3(point.x,20,point.z),new THREE.Vector3(0,-1,0))
+      expect(ray.intersectObject(basin)[0].point.y).toBeLessThan(-.4)
+    }
+    expect(water.getObjectByName('water-bank-shadows')).toBeUndefined()
     disposeObject3D(water)
   })
 
@@ -162,21 +321,76 @@ describe('water world',()=>{
     water.updateMatrixWorld(true)
     const basin=water.getObjectByName('water-basin-ground')
     const basinBounds=new THREE.Box3().setFromObject(basin)
-    const bankBounds=new THREE.Box3()
-      .expandByObject(water.getObjectByName('left-river-bank'))
-      .expandByObject(water.getObjectByName('right-river-bank'))
     expect(basin.geometry.userData.continuousBasin).toBe(true)
-    expect(basinBounds.min.x).toBeLessThan(bankBounds.min.x-4)
-    expect(basinBounds.max.x).toBeGreaterThan(bankBounds.max.x+4)
-    expect(basinBounds.min.z).toBeLessThan(bankBounds.min.z-4)
-    expect(basinBounds.max.z).toBeGreaterThan(bankBounds.max.z-.01)
+    for(let z=-35;z>=-85;z-=2){
+      const section=sampleRiverCrossSection(z)
+      expect(basinBounds.min.x).toBeLessThan(section.leftX-10)
+      expect(basinBounds.max.x).toBeGreaterThan(section.rightX+10)
+    }
     const trunks=[]
     water.getObjectByName('distant-forest-silhouette').traverse(object=>{
       if(object.name==='distant-forest-trunk') trunks.push(object)
     })
     expect(trunks.length).toBeGreaterThanOrEqual(30)
-    expect(water.getObjectByName('forest-sightline-ground')).toBeTruthy()
+    expect(water.getObjectByName('forest-sightline-ground')).toBeUndefined()
+    expect(water.userData.forestSightline.userData.groundOwner).toBe('forest-ground')
     disposeObject3D(water)
+  })
+
+  it.each(['mobile','desktop'])('joins the %s river and forest along one matching terrain edge',quality=>{
+    const water=createWaterWorld(createMaterials(),quality)
+    const forest=createJungleWorld(createMaterials(),quality)
+    water.updateMatrixWorld(true)
+    forest.updateMatrixWorld(true)
+    const basin=water.getObjectByName('water-basin-ground')
+    const ground=forest.getObjectByName('forest-ground')
+    const seamZ=LANDMARKS.forestLanding[2]
+    const seamVertices=object=>{
+      const positions=object.geometry.getAttribute('position')
+      const colors=object.geometry.getAttribute('color')
+      const uvs=object.geometry.getAttribute('uv')
+      const normals=object.geometry.getAttribute('normal')
+      const vertices=[]
+      for(let index=0;index<positions.count;index+=1){
+        if(Math.abs(positions.getZ(index)-seamZ)<1e-5){
+          vertices.push({position:new THREE.Vector3().fromBufferAttribute(positions,index),color:new THREE.Vector3().fromBufferAttribute(colors,index),uv:new THREE.Vector2().fromBufferAttribute(uvs,index),normal:new THREE.Vector3().fromBufferAttribute(normals,index)})
+        }
+      }
+      return vertices.sort((a,b)=>a.position.x-b.position.x)
+    }
+    const riverEdge=seamVertices(basin),forestEdge=seamVertices(ground)
+    expect(riverEdge.length).toBeGreaterThan(70)
+    expect(riverEdge).toHaveLength(forestEdge.length)
+    riverEdge.forEach((vertex,index)=>{
+      expect(vertex.position.distanceTo(forestEdge[index].position)).toBeLessThan(1e-5)
+      expect(vertex.color.distanceTo(forestEdge[index].color)).toBeLessThan(1e-5)
+      expect(vertex.uv.distanceTo(forestEdge[index].uv)).toBeLessThan(1e-5)
+      expect(vertex.normal.distanceTo(forestEdge[index].normal)).toBeLessThan(1e-5)
+    })
+    expect(new THREE.Box3().setFromObject(basin).min.z).toBeCloseTo(seamZ,5)
+    expect(new THREE.Box3().setFromObject(ground).max.z).toBeCloseTo(seamZ,5)
+    const ray=new THREE.Raycaster()
+    ;[-20,-8,-2,4,20].forEach(x=>{
+      const heights=[-.01,.01].map(offset=>{
+        ray.set(new THREE.Vector3(x,20,seamZ+offset),new THREE.Vector3(0,-1,0))
+        const hits=ray.intersectObjects([basin,ground])
+        expect(new Set(hits.map(hit=>hit.object)).size).toBe(1)
+        expect(Math.max(...hits.map(hit=>hit.point.y))-Math.min(...hits.map(hit=>hit.point.y))).toBeLessThan(1e-6)
+        return hits[0].point.y
+      })
+      expect(Math.abs(heights[0]-heights[1])).toBeLessThan(.04)
+    })
+    expect(forest.getObjectByName('forest-inlet-water')).toBeUndefined()
+    expect(forest.getObjectByName('wet-inlet-bank')).toBeUndefined()
+    ;[.82,.88,.94].forEach(progress=>{
+      const point=water.userData.route.getPointAt(progress)
+      expect(sampleLandingGroundHeight(forest.userData.route,point.x,point.z)).toBeLessThan(-.08)
+      ray.set(new THREE.Vector3(point.x,20,point.z),new THREE.Vector3(0,-1,0))
+      expect(ray.intersectObject(basin)[0].point.y).toBeLessThan(-.05)
+    })
+    expect(new THREE.Box3().setFromObject(water.getObjectByName('reflective-water')).min.z).toBeGreaterThanOrEqual(seamZ-1e-5)
+    disposeObject3D(water)
+    disposeObject3D(forest)
   })
 
   it('centers the visible landing decks on their shared terrain landmarks',()=>{

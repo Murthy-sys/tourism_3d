@@ -1,29 +1,20 @@
 import { useEffect, useRef, useState } from 'react'
 
-const WHATSAPP_NUMBER='917204033032'
 const blank={contactName:'',startDate:'',endDate:''}
 
-export const buildWhatsAppMessage=({
+export const buildEnquiryMessage=({
   contactName,
   startDate,
   endDate,
   selectedPackage,
 })=>[
-  'Hello Sanchari Kannadiga,',
+  'Hello XYZ Travellers,',
   `I would like to enquire about the ${selectedPackage.name} package.`,
   `Contact person: ${contactName.trim()}`,
   `Travel dates: ${startDate} to ${endDate}`,
-  `Package: ${selectedPackage.name} — ${selectedPackage.duration} — ${selectedPackage.priceLabel} per day`,
+  `Package: ${selectedPackage.name} · ${selectedPackage.duration} · ${selectedPackage.priceLabel} per day`,
   'Please confirm availability and share the booking details.',
 ].join('\n')
-
-export const buildWhatsAppUrl=details=>
-  `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(
-    buildWhatsAppMessage(details),
-  )}`
-
-const defaultOpenWhatsApp=url=>
-  window.open(url,'_blank','noopener,noreferrer')
 
 const focusableSelector=[
   'button:not([disabled])',
@@ -38,16 +29,17 @@ export default function BookingOverlay({
   open,
   selectedPackage,
   onClose,
-  openWhatsApp=defaultOpenWhatsApp,
 }){
   const dialogRef=useRef(null)
   const [form,setForm]=useState(blank)
   const [error,setError]=useState('')
+  const [preview,setPreview]=useState('')
 
   useEffect(()=>{
     if(open){
       setForm(blank)
       setError('')
+      setPreview('')
     }
   },[open,selectedPackage?.id])
 
@@ -94,6 +86,7 @@ export default function BookingOverlay({
       [event.target.name]:event.target.value,
     }))
     setError('')
+    setPreview('')
   }
 
   const submit=event=>{
@@ -106,7 +99,7 @@ export default function BookingOverlay({
       setError('End Date cannot be before Start Date.')
       return
     }
-    openWhatsApp(buildWhatsAppUrl({...form,selectedPackage}))
+    setPreview(buildEnquiryMessage({...form,selectedPackage}))
   }
 
   return <div
@@ -163,11 +156,15 @@ export default function BookingOverlay({
         />
       </label>
       {error&&<p className="booking-overlay__error" role="alert">{error}</p>}
+      {preview&&<div className="booking-overlay__preview" role="status">
+        <strong>Demo enquiry preview. Nothing has been sent.</strong>
+        <p>{preview}</p>
+      </div>}
       <button className="booking-overlay__submit">
-        Continue on WhatsApp
+        Preview enquiry
       </button>
       <p className="booking-overlay__note">
-        WhatsApp opens with your package enquiry ready to send.
+        Demo only. Contact details are placeholders and no enquiry will be sent.
       </p>
     </form>
   </div>

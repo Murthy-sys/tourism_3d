@@ -2,6 +2,7 @@ import {
   SOCIAL_MEDIA_METRICS,
   SOCIAL_MEDIA_PROFILE,
   SOCIAL_PERFORMANCE_START,
+  SOCIAL_PERFORMANCE_SETTLED,
 } from '../journey/chapters'
 
 const clamp=value=>Math.min(1,Math.max(0,value))
@@ -13,7 +14,7 @@ const smootherstep=value=>{
 export const getSocialMetricWeight=(progress,index,reducedMotion=false)=>{
   if(reducedMotion) return 1
   const local=clamp(
-    (progress-SOCIAL_PERFORMANCE_START)/(.91-SOCIAL_PERFORMANCE_START),
+    (progress-SOCIAL_PERFORMANCE_START)/(SOCIAL_PERFORMANCE_SETTLED-SOCIAL_PERFORMANCE_START),
   )
   const start=index*.06
   return smootherstep((local-start)/(1-start))
@@ -45,14 +46,9 @@ export default function SocialMediaPerformance({
         <p className="chapter__kicker">Social Media Performance</p>
         <h1>Reach that moves people.</h1>
       </div>
-      <a
-        href={SOCIAL_MEDIA_PROFILE.url}
-        target="_blank"
-        rel="noreferrer"
-        aria-label={`Open ${SOCIAL_MEDIA_PROFILE.handle} on Instagram`}
-      >
-        {SOCIAL_MEDIA_PROFILE.handle} ↗
-      </a>
+      <span className="social-performance__profile" aria-label="Demo Instagram profile">
+        {SOCIAL_MEDIA_PROFILE.handle}
+      </span>
     </header>
     <dl
       className="social-performance__metrics"
@@ -78,13 +74,8 @@ export default function SocialMediaPerformance({
         </div>
       })}
     </dl>
-    <a
-      className="social-performance__source"
-      href={SOCIAL_MEDIA_PROFILE.sourceUrl}
-      target="_blank"
-      rel="noreferrer"
-    >
+    <p className="social-performance__source">
       {SOCIAL_MEDIA_PROFILE.sourceLabel}
-    </a>
+    </p>
   </article>
 }

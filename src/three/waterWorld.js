@@ -1,6 +1,11 @@
 import * as THREE from 'three'
-import { createTree,mesh } from './primitives'
-import { LANDMARKS } from './terrain'
+import { mesh } from './primitives'
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
+import { createEnvironmentMaterial,createLandscapeMaterial,createFoliageGeometry,createFoliageMaterial,createLeafTexture,createRippleNormalMap,projectGroundUV } from './environmentSurface'
+import { LANDMARKS,smootherstep } from './terrain'
+import { createForestRoute,sampleForestGroundHeight,sampleLandingGroundHeight,getLandingTerrainX,matchLandingBoundaryNormals } from './forestTerrain'
+import { createRiverRoute,sampleRiverCrossSection,sampleRiverSurface,RIVER_LEVEL,RIVER_START_Z,RIVER_END_Z } from './riverConfig'
+import { attachNaturalReflection } from './naturalWater'
 
 const named=name=>{
   const group=new THREE.Group()
@@ -8,19 +13,9 @@ const named=name=>{
   return group
 }
 
-const smooth01=value=>{
-  const t=THREE.MathUtils.clamp(value,0,1)
-  return t*t*(3-2*t)
-}
-
 const deterministic=(index,salt=0)=>{
   const value=Math.sin((index+1)*91.733+(salt+1)*37.119)*43758.5453
   return value-Math.floor(value)
-}
-
-const waterHalfWidth=t=>{
-  const inlet=smooth01((t-.58)/.42)
-  return 4.85+Math.sin(t*Math.PI*2.4)*.25+Math.sin(t*Math.PI*5.1)*.1-inlet*2
 }
 
 const sampleFrame=(curve,t)=>{
@@ -30,120 +25,85 @@ const sampleFrame=(curve,t)=>{
   return{point,tangent,lateral}
 }
 
-const createRibbonGeometry=(curve,segments,halfWidthAt,y=0,crossSectionSegments=6)=>{
-  const positions=[],colors=[],indices=[]
-  const deep=new THREE.Color('#032f3c'),light=new THREE.Color('#5cc9c2'),color=new THREE.Color()
-  for(let index=0;index<=segments;index+=1){
-    const t=index/segments,{point,lateral}=sampleFrame(curve,t),halfWidth=halfWidthAt(t)
-    for(let column=0;column<=crossSectionSegments;column+=1){
-      const side=column/crossSectionSegments*2-1
-      positions.push(point.x+lateral.x*halfWidth*side,y,point.z+lateral.z*halfWidth*side)
-      color.copy(deep).lerp(light,.03+Math.abs(side)*.9+.06*Math.sin(t*Math.PI))
+const createRiverSurfaceGeometry=quality=>{
+  const segments=quality==='mobile'?96:152,crossSectionSegments=quality==='mobile'?16:24
+  const positions=[],colors=[],depths=[],shoreDistances=[],indices=[]
+  const deep=new THREE.Color('#236e9b'),shallow=new THREE.Color('#8bcbd5'),color=new THREE.Color()
+  for(let row=0;row<=segments;row++){
+    const z=THREE.MathUtils.lerp(RIVER_START_Z,RIVER_END_Z,row/segments)
+    const section=sampleRiverCrossSection(z)
+    for(let column=0;column<=crossSectionSegments;column++){
+      // A small buried margin lets the sculpted bank define the actual shoreline.
+      const x=THREE.MathUtils.lerp(section.leftX-.45,section.rightX+.45,column/crossSectionSegments)
+      const river=sampleRiverSurface(x,z)
+      positions.push(x,RIVER_LEVEL,z)
+      color.copy(deep).lerp(shallow,(1-smootherstep(.08,1.5,river.depth))*.72)
       colors.push(color.r,color.g,color.b)
+      depths.push(river.depth)
+      shoreDistances.push(river.edgeDistance)
     }
-    if(index<segments){
+    if(row<segments){
       const columns=crossSectionSegments+1
-      for(let column=0;column<crossSectionSegments;column+=1){
-        const offset=index*columns+column,next=offset+columns
-        indices.push(offset,next,offset+1,offset+1,next,next+1)
+      for(let column=0;column<crossSectionSegments;column++){
+        const a=row*columns+column,b=a+1,c=a+columns,d=c+1
+        indices.push(a,b,c,b,d,c)
       }
     }
   }
   const geometry=new THREE.BufferGeometry()
   geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3))
   geometry.setAttribute('color',new THREE.Float32BufferAttribute(colors,3))
+  geometry.setAttribute('waterDepth',new THREE.Float32BufferAttribute(depths,1))
+  geometry.setAttribute('shoreDistance',new THREE.Float32BufferAttribute(shoreDistances,1))
   geometry.setIndex(indices)
-  geometry.userData={
-    routeSegments:segments,
-    crossSectionSegments,
-    crossSectionColumns:crossSectionSegments+1,
-  }
+  geometry.userData={routeSegments:segments,crossSectionSegments,crossSectionColumns:crossSectionSegments+1,monotonicRiverRows:true}
   geometry.computeVertexNormals()
-  return geometry
+  return projectGroundUV(geometry,2.4)
 }
 
-const createBankGeometry=(curve,segments,side)=>{
-  const positions=[],colors=[],indices=[]
-  const wet=new THREE.Color('#273f37'),dry=new THREE.Color('#566044'),color=new THREE.Color()
-  for(let index=0;index<=segments;index+=1){
-    const t=index/segments,{point,lateral}=sampleFrame(curve,t)
-    const inner=waterHalfWidth(t)-.18
-    const outer=inner+1.45+Math.sin(index*1.73+side)*.2+Math.sin(index*.43)*.12
-    ;[inner,outer].forEach((distance,column)=>{
-      positions.push(
-        point.x+lateral.x*distance*side,
-        column===0?.07:.2+Math.sin(index*.91+side)*.08,
-        point.z+lateral.z*distance*side,
-      )
-      color.copy(wet).lerp(dry,column*.78)
-      colors.push(color.r,color.g,color.b)
-    })
-    if(index<segments){
-      const offset=index*2
-      if(side<0) indices.push(offset,offset+1,offset+2,offset+1,offset+3,offset+2)
-      else indices.push(offset,offset+2,offset+1,offset+1,offset+2,offset+3)
-    }
-  }
-  const geometry=new THREE.BufferGeometry()
-  geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3))
-  geometry.setAttribute('color',new THREE.Float32BufferAttribute(colors,3))
-  geometry.setIndex(indices)
-  geometry.computeVertexNormals()
-  return geometry
-}
-
-const createEdgeRibbonGeometry=(curve,segments,side)=>{
-  const positions=[],indices=[]
-  for(let index=0;index<=segments;index+=1){
-    const t=index/segments,{point,lateral}=sampleFrame(curve,t)
-    const distances=[waterHalfWidth(t)-1.02,waterHalfWidth(t)-.08]
-    distances.forEach(distance=>positions.push(
-      point.x+lateral.x*distance*side,
-      .075,
-      point.z+lateral.z*distance*side,
-    ))
-    if(index<segments){
-      const offset=index*2
-      if(side<0) indices.push(offset,offset+1,offset+2,offset+1,offset+3,offset+2)
-      else indices.push(offset,offset+2,offset+1,offset+1,offset+2,offset+3)
-    }
-  }
-  const geometry=new THREE.BufferGeometry()
-  geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3))
-  geometry.setIndex(indices)
-  geometry.userData.edgeRibbon=true
-  geometry.computeVertexNormals()
-  return geometry
-}
-
-const createBasinGeometry=()=>{
-  const geometry=new THREE.PlaneGeometry(58,61,36,44)
+const createBasinGeometry=(forestRoute,quality)=>{
+  const frontZ=LANDMARKS.forestLanding[2]
+  const rearZ=LANDMARKS.mountainLanding[2]+3
+  const geometry=new THREE.PlaneGeometry(160,rearZ-frontZ,quality==='mobile'?80:112,quality==='mobile'?112:160)
   geometry.rotateX(-Math.PI/2)
+  geometry.translate(0,0,(frontZ+rearZ)/2)
   const position=geometry.getAttribute('position')
   const colors=[]
-  const dark=new THREE.Color('#283a31')
-  const moss=new THREE.Color('#4f5b3c')
+  const dark=new THREE.Color('#494b36')
+  const moss=new THREE.Color('#65694b')
+  const wetMud=new THREE.Color('#494c38'),gravel=new THREE.Color('#8d856b')
+  const forestEarth=new THREE.Color('#676147'),forestMoss=new THREE.Color('#596443')
+  const forestColor=new THREE.Color()
   const color=new THREE.Color()
   for(let index=0;index<position.count;index+=1){
-    const x=position.getX(index)
-    const z=position.getZ(index)
-    const variation=Math.sin(x*.36+z*.19)*.5+Math.cos(z*.31-x*.14)*.5
-    position.setY(index,-.37+variation*.045)
+    const depth=(rearZ-position.getZ(index))/(rearZ-frontZ)
+    const z=depth<=.5?THREE.MathUtils.lerp(rearZ,-76,depth*2):THREE.MathUtils.lerp(-76,frontZ,(depth-.5)*2)
+    const shore=smootherstep(76,-frontZ,-z)
+    const mainFocus=THREE.MathUtils.lerp(28,22,smootherstep(70,76,-z))
+    const x=getLandingTerrainX(position.getX(index)/80,80,THREE.MathUtils.lerp(mainFocus,8,shore))
+    const height=sampleLandingGroundHeight(forestRoute,x,z)
+    position.setXYZ(index,x,height,z)
+    const variation=Math.sin(x*.36+(z+61.5)*.19)*.5+Math.cos((z+61.5)*.31-x*.14)*.5
     color.copy(dark).lerp(moss,.36+variation*.16)
+    const river=sampleRiverSurface(x,z)
+    color.lerp(wetMud,(1-smootherstep(-.1,.28,height))*.55)
+    color.lerp(gravel,(1-smootherstep(-.6,2.2,Math.abs(river.edgeDistance)))*.3+river.barWeight*.26)
+    forestColor.copy(forestEarth).lerp(forestMoss,.5+Math.sin(x*.23+Math.sin(z*.17))*Math.cos(z*.27-x*.11)*.35)
+    color.lerp(forestColor,shore)
     colors.push(color.r,color.g,color.b)
   }
   position.needsUpdate=true
   geometry.setAttribute('color',new THREE.Float32BufferAttribute(colors,3))
   geometry.userData.continuousBasin=true
   geometry.computeVertexNormals()
-  return geometry
+  matchLandingBoundaryNormals(geometry,forestRoute)
+  return projectGroundUV(geometry,2)
 }
 
-const offsetCurve=(route,offset,start=0,end=1,points=28)=>new THREE.CatmullRomCurve3(
-  Array.from({length:points},(_,index)=>{
-    const t=THREE.MathUtils.lerp(start,end,index/(points-1))
-    const {point,lateral}=sampleFrame(route,t)
-    return point.clone().addScaledVector(lateral,offset(t))
+const riverBankCurve=(side,startZ,endZ,inset=0)=>new THREE.CatmullRomCurve3(
+  Array.from({length:12},(_,index)=>{
+    const z=THREE.MathUtils.lerp(startZ,endZ,index/11),section=sampleRiverCrossSection(z)
+    return new THREE.Vector3((side<0?section.leftX:section.rightX)-side*inset,.055,z)
   }),
 )
 
@@ -154,9 +114,10 @@ const createLanding=(name,route,t,m)=>{
   landing.rotation.y=Math.atan2(tangent.x,tangent.z)
   const deck=named(name==='mountain-water-landing'?'boat-jetty':'forest-jetty')
   deck.position.set(0,.18,0)
-  for(let index=-2;index<=2;index+=1){
-    const plank=mesh(new THREE.BoxGeometry(.7,.16,3.2),m.wood,[index*.72,0,0])
-    plank.rotation.y=(index%2)*.018
+  for(let index=0;index<10;index++){
+    const length=3.12+deterministic(index,22)*.13
+    const plank=mesh(new THREE.BoxGeometry(.343,.16,length),m.wood,[(index-4.5)*.356,0,(deterministic(index,23)-.5)*.045])
+    plank.rotation.y=(deterministic(index,24)-.5)*.008
     deck.add(plank)
   }
   ;[-1.65,1.65].forEach(x=>[-1.35,1.35].forEach(z=>{
@@ -166,86 +127,143 @@ const createLanding=(name,route,t,m)=>{
   return landing
 }
 
+const addShoreInstances=(parent,name,geometry,material,count,forestRoute,{minOffset=0,maxOffset=1.5,minScale=.1,maxScale=.3,heightScale=.5,groundLift=.38,salt=0}={})=>{
+  const instances=new THREE.InstancedMesh(geometry,material,count)
+  instances.name=name
+  const dummy=new THREE.Object3D()
+  for(let index=0;index<count;index++){
+    const z=THREE.MathUtils.lerp(-38,-83,deterministic(index,salt+1))
+    const side=index%2?-1:1,section=sampleRiverCrossSection(z)
+    const offset=THREE.MathUtils.lerp(minOffset,maxOffset,deterministic(index,salt+2))
+    const x=(side<0?section.leftX:section.rightX)+side*offset
+    const scale=THREE.MathUtils.lerp(minScale,maxScale,deterministic(index,salt+3))
+    dummy.position.set(x,sampleLandingGroundHeight(forestRoute,x,z)+scale*heightScale*groundLift,z)
+    dummy.rotation.set((deterministic(index,salt+4)-.5)*.35,deterministic(index,salt+5)*Math.PI*2,(deterministic(index,salt+6)-.5)*.22)
+    dummy.scale.set(scale*(.8+deterministic(index,salt+7)*.6),scale*heightScale,scale)
+    dummy.updateMatrix()
+    instances.setMatrixAt(index,dummy.matrix)
+  }
+  instances.instanceMatrix.needsUpdate=true
+  instances.castShadow=true
+  instances.receiveShadow=true
+  parent.add(instances)
+  return instances
+}
+
 const rememberWaveBase=layer=>{
   const position=layer.geometry.attributes.position
   layer.userData.baseY=new Float32Array(position.count)
-  for(let index=0;index<position.count;index+=1) layer.userData.baseY[index]=position.getY(index)
+  const damp=new Float32Array(position.count),dx=new Float32Array(position.count),dz=new Float32Array(position.count)
+  const dampingAt=(x,z)=>smootherstep(.04,.6,sampleRiverSurface(x,z).depth)
+  const step=.05
+  for(let index=0;index<position.count;index+=1){
+    const x=position.getX(index),z=position.getZ(index)
+    layer.userData.baseY[index]=position.getY(index)
+    damp[index]=dampingAt(x,z)
+    dx[index]=(dampingAt(x+step,z)-dampingAt(x-step,z))/(2*step)
+    dz[index]=(dampingAt(x,z+step)-dampingAt(x,z-step))/(2*step)
+  }
+  layer.userData.waveShore={damp,dx,dz}
   return layer
 }
 
 const animateWaveVertices=(layer,elapsed,frequency,amplitude,phase)=>{
   const position=layer.geometry.attributes.position
-  const columns=layer.geometry.userData.crossSectionColumns||2
+  const normals=layer.geometry.getAttribute('normal')
+  const {damp,dx,dz}=layer.userData.waveShore
   for(let index=0;index<position.count;index+=1){
     const baseY=layer.userData.baseY[index]
-    const across=(index%columns)/(columns-1)*2-1
-    position.setY(index,baseY+
-      Math.sin(elapsed*frequency+position.getX(index)*.31+position.getZ(index)*.17+across*4.1+phase)*amplitude+
-      Math.cos(elapsed*frequency*.61-position.getZ(index)*.23-across*2.4)*amplitude*.42)
+    const first=elapsed*frequency+position.getX(index)*.31+position.getZ(index)*.17+phase
+    const second=elapsed*frequency*.61-position.getZ(index)*.23+position.getX(index)*.12
+    const wave=Math.sin(first)*amplitude+Math.cos(second)*amplitude*.42
+    position.setY(index,baseY+damp[index]*wave)
+    const slopeX=damp[index]*(Math.cos(first)*amplitude*.31-Math.sin(second)*amplitude*.42*.12)+dx[index]*wave
+    const slopeZ=damp[index]*(Math.cos(first)*amplitude*.17+Math.sin(second)*amplitude*.42*.23)+dz[index]*wave
+    const inverseLength=1/Math.hypot(slopeX,1,slopeZ)
+    normals.setXYZ(index,-slopeX*inverseLength,inverseLength,-slopeZ*inverseLength)
   }
   position.needsUpdate=true
-  layer.geometry.computeVertexNormals()
+  normals.needsUpdate=true
 }
 
-const addScenicReflection=material=>{
-  material.userData.reflectionMode='fresnel-sky-terrain'
+const addRiverCurrent=material=>{
+  const time={value:0}
+  material.userData.currentTime=time
   material.onBeforeCompile=shader=>{
-    shader.uniforms.reflectedSkyColor={value:new THREE.Color('#b9e6e0')}
-    shader.uniforms.reflectedTerrainColor={value:new THREE.Color('#244f42')}
-    shader.fragmentShader=shader.fragmentShader
-      .replace('#include <common>',`#include <common>
-uniform vec3 reflectedSkyColor;
-uniform vec3 reflectedTerrainColor;`)
-      .replace('#include <opaque_fragment>',`
-float reflectionFresnel = pow(1.0 - clamp(dot(normalize(normal), normalize(vViewPosition)), 0.0, 1.0), 3.0);
-vec3 scenicReflection = mix(reflectedTerrainColor, reflectedSkyColor, clamp(normal.y * 0.5 + 0.5, 0.0, 1.0));
-outgoingLight = mix(outgoingLight, scenicReflection, 0.12 + reflectionFresnel * 0.38);
-#include <opaque_fragment>`)
+    shader.uniforms.riverCurrentTime=time
+    shader.vertexShader=shader.vertexShader.replace('#include <common>',`#include <common>
+      attribute float waterDepth;
+      varying float vRiverDepth;
+      varying vec2 vRiverFlowPosition;`)
+      .replace('#include <begin_vertex>',`#include <begin_vertex>
+        vRiverDepth=waterDepth;
+        vRiverFlowPosition=position.xz;`)
+    shader.fragmentShader=shader.fragmentShader.replace('#include <common>',`#include <common>
+      uniform float riverCurrentTime;
+      varying float vRiverDepth;
+      varying vec2 vRiverFlowPosition;
+      float currentHash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+      float currentNoise(vec2 p){
+        vec2 i=floor(p),f=fract(p);f=f*f*(3.0-2.0*f);
+        return mix(mix(currentHash(i),currentHash(i+vec2(1,0)),f.x),
+          mix(currentHash(i+vec2(0,1)),currentHash(i+vec2(1,1)),f.x),f.y);
+      }`)
+      .replace('#include <color_fragment>',`#include <color_fragment>
+        vec2 flow=vec2(vRiverFlowPosition.x,vRiverFlowPosition.y+riverCurrentTime*.42);
+        float eddy=currentNoise(flow*.22);
+        float streak=currentNoise(vec2(flow.x*2.1+eddy*.9,flow.y*.18));
+        float broken=currentNoise(flow*.72+vec2(eddy,riverCurrentTime*.025));
+        float current=smoothstep(.57,.88,streak)*smoothstep(.26,.68,broken);
+        float shallows=1.0-smoothstep(.12,1.4,vRiverDepth);
+        diffuseColor.rgb*=.96+eddy*.09;
+        diffuseColor.rgb+=vec3(.055,.095,.12)*current*(.35+shallows*.65);
+      `)
   }
-  material.customProgramCacheKey=()=>material.userData.reflectionMode
+  material.customProgramCacheKey=()=> 'river-current-v1'
   return material
 }
 
-const createForestSightline=(m,route,quality)=>{
+const addScenicReflection=material=>{
+  material.userData.reflectionMode='environment-fresnel'
+  material.envMapIntensity=1.05
+  material.normalMap=createRippleNormalMap()
+  material.normalScale=new THREE.Vector2(.28,.28)
+  return material
+}
+
+const createForestSightline=(m,route,quality,forestRoute)=>{
   const forest=named('distant-forest-silhouette')
   const count=quality==='mobile'?9:15
   const forestLandingPoint=route.getPointAt(1)
-  const sightlineGround=mesh(
-    new THREE.PlaneGeometry(34,19,16,10),
-    new THREE.MeshStandardMaterial({color:'#314331',roughness:1}),
-    [forestLandingPoint.x,-.22,forestLandingPoint.z-10],
-    [-Math.PI/2,0,0],
-  )
-  sightlineGround.name='forest-sightline-ground'
-  sightlineGround.receiveShadow=true
-  forest.add(sightlineGround)
+  const heightAt=(x,z)=>sampleForestGroundHeight(forestRoute,x,z)
+  forest.userData.groundOwner='forest-ground'
   ;[
-    {offset:-5,z:-8,color:'#173b32',scale:.82},
-    {offset:0,z:-11,color:'#204b3b',scale:1},
-    {offset:5,z:-14,color:'#2b5b43',scale:1.12},
+    {z:-4,color:'#435a43',scale:.82},
+    {z:-9,color:'#536a4c',scale:1},
+    {z:-14,color:'#667954',scale:1.12},
   ].forEach((bandConfig,bandIndex)=>{
     const band=named(`forest-silhouette-band-${bandIndex+1}`)
-    const material=new THREE.MeshStandardMaterial({color:bandConfig.color,roughness:.94})
+    const material=bandIndex===0?m.foliage:createFoliageMaterial(bandConfig.color,m.foliage.map)
+    if(!material.map?.userData.managedByNatureAssets) material.color.set(bandConfig.color)
     for(let index=0;index<count;index+=1){
-      const t=index/(count-1),{point,lateral}=sampleFrame(route,1)
-      const spread=(t-.5)*22+bandConfig.offset+Math.sin(index*1.73+bandIndex)*.58
+      const side=(index+bandIndex)%2?-1:1
       const height=(1.45+(index%4)*.28)*bandConfig.scale
       const radius=.72+(index%3)*.12
-      const x=point.x+lateral.x*spread
-      const z=point.z+lateral.z*spread+bandConfig.z+Math.sin(index*.91+bandIndex)*.7
-      const trunkHeight=Math.max(.9,height-radius*.28)
+      const x=side*(16+deterministic(index,bandIndex+40)*12)
+      const z=forestLandingPoint.z+bandConfig.z-deterministic(index,bandIndex+50)*3
+      const tree=named(`forest-proxy-tree-${bandIndex}-${index}`)
+      tree.position.set(x,heightAt(x,z)-.09,z)
+      const trunkHeight=height+.12
       const trunk=mesh(
         new THREE.CylinderGeometry(.09*bandConfig.scale,.16*bandConfig.scale,trunkHeight,7),
         m.wood,
-        [x,trunkHeight/2,z],
+        [0,trunkHeight/2,0],
       )
       trunk.name='distant-forest-trunk'
       const crown=mesh(
-        index%2
-          ?new THREE.IcosahedronGeometry(radius,2)
-          :new THREE.DodecahedronGeometry(radius,1),
+        createFoliageGeometry({seed:index+bandIndex*61,variant:index%6,scale:radius*.7,leaves:quality==='mobile'?160:260}),
         material,
-        [x,height+bandIndex*.35,z],
+        [0,height,0],
       )
       crown.name='distant-forest-crown'
       crown.scale.set(
@@ -253,234 +271,106 @@ const createForestSightline=(m,route,quality)=>{
         (.82+(index%3)*.12)*bandConfig.scale,
         (.72+((index+1)%4)*.08)*bandConfig.scale,
       )
-      band.add(trunk,crown)
+      tree.add(trunk,crown)
+      band.add(tree)
     }
     forest.add(band)
   })
-  for(let index=0;index<(quality==='mobile'?5:10);index+=1){
-    forest.add(createTree(
-      m,
-      forestLandingPoint.x-7.5+index*1.65+Math.sin(index*1.4)*.35,
-      forestLandingPoint.z-5-(index%3)*1.5,
-      .48+(index%4)*.06,
-    ))
-  }
   return forest
 }
 
 export function createWaterWorld(m,quality='desktop'){
   const world=named('water-world')
-  const route=new THREE.CatmullRomCurve3([
-    new THREE.Vector3(...LANDMARKS.mountainLanding),
-    new THREE.Vector3(6.4,.2,-45),
-    new THREE.Vector3(-4.8,.18,-58),
-    new THREE.Vector3(4.2,.2,-72),
-    new THREE.Vector3(...LANDMARKS.forestLanding),
-  ],false,'catmullrom',.42)
-  const segments=quality==='mobile'?40:76
-
-  const basin=mesh(
-    createBasinGeometry(),
-    new THREE.MeshStandardMaterial({vertexColors:true,roughness:1}),
-    [0,0,-61.5],
-  )
+  m={...m,
+    wood:createEnvironmentMaterial('#786b55','wood'),
+    leaf2:new THREE.MeshStandardMaterial({color:'#747c50',roughness:.97}),
+    foliage:createFoliageMaterial('#627652',createLeafTexture()),
+  }
+  const route=createRiverRoute()
+  const forestRoute=createForestRoute()
+  const basin=mesh(createBasinGeometry(forestRoute,quality),createLandscapeMaterial())
   basin.name='water-basin-ground'
   basin.receiveShadow=true
   world.add(basin)
 
-  const depthMaterial=new THREE.MeshPhysicalMaterial({
-    color:'#022f3b',
-    roughness:.42,
-    metalness:.04,
-    clearcoat:.22,
-    clearcoatRoughness:.18,
-    vertexColors:true,
-  })
-  const depth=mesh(createRibbonGeometry(route,segments,t=>waterHalfWidth(t)+.28,-.28),depthMaterial)
-  depth.name='water-depth-layer'
-  depth.receiveShadow=true
-  world.add(depth)
-
-  const surfaceMaterial=addScenicReflection(new THREE.MeshPhysicalMaterial({
-    color:'#ffffff',
-    roughness:.06,
-    metalness:.03,
-    transmission:.3,
-    thickness:.32,
-    reflectivity:.78,
-    clearcoat:1,
-    clearcoatRoughness:.015,
-    transparent:true,
-    opacity:.68,
-    vertexColors:true,
-    side:THREE.DoubleSide,
-  }))
-  const water=rememberWaveBase(mesh(createRibbonGeometry(route,segments,waterHalfWidth,.01),surfaceMaterial))
+  const surfaceMaterial=addRiverCurrent(addScenicReflection(new THREE.MeshPhysicalMaterial({
+    color:'#ffffff',roughness:.17,metalness:0,transmission:0,ior:1.333,
+    clearcoat:.2,clearcoatRoughness:.18,transparent:false,opacity:1,
+    vertexColors:true,side:THREE.DoubleSide,
+  })))
+  const water=rememberWaveBase(mesh(createRiverSurfaceGeometry(quality),surfaceMaterial))
+  attachNaturalReflection(water,{quality,level:RIVER_LEVEL})
   water.name='reflective-water'
   water.receiveShadow=true
   world.add(water)
 
-  const reflectionMaterial=new THREE.MeshPhysicalMaterial({
-    color:'#a8e7df',
-    roughness:.07,
-    metalness:.2,
-    transmission:.04,
-    clearcoat:1,
-    clearcoatRoughness:.025,
-    transparent:true,
-    opacity:.24,
-    vertexColors:true,
-    depthWrite:false,
-    blending:THREE.NormalBlending,
+  // The bank is the exposed part of the continuous basin, not an overlapping ribbon.
+  const shoreline=named('water-shoreline'),banks=named('curved-river-banks')
+  ;['left-river-bank','right-river-bank'].forEach(name=>{
+    const bank=named(name)
+    bank.userData.surfaceOwner='water-basin-ground'
+    banks.add(bank)
   })
-  const reflection=rememberWaveBase(mesh(createRibbonGeometry(route,segments,t=>waterHalfWidth(t)*.84,.055),reflectionMaterial))
-  reflection.name='water-reflection-layer'
-  reflection.renderOrder=2
-  world.add(reflection)
-
-  const shallows=named('water-shallows')
-  const shallowsMaterial=new THREE.MeshPhysicalMaterial({
-    color:'#91d5bd',
-    roughness:.3,
-    metalness:.02,
-    transmission:.08,
-    clearcoat:.62,
-    transparent:true,
-    opacity:.46,
-    depthWrite:false,
-  })
-  ;[-1,1].forEach(side=>{
-    const shallow=mesh(
-      createEdgeRibbonGeometry(route,segments,side),
-      shallowsMaterial,
-    )
-    shallow.name=side<0?'left-water-shallows':'right-water-shallows'
-    shallows.add(shallow)
-  })
-  world.add(shallows)
-
-  const banks=named('curved-river-banks')
-  banks.add(
-    mesh(createBankGeometry(route,segments,-1),new THREE.MeshStandardMaterial({vertexColors:true,roughness:.96})),
-    mesh(createBankGeometry(route,segments,1),new THREE.MeshStandardMaterial({vertexColors:true,roughness:.96})),
-  )
-  banks.children[0].name='left-river-bank'
-  banks.children[1].name='right-river-bank'
-  const shoreline=named('water-shoreline')
   shoreline.add(banks)
   world.add(shoreline)
 
   const shoreDetail=named('water-shore-detail')
-  const shoreMaterials=[
-    new THREE.MeshStandardMaterial({color:'#45504a',roughness:.98}),
-    new THREE.MeshStandardMaterial({color:'#6f715d',roughness:.94}),
-    new THREE.MeshStandardMaterial({color:'#335643',roughness:.91}),
-  ]
-  const shoreDetailCount=quality==='mobile'?28:52
-  for(let index=0;index<shoreDetailCount;index+=1){
-    const t=.025+(index+.5)/shoreDetailCount*.95
-    const {point,lateral}=sampleFrame(route,t)
-    const side=index%2?-1:1
-    const distance=waterHalfWidth(t)+.12+deterministic(index,41)*1.15
-    const radius=.08+deterministic(index,42)*.16
-    const detail=mesh(
-      index%4===0
-        ?new THREE.IcosahedronGeometry(radius,1)
-        :new THREE.DodecahedronGeometry(radius,0),
-      shoreMaterials[index%shoreMaterials.length],
-      [
-        point.x+lateral.x*distance*side,
-        .11+radius*.28,
-        point.z+lateral.z*distance*side,
-      ],
-      [
-        deterministic(index,43)*.45,
-        deterministic(index,44)*Math.PI,
-        deterministic(index,45)*.35,
-      ],
-    )
-    detail.name=index%4===0?'shore-moss-clump':'shore-pebble'
-    detail.scale.set(
-      .72+deterministic(index,46)*.7,
-      .38+deterministic(index,47)*.38,
-      .7+deterministic(index,48)*.75,
-    )
-    shoreDetail.add(detail)
-  }
+  ;['#77796b','#8a826c','#666b53'].forEach((color,index)=>{
+    addShoreInstances(shoreDetail,`shore-gravel-${index}`,new THREE.DodecahedronGeometry(1,0),
+      createEnvironmentMaterial(color,'rock'),quality==='mobile'?30:58,forestRoute,
+      {minOffset:-.18,maxOffset:2.1,minScale:.055,maxScale:.23,heightScale:.42,salt:40+index*10})
+  })
   world.add(shoreDetail)
 
-  const bankShadows=named('water-bank-shadows')
-  const shadowMaterial=new THREE.MeshBasicMaterial({color:'#092f35',transparent:true,opacity:.42,depthWrite:false})
-  ;[-1,1].forEach(side=>{
-    const shadowCurve=offsetCurve(route,t=>side*(waterHalfWidth(t)-.05))
-    bankShadows.add(mesh(new THREE.TubeGeometry(shadowCurve,segments,.18,6,false),shadowMaterial))
-  })
-  world.add(bankShadows)
-
-  const foam=named('water-foam-accents')
-  const createFoamMaterial=()=>new THREE.MeshBasicMaterial({color:'#d9f4e8',transparent:true,opacity:.5,depthWrite:false})
-  ;[-1,1].forEach(side=>{
-    const foamCurve=offsetCurve(route,t=>side*(waterHalfWidth(t)-.42),.03,.97,24)
-    foam.add(mesh(new THREE.TubeGeometry(foamCurve,segments,.025,5,false),createFoamMaterial()))
-  })
-  for(let index=0;index<(quality==='mobile'?5:11);index+=1){
-    const t=.08+index/(quality==='mobile'?6:12)*.84,{point,lateral}=sampleFrame(route,t)
-    const ripple=mesh(new THREE.RingGeometry(.2,.26,18),createFoamMaterial(),[
-      point.x+lateral.x*(index%2?2.5:-2.8),
-      .11,
-      point.z+lateral.z*(index%2?2.5:-2.8),
-    ],[-Math.PI/2,0,index*.37])
-    foam.add(ripple)
-  }
-  world.add(foam)
-
   const rocks=named('water-rocks')
-  const wetStoneMaterial=new THREE.MeshPhysicalMaterial({color:'#304c48',roughness:.36,metalness:.08,clearcoat:.68})
-  for(let index=0;index<(quality==='mobile'?8:18);index+=1){
-    const t=.03+index/(quality==='mobile'?8:18)*.94,{point,lateral}=sampleFrame(route,t)
-    const side=index%2?-1:1,distance=waterHalfWidth(t)-.32+(index%3)*.42
-    const rock=mesh(
-      new THREE.DodecahedronGeometry(.34+(index%4)*.13,1),
-      wetStoneMaterial,
-      [point.x+lateral.x*distance*side,.18,point.z+lateral.z*distance*side],
-    )
-    rock.scale.y=.55
-    rocks.add(rock)
-  }
+  addShoreInstances(rocks,'river-bank-boulders',new THREE.DodecahedronGeometry(1,1),
+    createEnvironmentMaterial('#676e60','rock',{roughness:.64,bumpScale:.08}),
+    quality==='mobile'?15:28,forestRoute,
+    {minOffset:-.65,maxOffset:.95,minScale:.28,maxScale:.74,heightScale:.58,salt:80})
   world.add(rocks)
 
   const reeds=named('water-reeds')
-  for(let index=0;index<(quality==='mobile'?16:38);index+=1){
-    const t=.04+index/(quality==='mobile'?16:38)*.92,{point,lateral}=sampleFrame(route,t)
-    const side=index%2?-1:1,distance=waterHalfWidth(t)+.35+(index%4)*.17
-    const reed=mesh(
-      new THREE.CylinderGeometry(.018,.027,.72+(index%4)*.17,5),
-      m.leaf2,
-      [point.x+lateral.x*distance*side,.4,point.z+lateral.z*distance*side],
-    )
-    reed.rotation.z=side*(.04+(index%3)*.025)
-    reeds.add(reed)
-  }
+  const stems=Array.from({length:5},(_,index)=>{
+    const height=.6+(index%3)*.2
+    const stem=new THREE.CylinderGeometry(.008,.02,height,5)
+    stem.rotateZ((index-2)*.09)
+    stem.translate((index-2)*.07,height/2,(index%2)*.09)
+    return stem
+  })
+  const reedGeometry=mergeGeometries(stems,false)
+  stems.forEach(stem=>stem.dispose())
+  addShoreInstances(reeds,'river-reed-clusters',reedGeometry,m.leaf2,quality==='mobile'?58:108,forestRoute,
+    {minOffset:.55,maxOffset:2.3,minScale:.8,maxScale:1.4,heightScale:1,groundLift:-.035,salt:110})
   world.add(reeds)
+
+  const foam=named('water-foam-accents')
+  ;[-1,1].forEach(side=>{
+    for(let patch=0;patch<3;patch++){
+      const start=-46-patch*11+(side>0?2:0)
+      const material=new THREE.MeshBasicMaterial({color:'#c2c9b4',transparent:true,opacity:.16,depthWrite:false})
+      foam.add(mesh(new THREE.TubeGeometry(riverBankCurve(side,start,start-1.1,.34),12,.009,4,false),material))
+    }
+  })
+  world.add(foam)
 
   const mountainLanding=createLanding('mountain-water-landing',route,0,m)
   const forestLanding=createLanding('forest-water-landing',route,1,m)
   world.add(mountainLanding,forestLanding)
 
-  const forestSightline=createForestSightline(m,route,quality)
+  const forestSightline=createForestSightline(m,route,quality,forestRoute)
   world.add(forestSightline)
 
-  const sun=new THREE.DirectionalLight('#ffd399',3.2)
+  const sun=new THREE.DirectionalLight('#e7ddc9',.65)
   sun.position.set(-8,12,6)
   world.add(sun)
   world.userData={
     route,
     water,
-    reflection,
     wake:null,
     mountainLanding,
     forestLanding,
-    surfaceMaterials:[surfaceMaterial,reflectionMaterial,shallowsMaterial],
+    surfaceMaterials:[surfaceMaterial],
+    riverSampler:sampleRiverSurface,
     forestSightline,
     copyAnchor:mountainLanding.position.clone().add(new THREE.Vector3(-5,2,-2)),
   }
@@ -488,13 +378,11 @@ export function createWaterWorld(m,quality='desktop'){
 }
 
 export function updateWaterWorld(world,elapsed,boat){
-  const {water,reflection}=world.userData
-  animateWaveVertices(water,elapsed,1.43,.11,0)
-  animateWaveVertices(reflection,elapsed,2.17,.052,1.2)
-  water.position.y=.012+Math.sin(elapsed*1.11)*.012
-  reflection.position.y=.016+Math.sin(elapsed*1.83+.7)*.008
-  const shallows=world.getObjectByName('water-shallows')
-  if(shallows) shallows.position.y=Math.sin(elapsed*.82)*.009
+  const {water}=world.userData
+  animateWaveVertices(water,elapsed,.76,.035,0)
+  water.material.userData.currentTime.value=elapsed
+  water.material.normalMap.offset.set(elapsed*.006,elapsed*.009)
+  water.position.y=.004+Math.sin(elapsed*1.11)*.003
   const foam=world.getObjectByName('water-foam-accents')
   if(foam) foam.children.forEach((accent,index)=>{
     accent.material.opacity=.34+.16*Math.sin(elapsed*(1.2+(index%3)*.17)+index*.8)

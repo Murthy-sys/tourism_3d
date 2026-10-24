@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
-import BookingOverlay, { buildWhatsAppUrl } from './BookingOverlay'
+import BookingOverlay, { buildEnquiryMessage } from './BookingOverlay'
 
 const selectedPackage={
   id:'bandaje-waterfalls',
@@ -13,29 +13,26 @@ const selectedPackage={
 }
 
 describe('BookingOverlay', () => {
-  it('builds one exact-number WhatsApp URL with name, package, and dates',()=>{
-    const url=buildWhatsAppUrl({
+  it('builds a local enquiry preview with name, package, and dates',()=>{
+    const message=buildEnquiryMessage({
       contactName:'Ananya Rao',
       startDate:'2026-08-14',
       endDate:'2026-08-15',
       selectedPackage,
     })
-    expect(url).toMatch(/^https:\/\/wa\.me\/917204033032\?text=/)
-    const message=decodeURIComponent(url.split('?text=')[1])
+    expect(message).toContain('Hello XYZ Travellers,')
     expect(message).toContain('Contact person: Ananya Rao')
     expect(message).toContain('Travel dates: 2026-08-14 to 2026-08-15')
-    expect(message).toContain('Package: Bandaje Waterfalls — 1 Night · 1 Day — ₹3,499 per day')
-    expect(url).not.toMatch(/7358369538|7404033032/)
+    expect(message).toContain('Package: Bandaje Waterfalls · 1 Night · 1 Day · ₹3,499 per day')
   })
 
-  it('validates the contact name and date range before opening WhatsApp',()=>{
-    const openWhatsApp=vi.fn()
+  it('validates the date range before previewing without opening an external contact',()=>{
+    const openWindow=vi.spyOn(window,'open').mockImplementation(()=>null)
     render(
       <BookingOverlay
         open
         selectedPackage={selectedPackage}
         onClose={vi.fn()}
-        openWhatsApp={openWhatsApp}
       />,
     )
     expect(screen.getByText('Bandaje Waterfalls')).toBeInTheDocument()
@@ -48,39 +45,37 @@ describe('BookingOverlay', () => {
     fireEvent.change(screen.getByLabelText('End Date'),{
       target:{value:'2026-08-15'},
     })
-    fireEvent.click(screen.getByRole('button',{name:'Continue on WhatsApp'}))
+    fireEvent.click(screen.getByRole('button',{name:'Preview enquiry'}))
     expect(screen.getByRole('alert')).toHaveTextContent(
       'End Date cannot be before Start Date.',
     )
-    expect(openWhatsApp).not.toHaveBeenCalled()
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
     fireEvent.change(screen.getByLabelText('End Date'),{
       target:{value:'2026-08-17'},
     })
-    fireEvent.click(screen.getByRole('button',{name:'Continue on WhatsApp'}))
-    expect(openWhatsApp).toHaveBeenCalledTimes(1)
-    expect(openWhatsApp.mock.calls[0][0]).toMatch(
-      /^https:\/\/wa\.me\/917204033032\?text=/,
-    )
+    fireEvent.click(screen.getByRole('button',{name:'Preview enquiry'}))
+    expect(screen.getByRole('status')).toHaveTextContent('Demo enquiry preview. Nothing has been sent.')
+    expect(screen.getByRole('status')).toHaveTextContent('Travel dates: 2026-08-16 to 2026-08-17')
+    expect(openWindow).not.toHaveBeenCalled()
+    openWindow.mockRestore()
   })
 
   it('requires a non-whitespace contact name and both travel dates',()=>{
-    const openWhatsApp=vi.fn()
     render(
       <BookingOverlay
         open
         selectedPackage={selectedPackage}
         onClose={vi.fn()}
-        openWhatsApp={openWhatsApp}
       />,
     )
     fireEvent.change(screen.getByLabelText('Contact Person Name'),{
       target:{value:'   '},
     })
-    fireEvent.click(screen.getByRole('button',{name:'Continue on WhatsApp'}))
+    fireEvent.click(screen.getByRole('button',{name:'Preview enquiry'}))
     expect(screen.getByRole('alert')).toHaveTextContent(
       'Enter the contact person name and select both travel dates.',
     )
-    expect(openWhatsApp).not.toHaveBeenCalled()
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
   })
 
   it('wraps Tab focus within the dialog',()=>{
@@ -93,7 +88,7 @@ describe('BookingOverlay', () => {
     )
     const dialog=screen.getByRole('dialog')
     const first=screen.getByRole('button',{name:'Close booking'})
-    const final=screen.getByRole('button',{name:'Continue on WhatsApp'})
+    const final=screen.getByRole('button',{name:'Preview enquiry'})
 
     final.focus()
     fireEvent.keyDown(dialog,{key:'Tab'})

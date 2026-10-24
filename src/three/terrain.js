@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import {sampleAccessRoad,ACCESS_ROAD_WIDTH,ACCESS_ROAD_SHOULDER} from './accessRoad'
 
 export const LANDMARKS=Object.freeze({
   trailheadStart:Object.freeze([3.2,.35,34]),
@@ -19,8 +20,12 @@ const ridge=(x,z)=>
   Math.cos(z*.11-x*.09)*1.8+
   Math.sin((x+z)*.29)*.65
 
-const baseMountainHeight=(x,z)=>
-  Math.max(0,(ridge(x,z)+4.4)*smootherstep(-38,8,z))
+const baseMountainHeight=(x,z)=>{
+  const shoulders=smootherstep(10,27,Math.abs(x))
+  const erosion=2.1+Math.abs(Math.sin(x*.28+Math.sin(z*.16)))*2.8+
+    Math.sin(z*.43+x*.31)*.38+Math.sin(z*.91-x*.62)*.16
+  return Math.max(0,(ridge(x,z)+4.4+shoulders*erosion)*smootherstep(-38,8,z))
+}
 
 const openingCenterX=z=>
   THREE.MathUtils.lerp(0,3.2,smootherstep(12,34,z))
@@ -38,8 +43,15 @@ export const sampleMountainHeight=(x,z)=>{
     corridorEnvelope
   const turnoutDistance=Math.hypot((x+2)/12,(z-34)/9)
   const turnout=1-smootherstep(.72,1.25,turnoutDistance)
-  const weight=Math.max(corridor,turnout)
-  return THREE.MathUtils.lerp(base,openingFloor(z),weight)
+  const arrivalValley=smootherstep(34,44,z)*
+    (1-smootherstep(24,40,Math.abs(x-3)))
+  const clearing=Math.max(corridor,turnout)
+  const weight=1-(1-clearing)*(1-arrivalValley)
+  const valley=THREE.MathUtils.lerp(base,openingFloor(z),weight)
+  const road=sampleAccessRoad(x,z)
+  const verge=ACCESS_ROAD_WIDTH/2+ACCESS_ROAD_SHOULDER
+  const roadCut=1-smootherstep(verge+.3,verge+9,road.distance)
+  return THREE.MathUtils.lerp(valley,road.height,roadCut)
 }
 
 export const sampleMountainSlope=(x,z)=>{

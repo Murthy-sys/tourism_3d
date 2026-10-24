@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import {mesh} from './primitives'
+import {createAccessRoad,sampleAccessRoad,ACCESS_ROAD_WIDTH,ACCESS_ROAD_SHOULDER} from './accessRoad'
 
 const namedGroup=name=>{
   const group=new THREE.Group()
@@ -113,16 +114,29 @@ const createTurnoutGeometry=(heightAt,quality,terrainGeometry)=>{
 }
 
 const makePatch=(name,radius,color,roughness,x,z,heightAt)=>{
+  const geometry=new THREE.CircleGeometry(radius,32)
+  const positions=geometry.getAttribute('position')
+  for(let index=1;index<positions.count;index++){
+    const angle=Math.atan2(positions.getY(index),positions.getX(index))
+    const edge=.87+Math.sin(angle*3+x)*.09+Math.cos(angle*7+z)*.045
+    positions.setXY(index,positions.getX(index)*edge,positions.getY(index)*edge)
+  }
+  const surface=new THREE.MeshStandardMaterial({
+    color,roughness,metalness:0,transparent:true,opacity:.6,depthWrite:false,
+  })
+  surface.onBeforeCompile=shader=>{
+    shader.vertexShader=shader.vertexShader.replace('#include <common>','#include <common>\nvarying vec2 vPatchUv;')
+      .replace('#include <uv_vertex>','#include <uv_vertex>\nvPatchUv=uv;')
+    shader.fragmentShader=shader.fragmentShader.replace('#include <common>','#include <common>\nvarying vec2 vPatchUv;')
+      .replace('#include <opaque_fragment>',`float edge=length(vPatchUv-.5)*2.0;
+        float mottling=.83+.17*sin(vPatchUv.x*38.0+sin(vPatchUv.y*29.0));
+        diffuseColor.a*=1.0-smoothstep(.46,.99,edge/mottling);
+        #include <opaque_fragment>`)
+  }
+  surface.customProgramCacheKey=()=> 'irregular-damp-ground-patch'
   const patch=mesh(
-    new THREE.CircleGeometry(radius,24),
-    new THREE.MeshStandardMaterial({
-      color,
-      roughness,
-      metalness:0,
-      transparent:true,
-      opacity:.72,
-      depthWrite:false,
-    }),
+    geometry,
+    surface,
     [x,heightAt(x,z)+.035,z],
     [-Math.PI/2,0,0],
   )
@@ -138,8 +152,10 @@ export function createTrailhead(materials,{
   route,
   standingPoses=[],
   terrainGeometry,
+  terrainSurroundGeometry,
 }){
   const trailhead=namedGroup('trailhead')
+  const accessRoad=createAccessRoad({heightAt,terrainGeometry,terrainSurroundGeometry,quality})
   const gravel=namedGroup('trailhead-gravel')
   const turnout=mesh(
     createTurnoutGeometry(heightAt,quality,terrainGeometry),
@@ -173,8 +189,8 @@ export function createTrailhead(materials,{
 
   const damp=namedGroup('trailhead-damp-patches')
   damp.add(
-    makePatch('trailhead-damp-patch-1',1.15,'#394944',.38,-8.1,31.1,heightAt),
-    makePatch('trailhead-damp-patch-2',.82,'#344641',.34,.2,39.1,heightAt),
+    makePatch('trailhead-damp-patch-1',1.15,'#413c32',.74,-8.1,31.1,heightAt),
+    makePatch('trailhead-damp-patch-2',.82,'#39372d',.7,.2,39.1,heightAt),
   )
 
   const grass=namedGroup('trailhead-edge-grass')
@@ -197,6 +213,7 @@ export function createTrailhead(materials,{
     const point=new THREE.Vector3(x,heightAt(x,z),z)
     if(point.distanceTo(OPENING_CAMERA)<CAMERA_CLEARANCE+1.25) continue
     if(minimumRouteDistance(point,route)<2.4) continue
+    if(sampleAccessRoad(x,z).distance<ACCESS_ROAD_WIDTH/2+ACCESS_ROAD_SHOULDER+1.1) continue
     if(standingPoints.some(candidate=>candidate.distanceTo(point)<1.6)) continue
 
     const kind=index%3
@@ -233,13 +250,14 @@ export function createTrailhead(materials,{
     routeObstacles.push(new THREE.Box3().setFromObject(object))
   }
 
-  trailhead.add(gravel,earth,tireMarks,damp,grass,stones,bushes)
+  trailhead.add(accessRoad,gravel,earth,tireMarks,damp,grass,stones,bushes)
   trailhead.userData={
     coachPose:{
       position:new THREE.Vector3(-4,heightAt(-4,34),34),
       heading:-Math.PI/2,
     },
     turnoutBounds,
+    accessRoad,
     routeObstacles,
     routeClearance:1.5,
     cameraClearance:CAMERA_CLEARANCE,

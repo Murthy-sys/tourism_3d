@@ -109,7 +109,7 @@ describe('India journey data', () => {
     })
   })
 
-  it('keeps the complete expedition phase table unchanged after the opening',()=>{
+  it('preserves the expedition handoffs and reserves the ending for the waterfall stop',()=>{
     expect([
       [0,'mountain-trek'],
       [.279999,'mountain-trek'],
@@ -120,8 +120,8 @@ describe('India journey data', () => {
       [.60,'boat-to-jeep'],
       [.739999,'boat-to-jeep'],
       [.74,'forest-jeep'],
-      [.939999,'forest-jeep'],
-      [.94,'contact'],
+      [.899999,'forest-jeep'],
+      [.90,'contact'],
       [1,'contact'],
     ].map(([progress])=>getExpeditionState(progress).phase)).toEqual([
       'mountain-trek',

@@ -3,6 +3,8 @@ import {describe,expect,it} from 'vitest'
 import {createMaterials,disposeObject3D} from './primitives'
 import {createTrailhead} from './trailhead'
 import {LANDMARKS,sampleMountainHeight} from './terrain'
+import {createHillWorld} from './hillWorld'
+import {sampleAccessRoad,ACCESS_ROAD_WIDTH,ACCESS_ROAD_SHOULDER} from './accessRoad'
 
 const standingPoses=[
   {role:'guide',position:[3.2,.35,33.7],heading:-3.04},
@@ -176,6 +178,61 @@ describe('trailhead clearing',()=>{
         expect(normal.getY(index)).toBeGreaterThan(0)
       }
     })
+    disposeObject3D(trailhead)
+  })
+})
+
+
+describe('road access to the bus turnout',()=>{
+  it.each(['desktop','mobile'])('drapes a continuous %s road and shoulders onto the actual core and surround',quality=>{
+    const world=createHillWorld(createMaterials(),quality)
+    world.updateMatrixWorld(true)
+    const road=world.getObjectByName('trailhead-access-road')
+    const surface=road.getObjectByName('trailhead-road-surface')
+    const shoulders=road.getObjectByName('trailhead-road-shoulders')
+    const terrain=[world.getObjectByName('hill-terrain'),world.getObjectByName('hill-terrain-surround')]
+    expect(road.children).toHaveLength(3)
+    expect(road.userData.width).toBeGreaterThanOrEqual(5)
+    expect(road.userData.width).toBeLessThanOrEqual(6)
+    expect(road.userData.curve.getTangentAt(1).x).toBeGreaterThan(.99)
+    expect(surface.geometry.index.count).toBeGreaterThan(300)
+    expect(shoulders.geometry.index.count).toBeGreaterThan(300)
+    const ray=new THREE.Raycaster(),down=new THREE.Vector3(0,-1,0)
+    for(let index=1;index<32;index++){
+      const p=index/32,center=road.userData.curve.getPointAt(p),tangent=road.userData.curve.getTangentAt(p)
+      const lateral=new THREE.Vector3(-tangent.z,0,tangent.x)
+      for(const offset of [-2.6,0,2.6,3.2]){
+        const point=center.clone().addScaledVector(lateral,offset)
+        ray.set(new THREE.Vector3(point.x,100,point.z),down)
+        const ground=ray.intersectObjects(terrain)[0]
+        const overlay=ray.intersectObject(offset===3.2?shoulders:surface)[0]
+        expect(ground,`ground at ${p}, ${offset}`).toBeTruthy()
+        expect(overlay,`road at ${p}, ${offset}`).toBeTruthy()
+        expect(overlay.point.y-ground.point.y).toBeCloseTo(road.userData.clearance,4)
+      }
+    }
+    for(const object of road.children){
+      expect(object.castShadow).toBe(false)
+      expect(object.receiveShadow).toBe(true)
+      const normal=object.geometry.getAttribute('normal')
+      for(let index=0;index<normal.count;index++) expect(normal.getY(index)).toBeGreaterThan(0)
+    }
+    disposeObject3D(world)
+  })
+
+  it('joins the coach pad while keeping the party, hiking route and roadside obstacles clear',()=>{
+    const trailhead=createTrailhead(createMaterials(),{heightAt:sampleMountainHeight,route,standingPoses})
+    const {accessRoad,coachPose}=trailhead.userData
+    const end=accessRoad.userData.curve.getPointAt(1)
+    expect(end.toArray()).toEqual([-8,0,34])
+    expect(Math.abs(end.z-coachPose.position.z)).toBeLessThan(.01)
+    const roadMargin=ACCESS_ROAD_WIDTH/2+ACCESS_ROAD_SHOULDER
+    for(const pose of standingPoses) expect(sampleAccessRoad(pose.position[0],pose.position[2]).distance).toBeGreaterThan(roadMargin+2)
+    for(const point of route.getSpacedPoints(60)) expect(sampleAccessRoad(point.x,point.z).distance).toBeGreaterThan(roadMargin+2)
+    for(const bounds of trailhead.userData.routeObstacles){
+      const center=bounds.getCenter(new THREE.Vector3())
+      expect(sampleAccessRoad(center.x,center.z).distance).toBeGreaterThan(roadMargin+.8)
+    }
     disposeObject3D(trailhead)
   })
 })

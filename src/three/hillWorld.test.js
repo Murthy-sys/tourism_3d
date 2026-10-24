@@ -4,8 +4,37 @@ import { createHillWorld } from './hillWorld'
 import { updateHillWorld } from './hillWorld'
 import { createMaterials, disposeObject3D } from './primitives'
 import { LANDMARKS } from './terrain'
+import { createWaterWorld } from './waterWorld'
+import { sampleRiverCrossSection,sampleRiverSurface } from './riverConfig'
 
 describe('hill world',()=>{
+  it('keeps distant ridge aprons out of the river handoff sightline',()=>{
+    const hill=createHillWorld(createMaterials(),'desktop')
+    const water=createWaterWorld(createMaterials(),'desktop')
+    hill.updateMatrixWorld(true)
+    water.updateMatrixWorld(true)
+    const camera=new THREE.PerspectiveCamera(48,2100/900,.1,420)
+    // Settled desktop camera at journey progress .645.
+    camera.position.set(1.962748,3.80172,-73.933099)
+    camera.lookAt(new THREE.Vector3(-1.878074,.788249,-87.980241))
+    camera.updateMatrixWorld(true)
+    const ray=new THREE.Raycaster()
+    ;[[1400,650],[1200,600],[1700,830],[800,650]].forEach(([x,y])=>{
+      ray.setFromCamera(new THREE.Vector2(x/2100*2-1,1-y/900*2),camera)
+      expect(ray.intersectObject(hill.getObjectByName('hill-ridges'),true)).toHaveLength(0)
+      const surface=ray.intersectObjects([hill,water],true)
+        .find(hit=>hit.object.material.depthWrite)
+      expect(['reflective-water','water-basin-ground']).toContain(surface.object.name)
+    })
+    const positions=water.getObjectByName('reflective-water').geometry.getAttribute('position')
+    for(let index=0;index<positions.count;index+=1){
+      ray.set(new THREE.Vector3(positions.getX(index),20,positions.getZ(index)),new THREE.Vector3(0,-1,0))
+      expect(ray.intersectObject(hill.getObjectByName('hill-ridges'),true)).toHaveLength(0)
+    }
+    disposeObject3D(hill)
+    disposeObject3D(water)
+  })
+
   it('uses horizontal heightfields instead of upright ridge-panel sheets',()=>{
     const world=createHillWorld(createMaterials(),'mobile')
     world.getObjectByName('hill-ridges').children.forEach(ridge=>{
@@ -37,12 +66,27 @@ describe('hill world',()=>{
 
   it('builds a natural mountain opening with a visible water destination',()=>{
     const world=createHillWorld(createMaterials(),'desktop')
-    ;['hill-terrain','hill-ridges','hill-rock-faces','hill-vegetation','hill-mist','hill-trail','mountain-water-landing','distant-water-glint']
+    ;['hill-terrain','hill-ridges','hill-rock-faces','hill-vegetation','hill-mist','hill-trail','mountain-water-landing']
       .forEach(name=>expect(world.getObjectByName(name)).toBeTruthy())
+    expect(world.getObjectByName('distant-water-glint')).toBeUndefined()
+    expect(world.userData.distantWaterAnchor.toArray()).toEqual([2,.4,-51])
     ;['glacier','drifting-snow','ice-foreground','monument']
       .forEach(name=>expect(world.getObjectByName(name)).toBeFalsy())
     expect(world.userData.route.getPoints(24).slice(0,-1).every(point=>Math.abs(point.y-world.userData.heightAt(point.x,point.z))<.3)).toBe(true)
     disposeObject3D(world)
+  })
+
+  it.each(['mobile','desktop'])('opens the %s mountain crest onto several parts of the broad river',quality=>{
+    const hill=createHillWorld(createMaterials(),quality)
+    hill.updateMatrixWorld(true)
+    const origin=new THREE.Vector3(6,quality==='mobile'?17:13.5,quality==='mobile'?32:26.1)
+    for(const target of [[-10,.02,-50],[0,.02,-50],[10,.02,-50],[0,.02,-65]]){
+      const direction=new THREE.Vector3(...target).sub(origin)
+      const ray=new THREE.Raycaster(origin,direction.clone().normalize(),0,direction.length()-.2)
+      const opaqueHits=ray.intersectObject(hill,true).filter(hit=>hit.object.material.depthWrite!==false)
+      expect(opaqueHits.map(hit=>hit.object.name)).toEqual([])
+    }
+    disposeObject3D(hill)
   })
 
   it('uses the requested terrain quality and exposes journey anchors',()=>{
@@ -50,7 +94,7 @@ describe('hill world',()=>{
     const mobile=createHillWorld(createMaterials(),'mobile')
     expect(desktop.getObjectByName('hill-terrain').geometry.attributes.color).toBeTruthy()
     expect(desktop.getObjectByName('hill-terrain').material.userData.surfaceDetail)
-      .toBe('multiscale-color-noise')
+      .toBe('procedural-grass')
     expect(desktop.getObjectByName('hill-terrain').geometry.userData.colorVariation)
       .toBeGreaterThan(.08)
     expect(desktop.userData.landing).toBe(desktop.getObjectByName('mountain-water-landing'))
@@ -66,6 +110,22 @@ describe('hill world',()=>{
     expect(mist.children[0].position.x).not.toBe(before)
     disposeObject3D(desktop)
     disposeObject3D(mobile)
+  })
+
+  it('uses detailed matte surfaces and leaf silhouettes without increasing terrain tessellation',()=>{
+    const world=createHillWorld(createMaterials(),'mobile')
+    const terrain=world.getObjectByName('hill-terrain')
+    expect(terrain.material.map.isDataTexture).toBe(true)
+    expect(terrain.material.bumpMap.isDataTexture).toBe(true)
+    expect(terrain.material.roughnessMap).toBe(terrain.material.bumpMap)
+    expect(terrain.material.metalness).toBe(0)
+    expect(terrain.geometry.getAttribute('uv').count).toBe(terrain.geometry.getAttribute('position').count)
+    expect(terrain.material.map.image.width).toBeLessThanOrEqual(128)
+    const crown=world.getObjectByName('hill-leaf-crown')
+    expect(crown.geometry.userData.organicSilhouette).toBe(true)
+    expect(crown.material.alphaTest).toBeGreaterThan(0)
+    expect(crown.material.transparent).toBe(false)
+    disposeObject3D(world)
   })
 
   it('extends one continuous grounded route through every mountain landmark',()=>{
@@ -191,6 +251,70 @@ describe('hill world',()=>{
       if(position.getZ(index)<-37) waterEdgeHeights.push(position.getY(index))
     }
     expect(Math.max(...waterEdgeHeights)).toBeLessThan(-.5)
+    disposeObject3D(world)
+  })
+
+  it.each(['desktop','mobile'])('keeps the %s hill core and surround beneath the widened river bed',quality=>{
+    const hill=createHillWorld(createMaterials(),quality)
+    const water=createWaterWorld(createMaterials(),quality)
+    hill.updateMatrixWorld(true)
+    water.updateMatrixWorld(true)
+    const terrain=hill.getObjectByName('hill-terrain'),surround=hill.getObjectByName('hill-terrain-surround')
+    const basin=water.getObjectByName('water-basin-ground')
+    const ray=new THREE.Raycaster()
+    for(let z=-36;z>=-85;z-=1.3){
+      const section=sampleRiverCrossSection(z)
+      for(const across of [.02,.15,.35,.5,.7,.85,.98]){
+        const x=THREE.MathUtils.lerp(section.leftX,section.rightX,across)
+        ray.set(new THREE.Vector3(x,20,z),new THREE.Vector3(0,-1,0))
+        const hillHits=ray.intersectObjects([terrain,surround])
+        const bedHits=ray.intersectObject(basin)
+        expect(hillHits.length).toBeGreaterThan(0)
+        expect(bedHits.length).toBeGreaterThan(0)
+        expect(hillHits[0].point.y,`basin clearance at ${x},${z}`).toBeLessThan(bedHits[0].point.y-.15)
+        expect(hillHits[0].point.y,`sample clearance at ${x},${z}`).toBeLessThan(sampleRiverSurface(x,z).bedHeight-.15)
+        expect(ray.intersectObject(hill.getObjectByName('hill-ridges'),true)).toHaveLength(0)
+      }
+    }
+    disposeObject3D(hill)
+    disposeObject3D(water)
+  })
+
+  it.each(['desktop','mobile'])('joins the %s foreground and lateral terrain without exposed borders',quality=>{
+    const world=createHillWorld(createMaterials(),quality)
+    const terrain=world.getObjectByName('hill-terrain')
+    const surround=world.getObjectByName('hill-terrain-surround')
+    expect(surround.material).toBe(terrain.material)
+    const surroundPosition=surround.geometry.getAttribute('position')
+    const surroundNormals=surround.geometry.getAttribute('normal')
+    const points=new Map()
+    for(let index=0;index<surroundPosition.count;index+=1){
+      points.set(`${surroundPosition.getX(index)}:${surroundPosition.getZ(index)}`,{
+        y:surroundPosition.getY(index),normal:new THREE.Vector3().fromBufferAttribute(surroundNormals,index),
+      })
+    }
+    const core=terrain.geometry.getAttribute('position')
+    for(let index=0;index<core.count;index+=1){
+      const x=core.getX(index),z=core.getZ(index)
+      if(Math.abs(x)!==42&&Math.abs(z)!==52) continue
+      const point=points.get(`${x}:${z}`)
+      expect(point.y).toBeCloseTo(core.getY(index),5)
+      expect(point.normal.distanceTo(new THREE.Vector3().fromBufferAttribute(terrain.geometry.getAttribute('normal'),index))).toBeLessThan(1e-6)
+    }
+    world.updateMatrixWorld(true)
+    const isMobile=quality==='mobile'
+    const camera=new THREE.PerspectiveCamera(isMobile?60:48,isMobile?390/844:1440/900,.1,420)
+    const target=new THREE.Vector3(...(isMobile?[-2.5,1.55,34.8]:[-2,1.55,34.8]))
+    for(const height of [isMobile?5.1:3.8,80]){
+      camera.position.set(isMobile?3.5:8.5,height,isMobile?67:46)
+      camera.lookAt(target)
+      camera.updateMatrixWorld(true)
+      for(const x of [-.9,0,.9]){
+        const raycaster=new THREE.Raycaster()
+        raycaster.setFromCamera(new THREE.Vector2(x,-.9),camera)
+        expect(raycaster.intersectObjects([terrain,surround]).length).toBeGreaterThan(0)
+      }
+    }
     disposeObject3D(world)
   })
 })

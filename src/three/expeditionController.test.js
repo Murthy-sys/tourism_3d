@@ -168,17 +168,23 @@ describe('expedition controller integration',()=>{
     controller.dispose()
   })
 
-  it('keeps every root mounted while zero transport presence disables color, depth writes and shadows',()=>{
+  it('keeps worlds visible and transports mounted while excluding absent transports from rendering',()=>{
     const scene=new THREE.Scene()
     const controller=createExpeditionController(scene,createMaterials(),'mobile')
     const mountainMesh=controller.worlds.mountain.getObjectByProperty('isMesh',true)
     const forestMesh=controller.worlds.forest.getObjectByProperty('isMesh',true)
     const jeepMesh=controller.transports.jeep.getObjectByProperty('isMesh',true)
     controller.update(getExpeditionState(0),0,false)
-    ;[
-      ...Object.values(controller.worlds),
-      ...Object.values(controller.transports),
-    ].forEach(root=>expect(root.visible).toBe(true))
+    Object.values(controller.worlds).forEach(root=>expect(root.visible).toBe(true))
+    Object.values(controller.transports).forEach(root=>{
+      expect(root.parent).toBe(controller.transportRoot)
+    })
+    expect(controller.transports.trekker.visible).toBe(true)
+    expect(controller.transports.boat.visible).toBe(false)
+    expect(controller.transports.jeep.visible).toBe(false)
+    const renderedObjects=[]
+    scene.traverseVisible(object=>renderedObjects.push(object))
+    expect(renderedObjects).not.toContain(jeepMesh)
     expect(mountainMesh.castShadow).toBe(true)
     expect(forestMesh.castShadow).toBe(false)
     expect(forestMesh.material).toMatchObject({
@@ -196,6 +202,9 @@ describe('expedition controller integration',()=>{
     controller.update(getExpeditionState(.9),1,false)
     expect(controller.worlds.mountain.visible).toBe(true)
     expect(controller.worlds.forest.visible).toBe(true)
+    expect(controller.transports.trekker.visible).toBe(false)
+    expect(controller.transports.boat.visible).toBe(false)
+    expect(controller.transports.jeep.visible).toBe(true)
     expect(mountainMesh.castShadow).toBe(false)
     expect(forestMesh.castShadow).toBe(true)
     expect(mountainMesh.material).toMatchObject({
@@ -204,6 +213,33 @@ describe('expedition controller integration',()=>{
       depthWrite:true,
       alphaHash:false,
     })
+    controller.dispose()
+  })
+
+  it('keeps material programs stable while presence weights and animation advance',()=>{
+    const scene=new THREE.Scene()
+    const controller=createExpeditionController(scene,createMaterials(),'mobile')
+    const jacket=controller.transports.trekker
+      .getObjectByName('trekking-guide').getObjectByName('layered-torso-shell')
+    const initialVersion=jacket.material.version
+    controller.update(getExpeditionState(.31),1,false)
+    expect(jacket.material.version).toBe(initialVersion+1)
+    const versions=new Map()
+    scene.traverse(object=>{
+      const materials=Array.isArray(object.material)?object.material:[object.material]
+      materials.filter(Boolean).forEach(material=>versions.set(material,material.version))
+    })
+    ;[.31,.34,.38,.41].forEach((progress,index)=>{
+      const transition=controller.update(getExpeditionState(progress),2+index,false)
+      expect(jacket.material.opacity).toBeCloseTo(transition.transports.trekker,6)
+      versions.forEach((version,material)=>expect(material.version).toBe(version))
+    })
+    controller.update(getExpeditionState(.08),6,false)
+    expect(jacket.material.version).toBe(initialVersion+2)
+    expect(jacket.material).toMatchObject({opacity:1,transparent:false,depthWrite:true})
+    expect(jacket.castShadow).toBe(true)
+    controller.update(getExpeditionState(.08),7,false)
+    expect(jacket.material.version).toBe(initialVersion+2)
     controller.dispose()
   })
 
@@ -298,7 +334,7 @@ describe('expedition controller integration',()=>{
     expect(passengerMesh(boat).castShadow).toBe(false)
     expect(passengerMesh(jeep).castShadow).toBe(false)
     controller.update(getExpeditionState(.84),2,true)
-    expect(boat.visible).toBe(true)
+    expect(boat.visible).toBe(false)
     expect(jeep.visible).toBe(true)
     expect(passengerMaterial(boat)).toMatchObject({
       opacity:0,
@@ -313,6 +349,32 @@ describe('expedition controller integration',()=>{
       alphaHash:false,
     })
     expect(passengerMesh(jeep).castShadow).toBe(true)
+    controller.update(getExpeditionState(.67),3,true)
+    expect(boat.visible).toBe(true)
+    expect(jeep.visible).toBe(true)
+    expect(passengerMaterial(boat).opacity).toBeCloseTo(transition.transports.boat,6)
+    expect(passengerMaterial(jeep).opacity).toBeCloseTo(transition.transports.jeep,6)
+    controller.update(getExpeditionState(.5),4,true)
+    expect(boat.visible).toBe(true)
+    expect(jeep.visible).toBe(false)
+    expect(passengerMaterial(boat)).toMatchObject({
+      opacity:1,
+      transparent:false,
+      depthWrite:true,
+    })
+    expect(passengerMesh(boat).castShadow).toBe(true)
+    controller.dispose()
+  })
+
+  it('keeps the waterfall flowing as a visible destination before forest presence',()=>{
+    const scene=new THREE.Scene()
+    const controller=createExpeditionController(scene,createMaterials(),'mobile')
+    const cascade=controller.scenery.waterfall.getObjectByName('waterfall-cascade-1')
+    for(const progress of [.42,.53,.62,.84,.53]){
+      controller.update(getExpeditionState(progress),1,true)
+      expect(cascade.visible).toBe(true)
+      expect(cascade.material.opacity).toBeGreaterThan(.3)
+    }
     controller.dispose()
   })
 
@@ -480,6 +542,48 @@ describe('expedition controller integration',()=>{
     expect(clones.every(material=>attached.has(material))).toBe(true)
     controller.dispose()
     Object.values(materials).forEach(material=>material.dispose())
+  })
+
+  it('turns from rendered travel and holds the parking pose until reverse boarding is complete',()=>{
+    const scene=new THREE.Scene()
+    const controller=createExpeditionController(scene,createMaterials(),'mobile')
+    const {jeep,boat}=controller.transports
+    const angleDifference=(from,to)=>Math.atan2(Math.sin(to-from),Math.cos(to-from))
+    const nose=new THREE.Vector3()
+    try{
+      controller.update(getExpeditionState(.84),0,false,1/60)
+      expect(boat.userData.travelMotion.direction).toBe(1)
+      const route=controller.worlds.forest.userData.route
+      nose.set(0,0,-1).applyEuler(jeep.rotation)
+      expect(nose.dot(route.getTangentAt(jeep.userData.lastProgress))).toBeGreaterThan(.999)
+      controller.update(getExpeditionState(.85),1/60,false,1/60)
+      let heading=jeep.rotation.y
+      for(let frame=1;frame<=90;frame++){
+        controller.update(getExpeditionState(.85-frame*.0002),(frame+1)/60,false,1/60)
+        expect(Math.abs(angleDifference(heading,jeep.rotation.y))).toBeLessThanOrEqual(Math.PI*2/60+1e-9)
+        heading=jeep.rotation.y
+      }
+      expect(jeep.userData.travelMotion.direction).toBe(-1)
+      nose.set(0,0,-1).applyEuler(jeep.rotation)
+      expect(nose.dot(route.getTangentAt(jeep.userData.lastProgress))).toBeLessThan(-.99)
+      controller.update(getExpeditionState(.90),2,false,1/60)
+      const parkedHeading=jeep.rotation.y
+      controller.update(getExpeditionState(.93),3,false,1/60)
+      const walkingPositions=controller.finale.members.map(member=>member.getWorldPosition(new THREE.Vector3()))
+      controller.update(getExpeditionState(1),4,false,1/60)
+      controller.update(getExpeditionState(.93),5,false,1/60)
+      controller.finale.members.forEach((member,index)=>{
+        expect(member.getWorldPosition(new THREE.Vector3()).distanceTo(walkingPositions[index])).toBeLessThan(1e-8)
+      })
+      expect(jeep.rotation.y).toBe(parkedHeading)
+      controller.update(getExpeditionState(.90),6,false,1/60)
+      expect(controller.finale.members.every(member=>member.parent===jeep.userData.sprungBody&&member.userData.seated)).toBe(true)
+      expect(jeep.userData.doors.every(({object})=>object.rotation.y===0)).toBe(true)
+      expect(jeep.rotation.y).toBe(parkedHeading)
+      controller.update(getExpeditionState(.899),6+1/60,false,1/60)
+      expect(jeep.userData.travelMotion.direction).toBe(-1)
+      expect(Math.abs(angleDifference(parkedHeading,jeep.rotation.y))).toBeLessThanOrEqual(Math.PI*2/60+1e-9)
+    }finally{controller.dispose()}
   })
 
   it('removes and disposes every constructed root',()=>{

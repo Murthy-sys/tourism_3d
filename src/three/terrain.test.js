@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import {describe,expect,it} from 'vitest'
+import {sampleAccessRoad,ACCESS_ROAD_POINTS} from './accessRoad'
 import {LANDMARKS,createTerrainGeometry,getBiomeWeights,sampleMountainHeight,sampleMountainSlope,smootherstep} from './terrain'
 
 describe('mountain-water-forest terrain contracts',()=>{
@@ -52,4 +53,31 @@ describe('mountain-water-forest terrain contracts',()=>{
     expect(samples.at(-1)).toBeGreaterThan(samples[0]+4)
     expect(getBiomeWeights(.31).water).toBeGreaterThan(.05)
   })
+
+  it('keeps the arrival valley below both opening cameras without changing the coach pad',()=>{
+    for(const x of [3.5,8.5,12]){
+      for(const z of [46,52,67,80]){
+        expect(sampleMountainHeight(x,z)).toBeCloseTo(.35,6)
+      }
+    }
+    expect(sampleMountainHeight(-4,34)).toBeCloseTo(.35,6)
+    expect(sampleMountainHeight(3.2,34)).toBeCloseTo(.35,6)
+    expect(sampleMountainHeight(2,22)).toBeCloseTo(3.1,1)
+  })
+})
+
+
+it('grades the curved access road into the flat bus pad without changing the hiking route',()=>{
+  const curve=new THREE.CatmullRomCurve3(ACCESS_ROAD_POINTS.map(([x,z])=>new THREE.Vector3(x,0,z)),false,'centripetal')
+  let previous=null
+  for(const point of curve.getSpacedPoints(100)){
+    const surface=sampleAccessRoad(point.x,point.z)
+    const height=sampleMountainHeight(point.x,point.z)
+    expect(height).toBeCloseTo(surface.height,6)
+    if(previous) expect(Math.abs(height-previous.height)/point.distanceTo(previous.point)).toBeLessThan(.13)
+    previous={point,height}
+  }
+  for(const x of [-18,-14,-10,-8,-4]) expect(sampleMountainHeight(x,34)).toBeCloseTo(.35,5)
+  expect(sampleMountainHeight(3.2,34)).toBeCloseTo(.35,6)
+  expect(sampleMountainHeight(2,22)).toBeCloseTo(3.1,1)
 })

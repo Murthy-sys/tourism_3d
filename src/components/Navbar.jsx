@@ -28,7 +28,7 @@ export default function Navbar() {
     <header className={`navbar ${scrolled ? 'navbar--scrolled' : ''}`}>
       <div className="navbar__inner">
         <a href="#top" className="navbar__logo" onClick={(e) => handleClick(e, '#top')}>
-          Wander<span>Lux</span>
+          XYZ <span>Travellers</span>
         </a>
 
         <nav className={`navbar__links ${open ? 'navbar__links--open' : ''}`}>

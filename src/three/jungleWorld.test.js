@@ -4,7 +4,9 @@ import { createJungleWorld } from './jungleWorld'
 import { createMaterials,disposeObject3D } from './primitives'
 import { LANDMARKS } from './terrain'
 import { createWaterWorld } from './waterWorld'
+import { createExpeditionJeep,updateJeep } from './expeditionVehicles'
 import { getJourneyState } from './journeyData'
+import { FINALE_CAMERAS,WATERFALL,WATERFALL_OUTFLOW,WATERFALL_VIEWING_POSITIONS,getFinaleGroundHeight,sampleFinaleWater } from './finaleConfig'
 import {
   getMobileTransportCamera,
   getResolvedCameraFrame,
@@ -90,13 +92,19 @@ describe('jungle world',()=>{
   it('centers the rendered landing deck on the shared water handoff surface',()=>{
     const jungle=createJungleWorld(createMaterials(),'desktop')
     const water=createWaterWorld(createMaterials(),'desktop')
-    const jungleDeck=deckMetrics(jungle,'forest-landing-deck')
+    jungle.updateMatrixWorld(true)
+    const jungleAnchor=jungle.getObjectByName('forest-landing-deck')
+    const jungleCenter=jungleAnchor.getWorldPosition(new THREE.Vector3())
+    const jungleDirection=new THREE.Vector3(0,0,1)
+      .applyQuaternion(jungleAnchor.getWorldQuaternion(new THREE.Quaternion())).setY(0).normalize()
     const waterDeck=deckMetrics(water,'forest-jetty')
     const landmark=new THREE.Vector3(...LANDMARKS.forestLanding)
-    expect(new THREE.Vector2(jungleDeck.center.x,jungleDeck.center.z)
+    expect(new THREE.Vector2(jungleCenter.x,jungleCenter.z)
       .distanceTo(new THREE.Vector2(landmark.x,landmark.z))).toBeLessThan(.2)
-    expect(jungleDeck.surfaceY).toBeCloseTo(waterDeck.surfaceY,5)
-    expect(jungleDeck.direction.distanceTo(waterDeck.direction)).toBeLessThan(.01)
+    expect(jungleCenter.y+.08).toBeCloseTo(waterDeck.surfaceY,5)
+    expect(jungleDirection.distanceTo(waterDeck.direction)).toBeLessThan(.01)
+    expect(jungleAnchor.children).toHaveLength(0)
+    expect(jungleAnchor.userData.surfaceOwner).toBe('forest-jetty')
     disposeObject3D(jungle)
     disposeObject3D(water)
   })
@@ -131,6 +139,29 @@ describe('jungle world',()=>{
     disposeObject3D(world)
   })
 
+  it('supports all four parked jeep wheels beyond the final route center',()=>{
+    const materials=createMaterials()
+    const world=createJungleWorld(materials,'mobile')
+    const jeep=createExpeditionJeep(materials)
+    const road=world.getObjectByName('jeep-track-surface')
+    updateJeep(jeep,world.userData.route,1,0,true)
+    world.updateMatrixWorld(true)
+    jeep.updateMatrixWorld(true)
+    const ray=new THREE.Raycaster()
+    const center=new THREE.Vector3()
+    jeep.userData.wheels.forEach(wheel=>{
+      wheel.getWorldPosition(center)
+      ray.set(new THREE.Vector3(center.x,10,center.z),new THREE.Vector3(0,-1,0))
+      const surface=ray.intersectObject(road)[0]
+      expect(surface).toBeTruthy()
+      expect(Math.abs(new THREE.Box3().setFromObject(wheel,true).min.y-surface.point.y)).toBeLessThan(.01)
+    })
+    expect(world.userData.route.getPointAt(1).toArray()).toEqual([...LANDMARKS.forestEnd])
+    disposeObject3D(jeep)
+    disposeObject3D(world)
+    Object.values(materials).forEach(material=>material.dispose())
+  })
+
   it('uses deterministic hashed placement instead of repeated rows',()=>{
     const first=createJungleWorld(createMaterials(),'desktop')
     const second=createJungleWorld(createMaterials(),'desktop')
@@ -159,7 +190,7 @@ describe('jungle world',()=>{
     disposeObject3D(world)
   })
 
-  it('uses layered human-scale trees instead of view-blocking giant canopies',()=>{
+  it('builds tall branched trees with shared, clustered canopy geometry',()=>{
     const world=createJungleWorld(createMaterials(),'desktop')
     const heights=[]
     world.traverse(object=>{
@@ -167,7 +198,173 @@ describe('jungle world',()=>{
         heights.push(new THREE.Box3().setFromObject(object).getSize(new THREE.Vector3()).y)
       }
     })
-    expect(Math.max(...heights)).toBeLessThan(5.5)
+    expect(Math.max(...heights)).toBeGreaterThan(10)
+    expect(Math.max(...heights)).toBeLessThan(18)
+    const trunks=objectsNamed(world,new Set(['tree-trunk']))
+    const crowns=objectsNamed(world,new Set(['individual-canopy-leaves']))
+    expect(new Set(trunks.map(trunk=>trunk.geometry)).size).toBe(6)
+    expect(new Set(crowns.map(crown=>crown.geometry)).size).toBe(6)
+    expect(trunks.every(trunk=>trunk.geometry.userData.branchCount>=14)).toBe(true)
+    expect(crowns.every(crown=>crown.geometry.userData.distribution==='branch-tip-sprays')).toBe(true)
+    expect(new Set(crowns.map(crown=>crown.geometry.userData.clusters)).size).toBeGreaterThan(1)
+    const backdrop=world.getObjectByName('forest-dense-backdrop')
+    expect(backdrop.children).toHaveLength(12)
+    expect(backdrop.children.every(object=>object.isInstancedMesh)).toBe(true)
+    expect(world.userData.counts.trees).toBeGreaterThanOrEqual(200)
+    disposeObject3D(world)
+  })
+
+  it('mixes tree ages and trunk proportions while reusing six growth forms',()=>{
+    const world=createJungleWorld(createMaterials(),'mobile')
+    const trees=world.getObjectByName('forest-near-layer').children
+    const ages=trees.map(tree=>tree.userData.ageScale)
+    expect(Math.max(...ages)/Math.min(...ages)).toBeGreaterThan(1.6)
+    expect(trees.every(tree=>tree.scale.x!==tree.scale.z)).toBe(true)
+    expect(new Set(trees.map(tree=>tree.userData.growthForm)).size).toBe(6)
+    const backdrop=world.getObjectByName('forest-dense-backdrop')
+    expect(backdrop.children).toHaveLength(12)
+    expect(backdrop.children.every(object=>object.isInstancedMesh)).toBe(true)
+    disposeObject3D(world)
+  })
+
+  it('keeps rolling ground out of the road and matches the finale clearing and pool basin',()=>{
+    const world=createJungleWorld(createMaterials(),'mobile')
+    const heightAt=world.userData.heightAt
+    const sideHeights=[-24,-16,16,24].flatMap(x=>[-100,-115,-125].map(z=>heightAt(x,z)))
+    expect(Math.max(...sideHeights)-heightAt(0,-120)).toBeGreaterThan(1.5)
+    const ground=world.getObjectByName('forest-ground')
+    ground.updateWorldMatrix(true,true)
+    const ray=new THREE.Raycaster()
+    WATERFALL_VIEWING_POSITIONS.forEach(([x,y,z])=>{
+      expect(heightAt(x,z)).toBeCloseTo(y,6)
+      ray.set(new THREE.Vector3(x,20,z),new THREE.Vector3(0,-1,0))
+      expect(ray.intersectObject(ground)[0].point.y).toBeCloseTo(y,2)
+    })
+    expect(heightAt(WATERFALL.pool[0],WATERFALL.pool[2]))
+      .toBeCloseTo(getFinaleGroundHeight(WATERFALL.pool[0],WATERFALL.pool[2]),6)
+    expect(new THREE.Box3().setFromObject(ground).min.z).toBeLessThanOrEqual(-174)
+    disposeObject3D(world)
+  })
+
+  it('hangs curved vines from actual tree branches away from the finale',()=>{
+    const world=createJungleWorld(createMaterials(),'mobile')
+    world.updateMatrixWorld(true)
+    const vines=[]
+    world.traverse(object=>{if(object.name.startsWith('jungle-vine-')) vines.push(object)})
+    expect(vines).toHaveLength(16)
+    const clearing=new THREE.Box3(new THREE.Vector3(-6,-5,-145),new THREE.Vector3(8,30,-129))
+    vines.forEach(vine=>{
+      expect(vine.parent.name.startsWith('jungle-tree-')).toBe(true)
+      const anchor=new THREE.Vector3(...vine.userData.branchAnchor)
+      const branchVertices=vine.parent.getObjectByName('tree-trunk').geometry.getAttribute('position')
+      let closest=Infinity
+      const vertex=new THREE.Vector3()
+      for(let index=0;index<branchVertices.count;index+=1){
+        closest=Math.min(closest,vertex.fromBufferAttribute(branchVertices,index).distanceTo(anchor))
+      }
+      expect(closest).toBeLessThan(1e-7)
+      const curve=vine.geometry.parameters.path
+      expect(curve.getPoint(0).distanceTo(anchor)).toBeLessThan(1e-7)
+      expect(anchor.y-curve.getPoint(1).y).toBeGreaterThan(2)
+      expect(Math.hypot(anchor.x-curve.getPoint(1).x,anchor.z-curve.getPoint(1).z)).toBeGreaterThan(.1)
+      expect(new THREE.Box3().setFromObject(vine).intersectsBox(clearing)).toBe(false)
+    })
+    disposeObject3D(world)
+  })
+
+  it.each(['mobile','desktop'])('keeps the %s outflow channel open in the terrain and vegetation',quality=>{
+    const world=createJungleWorld(createMaterials(),quality)
+    world.updateMatrixWorld(true)
+    const ground=world.getObjectByName('forest-ground')
+    const ray=new THREE.Raycaster()
+    WATERFALL_OUTFLOW.forEach(([x,z,halfWidth,level],index)=>{
+      expect(world.userData.heightAt(x,z)).toBeCloseTo(getFinaleGroundHeight(x,z),6)
+      const previous=WATERFALL_OUTFLOW[Math.max(0,index-1)]
+      const next=WATERFALL_OUTFLOW[Math.min(WATERFALL_OUTFLOW.length-1,index+1)]
+      const tangent=new THREE.Vector2(next[0]-previous[0],next[1]-previous[1]).normalize()
+      ;[-.8,0,.8].forEach(side=>{
+        const sampleX=x-tangent.y*halfWidth*side,sampleZ=z+tangent.x*halfWidth*side
+        ray.set(new THREE.Vector3(sampleX,20,sampleZ),new THREE.Vector3(0,-1,0))
+        const hit=ray.intersectObject(ground)[0]
+        expect(hit).toBeTruthy()
+        expect(hit.point.y).toBeLessThan(level-.03)
+      })
+    })
+    world.traverse(object=>{
+      if(!object.name.startsWith('jungle-tree-')&&!object.name.startsWith('undergrowth-')) return
+      const {center,radius}=obstacleFootprint(object)
+      expect(sampleFinaleWater(center.x,center.z).edgeDistance-radius).toBeGreaterThan(0)
+    })
+    ;['forest-dense-backdrop','forest-finale-thickets'].forEach(name=>{
+      world.getObjectByName(name).userData.instances.forEach(({x,z,radius})=>{
+        expect(sampleFinaleWater(x,z).edgeDistance-radius).toBeGreaterThanOrEqual(.6-1e-5)
+      })
+    })
+    const cover=world.getObjectByName('forest-bank-groundcover')
+    const bounds=cover.geometry.boundingBox
+    const radius=Math.hypot(Math.max(Math.abs(bounds.min.x),Math.abs(bounds.max.x)),Math.max(Math.abs(bounds.min.z),Math.abs(bounds.max.z)))
+    const matrix=new THREE.Matrix4(),position=new THREE.Vector3(),quaternion=new THREE.Quaternion(),scale=new THREE.Vector3()
+    for(let index=0;index<cover.count;index+=1){
+      cover.getMatrixAt(index,matrix)
+      matrix.decompose(position,quaternion,scale)
+      expect(sampleFinaleWater(position.x,position.z).edgeDistance-radius*scale.x).toBeGreaterThanOrEqual(.6-1e-5)
+    }
+    disposeObject3D(world)
+  })
+
+  it('reserves full canopy clearance for the waterfall and both final camera paths',()=>{
+    const world=createJungleWorld(createMaterials(),'mobile')
+    world.updateMatrixWorld(true)
+    const footprints=[]
+    const viewingClearing=new THREE.Box3(new THREE.Vector3(-5,-5,-144),new THREE.Vector3(6,30,-130))
+    world.traverse(object=>{
+      if(!object.name.startsWith('jungle-tree-')) return
+      expect(new THREE.Box3().setFromObject(object).intersectsBox(viewingClearing)).toBe(false)
+      footprints.push(obstacleFootprint(object))
+    })
+    ;['forest-dense-backdrop','forest-finale-thickets'].forEach(name=>{
+      world.getObjectByName(name).userData.instances.forEach(({x,z,radius})=>{
+        footprints.push({center:new THREE.Vector3(x,0,z),radius})
+      })
+    })
+    Object.values(FINALE_CAMERAS).forEach(({camera,target})=>{
+      const from=new THREE.Vector3(...camera),to=new THREE.Vector3(...target)
+      footprints.forEach(({center,radius})=>{
+        expect(distanceToSegmentXZ(center,from,to)-radius).toBeGreaterThanOrEqual(3.8)
+      })
+    })
+    expect(world.getObjectByName('ranger-outpost').position.x).toBeLessThan(-30)
+    disposeObject3D(world)
+  })
+
+  it.each(['mobile','desktop'])('fills both rear cliff flanks with six instanced draws at %s quality',quality=>{
+    const world=createJungleWorld(createMaterials(),quality)
+    const thickets=world.getObjectByName('forest-finale-thickets')
+    expect(thickets.children).toHaveLength(6)
+    expect(thickets.children.every(object=>object.isInstancedMesh)).toBe(true)
+    const instances=thickets.userData.instances
+    expect(instances.length).toBe(quality==='mobile'?32:48)
+    ;[-1,1].forEach(side=>{
+      const flank=instances.filter(({x})=>Math.sign(x-WATERFALL.center[0])===side)
+      expect(flank.length).toBe(instances.length/2)
+      expect(Math.max(...flank.map(({z})=>z))).toBeGreaterThan(side<0?-151:-160)
+      expect(Math.min(...flank.map(({z})=>z))).toBeLessThan(-172)
+      flank.forEach(({x,z})=>{
+        expect(Math.abs(x-WATERFALL.center[0])).toBeGreaterThan(26)
+        expect(z).toBeGreaterThan(-174)
+      })
+    })
+    const transform=new THREE.Matrix4()
+    const instanceBounds=new THREE.Box3()
+    thickets.children.filter(object=>object.name.includes('understory')).forEach(object=>{
+      for(let index=0;index<object.count;index+=1){
+        object.getMatrixAt(index,transform)
+        instanceBounds.copy(object.geometry.boundingBox).applyMatrix4(transform)
+        const position=new THREE.Vector3().setFromMatrixPosition(transform)
+        expect(instanceBounds.min.y-world.userData.heightAt(position.x,position.z)).toBeCloseTo(.25,4)
+        expect(instanceBounds.max.y-instanceBounds.min.y).toBeGreaterThan(2)
+      }
+    })
     disposeObject3D(world)
   })
 

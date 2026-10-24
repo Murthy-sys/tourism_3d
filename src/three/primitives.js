@@ -10,4 +10,23 @@ export function createBuilding(materials,x,z,w=2,h=2,d=2,mat=materials.stone){ r
 export function createTemple(materials,x,z){ const g=new THREE.Group(); for(let i=0;i<5;i++) g.add(mesh(new THREE.BoxGeometry(2-i*.27,.5,1.5-i*.18),materials.sand,[0,.25+i*.5,0])); g.position.set(x,0,z); return g }
 export function createDome(materials,x,z){ const g=new THREE.Group(); g.add(mesh(new THREE.BoxGeometry(3,.9,2),materials.ivory,[0,.45,0])); g.add(mesh(new THREE.SphereGeometry(.85,16,8,0,Math.PI*2,0,Math.PI/2),materials.ivory,[0,.9,0])); [-1.3,1.3].forEach(px=>g.add(mesh(new THREE.CylinderGeometry(.13,.17,2,8),materials.ivory,[px,1,0]))); g.position.set(x,0,z); return g }
 export function createMountain(materials,x,z,s=1){ const g=new THREE.Group(); g.add(mesh(new THREE.ConeGeometry(3*s,6*s,7),materials.dark,[0,3*s,0])); g.add(mesh(new THREE.ConeGeometry(1.4*s,2*s,7),materials.snow,[0,5*s,0])); g.position.set(x,0,z); return g }
-export function disposeObject3D(root){ const gs=new Set(),ms=new Set(); root.traverse(o=>{if(o.geometry)gs.add(o.geometry);(Array.isArray(o.material)?o.material:[o.material]).filter(Boolean).forEach(m=>ms.add(m))});gs.forEach(g=>g.dispose());ms.forEach(m=>m.dispose()) }
+export function disposeObject3D(root){
+  const geometries=new Set(),materials=new Set(),textures=new Set()
+  root.traverse(object=>{
+    object.userData.disposeRealisticTraveller?.()
+    object.userData.disposeRealisticVehicle?.()
+    object.userData.disposeNaturalWater?.()
+    if(object.isInstancedMesh) object.dispose()
+    if(object.geometry&&!object.geometry.userData.managedByTravellerTemplate&&!object.geometry.userData.managedByVehicleTemplate) geometries.add(object.geometry)
+    const values=Array.isArray(object.material)?object.material:[object.material]
+    values.filter(Boolean).forEach(material=>materials.add(material))
+  })
+  materials.forEach(material=>Object.values(material).forEach(value=>{
+    if(value?.isTexture&&!value.userData.managedByTravellerTemplate&&!value.userData.managedByVehicleTemplate&&!value.userData.managedByNatureAssets&&(value.userData.ownedByEnvironment||value.userData.ownedByCharacter||value.userData.ownedByJourney)){
+      textures.add(value)
+    }
+  }))
+  geometries.forEach(geometry=>geometry.dispose())
+  textures.forEach(texture=>texture.dispose())
+  materials.forEach(material=>material.dispose())
+}

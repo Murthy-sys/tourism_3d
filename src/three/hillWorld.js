@@ -1,7 +1,11 @@
 import * as THREE from 'three'
+import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js'
 import { mesh } from './primitives'
+import { createEnvironmentMaterial,createLandscapeMaterial,createFoliageGeometry,createFoliageMaterial,createLeafTexture,projectGroundUV } from './environmentSurface'
 import {createTrailhead} from './trailhead'
+import {createForestTreeGeometry} from './forestGeometry'
 import {TRAILHEAD_STANDING_POSES} from './trekkingParty'
+import {sampleRiverSurface,RIVER_START_Z,RIVER_END_Z} from './riverConfig'
 import {
   LANDMARKS,
   createTerrainGeometry,
@@ -99,6 +103,47 @@ const createRoute=heightAt=>{
   }
 }
 
+const terrainGrass=new THREE.Color('#65724e')
+const terrainSoil=new THREE.Color('#81745c')
+const terrainRock=new THREE.Color('#7b7d74')
+const terrainColorAt=(color,x,z,height)=>{
+  const slope=sampleMountainSlope(x,z)
+  const soilWeight=THREE.MathUtils.smoothstep(slope,.12,.5)
+  const rockWeight=THREE.MathUtils.clamp(
+    THREE.MathUtils.smoothstep(slope,.38,.86)+
+    THREE.MathUtils.smoothstep(height,6.5,10)*.42,
+    0,1,
+  )
+  color.copy(terrainGrass).lerp(terrainSoil,soilWeight).lerp(terrainRock,rockWeight)
+  const detail=Math.sin(x*1.71+Math.sin(z*.63))*.52+
+    Math.cos(z*1.19-x*.47)*.31+Math.sin((x+z)*3.27)*.17
+  return color.offsetHSL(detail*.012,detail*.024,detail*.042)
+}
+
+const renderedTerrainHeight=(heightAt,x,z)=>{
+  const height=heightAt(x,z)-THREE.MathUtils.smoothstep(-z,32.5,38)*1.45
+  if(z>=RIVER_START_Z||z<RIVER_END_Z) return height
+  const river=sampleRiverSurface(x,z)
+  const shoreline=1-THREE.MathUtils.smoothstep(river.edgeDistance,2,7)
+  // The landing itself retains its height; the incoming valley sinks immediately
+  // behind it, underneath the single river-owned bed and shoreline surface.
+  const entry=THREE.MathUtils.smoothstep(-z,-RIVER_START_Z,-RIVER_START_Z+1)
+  return Math.min(height,THREE.MathUtils.lerp(height,river.bedHeight-.8,shoreline*entry))
+}
+
+const matchTerrainBoundaryNormals=(geometry,heightAt)=>{
+  const position=geometry.getAttribute('position'),normal=geometry.getAttribute('normal')
+  const slope=new THREE.Vector3(),step=.15
+  for(let index=0;index<position.count;index++){
+    const x=position.getX(index),z=position.getZ(index)
+    if(Math.abs(x)!==42&&Math.abs(z)!==52) continue
+    const dx=(renderedTerrainHeight(heightAt,x+step,z)-renderedTerrainHeight(heightAt,x-step,z))/(step*2)
+    const dz=(renderedTerrainHeight(heightAt,x,z+step)-renderedTerrainHeight(heightAt,x,z-step))/(step*2)
+    slope.set(-dx,1,-dz).normalize()
+    normal.setXYZ(index,slope.x,slope.y,slope.z)
+  }
+}
+
 const createTerrain=(heightAt,quality)=>{
   const segmentsX=quality==='mobile'?72:128
   const segmentsZ=quality==='mobile'?104:160
@@ -111,32 +156,15 @@ const createTerrain=(heightAt,quality)=>{
   })
   const position=geometry.attributes.position
   const colors=new Float32Array(position.count*3)
-  const grass=new THREE.Color('#49683c')
-  const soil=new THREE.Color('#6b5841')
-  const rock=new THREE.Color('#59615e')
   const color=new THREE.Color()
   let minimumColorSum=Infinity
   let maximumColorSum=-Infinity
   for(let index=0;index<position.count;index+=1){
     const x=position.getX(index)
     const z=position.getZ(index)
-    const waterEdge=THREE.MathUtils.smoothstep(-z,32.5,38)
-    const height=position.getY(index)-waterEdge*1.45
+    const height=renderedTerrainHeight(heightAt,x,z)
     position.setY(index,height)
-    const slope=sampleMountainSlope(x,z)
-    const soilWeight=THREE.MathUtils.smoothstep(slope,.12,.5)
-    const rockWeight=THREE.MathUtils.clamp(
-      THREE.MathUtils.smoothstep(slope,.38,.86)+
-      THREE.MathUtils.smoothstep(height,6.5,10)*.42,
-      0,
-      1,
-    )
-    color.copy(grass).lerp(soil,soilWeight).lerp(rock,rockWeight)
-    const detail=
-      Math.sin(x*1.71+Math.sin(z*.63))*0.52+
-      Math.cos(z*1.19-x*.47)*.31+
-      Math.sin((x+z)*3.27)*.17
-    color.offsetHSL(detail*.012,detail*.024,detail*.042)
+    terrainColorAt(color,x,z,height)
     const colorSum=color.r+color.g+color.b
     minimumColorSum=Math.min(minimumColorSum,colorSum)
     maximumColorSum=Math.max(maximumColorSum,colorSum)
@@ -146,23 +174,70 @@ const createTerrain=(heightAt,quality)=>{
   }
   position.needsUpdate=true
   geometry.computeVertexNormals()
+  matchTerrainBoundaryNormals(geometry,heightAt)
   geometry.setAttribute('color',new THREE.BufferAttribute(colors,3))
   geometry.userData.colorVariation=maximumColorSum-minimumColorSum
-  const terrainMaterial=new THREE.MeshStandardMaterial({
+  projectGroundUV(geometry,3.2)
+  const terrainMaterial=createLandscapeMaterial({
     vertexColors:true,
     roughness:.9,
     metalness:0,
     dithering:true,
   })
-  terrainMaterial.userData.surfaceDetail='multiscale-color-noise'
   const terrain=mesh(geometry,terrainMaterial)
   terrain.name='hill-terrain'
   return terrain
 }
 
+const createTerrainSurround=(terrain,heightAt)=>{
+  const {widthSegments, heightSegments}=terrain.geometry.parameters
+  const core=terrain.geometry.getAttribute('position')
+  const coreX=Array.from({length:widthSegments+1},(_,index)=>core.getX(index))
+  const coreZ=Array.from({length:heightSegments+1},(_,index)=>core.getZ(index*(widthSegments+1)))
+  const right=[42,42+84/widthSegments,44,48,56,72,100,150,220,320]
+  const left=right.map(value=>-value).reverse()
+  const across=[...left.slice(0,-1),...coreX,...right.slice(1)]
+  const front=[52,52+104/heightSegments,54,58,66,78,96,122,160,220,320]
+  const back=[-320,-220,-160,-116,-92,-88,...Array.from({length:18},(_,index)=>-86+index*2)]
+  const positions=[],colors=[],indices=[],color=new THREE.Color()
+  const append=(xs,zs)=>{
+    const base=positions.length/3
+    for(const z of zs){
+      for(const x of xs){
+        const height=renderedTerrainHeight(heightAt,x,z)
+        positions.push(x,height,z)
+        terrainColorAt(color,x,z,height)
+        colors.push(color.r,color.g,color.b)
+      }
+    }
+    for(let row=0;row<zs.length-1;row+=1){
+      for(let column=0;column<xs.length-1;column+=1){
+        const offset=base+row*xs.length+column,next=offset+xs.length
+        indices.push(offset,next,offset+1,offset+1,next,next+1)
+      }
+    }
+  }
+  append(across,front)
+  append(across,back)
+  append(left,coreZ)
+  append(right,coreZ)
+  const geometry=new THREE.BufferGeometry()
+  geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3))
+  geometry.setAttribute('color',new THREE.Float32BufferAttribute(colors,3))
+  geometry.setIndex(indices)
+  geometry.computeVertexNormals()
+  matchTerrainBoundaryNormals(geometry,heightAt)
+  projectGroundUV(geometry,3.2)
+  geometry.userData.continuousSurround=true
+  const surround=mesh(geometry,terrain.material)
+  surround.name='hill-terrain-surround'
+  surround.castShadow=false
+  return surround
+}
+
 const createRidgeGeometry=layer=>{
-  const columns=40
-  const rows=10
+  const columns=56
+  const rows=16
   const depth=20
   const centerZ=-49-layer*15
   const geometry=new THREE.PlaneGeometry(94,depth,columns,rows)
@@ -181,28 +256,39 @@ const createRidgeGeometry=layer=>{
       Math.sin(x*.17+layer*1.9)*1.05+
       Math.sin(x*.055-layer*.8)*1.2+
       Math.cos(localZ*.28+x*.035)*.48
+    const gullies=Math.abs(Math.sin(x*.37+Math.sin(localZ*.22)*1.3))*1.15
     const height=(-.55+layer*.28)+
-      opening*longitudinal*(3.8-layer*.35+undulation)
+      opening*longitudinal*(5.5-layer*.35+undulation-gullies)
+    const z=centerZ+localZ+Math.sin(x*.09+layer)*.35
+    const river=sampleRiverSurface(x,z)
+    const bankFoot=THREE.MathUtils.smoothstep(river.edgeDistance,3,13)
     position.setXYZ(
       index,
       x,
-      height,
-      centerZ+localZ+Math.sin(x*.09+layer)*.35,
+      THREE.MathUtils.lerp(Math.min(-1.45,river.bedHeight-.45),height,bankFoot),
+      z,
     )
   }
-  position.needsUpdate=true
-  geometry.userData.surfaceKind='horizontal-heightfield'
-  geometry.computeVertexNormals()
-  return geometry
+  const source=geometry.getIndex(),indices=[]
+  for(let offset=0;offset<source.count;offset+=3){
+    const triangle=[source.getX(offset),source.getX(offset+1),source.getX(offset+2)]
+    if(triangle.every(vertex=>sampleRiverSurface(position.getX(vertex),position.getZ(vertex)).edgeDistance>=3)) indices.push(...triangle)
+  }
+  geometry.setIndex(indices)
+  const clipped=mergeVertices(geometry)
+  geometry.dispose()
+  clipped.userData.surfaceKind='horizontal-heightfield'
+  clipped.computeVertexNormals()
+  return projectGroundUV(clipped,5)
 }
 
 const createRidges=()=>{
   const ridges=namedGroup('hill-ridges')
-  const colors=['#53645b','#71807a','#919b98']
+  const colors=['#657066','#7c857b','#939c93']
   colors.forEach((color,index)=>{
     const ridge=mesh(
       createRidgeGeometry(index),
-      material(color,.97),
+      createEnvironmentMaterial(color,'rock'),
     )
     ridge.name=`hill-ridge-${index+1}`
     ridge.renderOrder=-3+index
@@ -214,37 +300,19 @@ const createRidges=()=>{
 const createTree=(materials,index,scale)=>{
   const tree=new THREE.Group()
   tree.name='hill-tree'
+  const geometry=materials.treeGeometries[Math.floor(index/6)%materials.treeGeometries.length]
   const trunk=mesh(
-    new THREE.CylinderGeometry(.1*scale,.16*scale,1.65*scale,7),
+    geometry.skeleton,
     materials.wood,
-    [0,.825*scale,0],
   )
   tree.add(trunk)
-  if(index%3===0){
-    for(let level=0;level<3;level+=1){
-      const crown=mesh(
-        new THREE.ConeGeometry((.67-level*.11)*scale,1.2*scale,8),
-        level===1?materials.leaf2:materials.leaf,
-        [0,(1.38+level*.42)*scale,0],
-      )
-      tree.add(crown)
-    }
-  }else{
-    const crown=mesh(
-      new THREE.IcosahedronGeometry(.72*scale,index%2?1:2),
-      index%2?materials.leaf:materials.leaf2,
-      [0,1.83*scale,0],
-    )
-    crown.scale.set(1,.88,.82)
-    tree.add(crown)
-    if(index%4===1){
-      tree.add(mesh(
-        new THREE.IcosahedronGeometry(.45*scale,1),
-        materials.leaf,
-        [.38*scale,1.63*scale,0],
-      ))
-    }
-  }
+  const crown=mesh(
+    geometry.crown,
+    index%2?materials.foliage:materials.foliageAlt,
+  )
+  crown.name='hill-leaf-crown'
+  tree.add(crown)
+  tree.scale.setScalar(scale*.28)
   tree.rotation.y=deterministic(index,11)*Math.PI*2
   return tree
 }
@@ -254,8 +322,8 @@ const createBush=(materials,index,scale)=>{
   bush.name='hill-bush'
   ;[-1,0,1].forEach((offset,part)=>{
     const leaf=mesh(
-      new THREE.IcosahedronGeometry((.31+part*.035)*scale,1),
-      part===1?materials.leaf2:materials.leaf,
+      createFoliageGeometry({seed:index*3+part,variant:1,scale:(.23+part*.025)*scale,leaves:36}),
+      part===1?materials.foliageAlt:materials.foliage,
       [offset*.25*scale,.28*scale,Math.sin(index+part)*.12*scale],
     )
     leaf.scale.y=.78
@@ -303,7 +371,7 @@ const createRockFaces=(materials,heightAt,routePoints,quality)=>{
     const size=.25+deterministic(index,24)*.55
     const rock=mesh(
       new THREE.DodecahedronGeometry(size,1),
-      index%3===0?materials.stone:material(index%2?'#59615e':'#67645b',.98),
+      materials.stone,
       position.toArray(),
       [deterministic(index,26)*.7,deterministic(index,27)*Math.PI,deterministic(index,28)*.45],
     )
@@ -357,14 +425,14 @@ const createRibbonGeometry=(points,width)=>{
   geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3))
   geometry.setIndex(indices)
   geometry.computeVertexNormals()
-  return geometry
+  return projectGroundUV(geometry,1.6)
 }
 
 const createTrail=(materials,route,heightAt,quality)=>{
   const trail=namedGroup('hill-trail')
   const surface=mesh(
     createRibbonGeometry(route.points,1.05),
-    material('#6b5841',1),
+    createEnvironmentMaterial('#87765c','soil'),
   )
   surface.name='hill-trail-earth'
   trail.add(surface)
@@ -461,29 +529,23 @@ const createMist=(quality)=>{
   return mist
 }
 
-const createWaterGlint=()=>{
-  const water=mesh(
-    new THREE.PlaneGeometry(42,25,10,7),
-    new THREE.MeshBasicMaterial({
-      color:'#91bac0',
-      transparent:true,
-      opacity:.27,
-      depthWrite:false,
-      side:THREE.DoubleSide,
-    }),
-    [2,.025,-52],
-    [-Math.PI/2,0,0],
-  )
-  water.name='distant-water-glint'
-  water.receiveShadow=false
-  return water
-}
-
 export function createHillWorld(materials,quality='desktop'){
   const world=namedGroup('hill-world')
+  const leafMap=createLeafTexture()
+  materials={
+    ...materials,
+    treeGeometries:Array.from({length:6},(_,index)=>createForestTreeGeometry(index,quality)),
+    wood:createEnvironmentMaterial('#655244','bark'),
+    stone:createEnvironmentMaterial('#838177','rock'),
+    leaf:material('#556649',.98),
+    leaf2:material('#77805c',.98),
+    foliage:createFoliageMaterial('#546747',leafMap),
+    foliageAlt:createFoliageMaterial('#74805a',leafMap),
+  }
   const heightAt=sampleMountainHeight
   const {route,routeProgress}=createRoute(heightAt)
   const terrain=createTerrain(heightAt,quality)
+  const terrainSurround=createTerrainSurround(terrain,heightAt)
   const ridges=createRidges()
   const rocks=createRockFaces(materials,heightAt,route.points,quality)
   const vegetation=createVegetation(materials,heightAt,route.points,quality)
@@ -495,12 +557,23 @@ export function createHillWorld(materials,quality='desktop'){
     route,
     standingPoses:TRAILHEAD_STANDING_POSES,
     terrainGeometry:terrain.geometry,
+    terrainSurroundGeometry:terrainSurround.geometry,
+  })
+  const gravel=trailhead.getObjectByName('trailhead-gravel-surface')
+  gravel.material.dispose()
+  gravel.material=createEnvironmentMaterial('#8b8170','rock',{bumpScale:.035})
+  projectGroundUV(gravel.geometry,1.8)
+  trailhead.traverse(object=>{
+    if(object.name!=='trailhead-framing-bush') return
+    const radius=object.geometry.parameters.radius
+    object.geometry.dispose()
+    object.geometry=createFoliageGeometry({seed:Math.round(object.position.x*31),variant:1,scale:radius*.55,leaves:64})
+    object.material=materials.foliage
   })
   const landing=createLanding(materials)
-  const water=createWaterGlint()
-  world.add(terrain,ridges,rocks,vegetation,mist,trail,trailhead,landing,water)
+  world.add(terrain,terrainSurround,ridges,rocks,vegetation,mist,trail,trailhead,landing)
 
-  const warmLight=new THREE.DirectionalLight('#ffe1aa',3.1)
+  const warmLight=new THREE.DirectionalLight('#e6dcc6',.7)
   warmLight.position.set(-16,24,13)
   world.add(warmLight)
 
@@ -512,22 +585,17 @@ export function createHillWorld(materials,quality='desktop'){
     landing,
     distantWaterAnchor:new THREE.Vector3(2,.4,-51),
     mist,
-    water,
   }
   return world
 }
 
 export function updateHillWorld(world,elapsed){
-  const {mist,water}=world.userData
+  const {mist}=world.userData
   if(mist){
     mist.children.forEach((pocket,index)=>{
       pocket.position.x=pocket.userData.baseX+Math.sin(elapsed*.12+index*1.47)*.48
       const opacity=pocket.userData.baseOpacity*(.88+Math.sin(elapsed*.2+index)*.12)
       pocket.material.opacity=opacity
     })
-  }
-  if(water?.material){
-    water.material.opacity=.255+Math.sin(elapsed*.55)*.025
-    water.rotation.z=Math.sin(elapsed*.09)*.012
   }
 }

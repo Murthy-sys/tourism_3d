@@ -21,7 +21,7 @@ export default function Stats() {
     <section id="about" className="section about">
       <div className="section__inner about__grid">
         <div ref={headRef} className={`about__copy reveal ${headVisible ? 'reveal--visible' : ''}`}>
-          <p className="eyebrow">About WanderLux</p>
+          <p className="eyebrow">About XYZ Travellers</p>
           <h2>Fourteen years of managing trips people actually remember.</h2>
           <p className="about__text">
             We started as a two-person travel desk booking weekend getaways. Today we manage

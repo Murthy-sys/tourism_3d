@@ -48,7 +48,7 @@ describe('cinematic chapter content',()=>{
     expect(screen.getByRole('article')).toHaveClass(
       'chapter--creator-card',
       'chapter--boat-offer',
-      'chapter--mobile-safe-top',
+      'chapter--mobile-safe-bottom',
     )
     expect([...screen.getByLabelText('What we offer').children]
       .map(item=>item.textContent)).toEqual(BRAND_CAPABILITIES)
@@ -65,7 +65,7 @@ describe('cinematic chapter content',()=>{
   it('removes the Expedition Chapters UI while preserving the 3D interval',()=>{
     const plans=CHAPTERS.find(({id})=>id==='plans')
     const {container}=render(
-      <ChapterContent chapter={plans} progress={.8} onPlan={vi.fn()}/>,
+      <ChapterContent chapter={plans} progress={.78} onPlan={vi.fn()}/>,
     )
     expect(container).toBeEmptyDOMElement()
     expect(screen.queryByText(/Three expedition chapters/i))
@@ -77,7 +77,7 @@ describe('cinematic chapter content',()=>{
     const {container,rerender}=render(
       <ChapterContent
         chapter={plans}
-        progress={.879999}
+        progress={.799999}
         onPlan={vi.fn()}
       />,
     )
@@ -87,7 +87,7 @@ describe('cinematic chapter content',()=>{
     rerender(
       <ChapterContent
         chapter={plans}
-        progress={.88}
+        progress={.80}
         reducedMotion
         onPlan={vi.fn()}
       />,
@@ -103,7 +103,7 @@ describe('cinematic chapter content',()=>{
     render(
       <ChapterContent
         chapter={CHAPTERS.find(({id})=>id==='packages')}
-        progress={.97}
+        progress={.87}
         onPlan={onPlan}
       />,
     )
@@ -131,28 +131,28 @@ describe('cinematic chapter content',()=>{
   })
 
   it('places Packages after social performance and Contact last',()=>{
-    expect(getChapterAtProgress(.939999).id).toBe('plans')
-    expect(getChapterAtProgress(.94).id).toBe('packages')
+    expect(getChapterAtProgress(.839999).id).toBe('plans')
+    expect(getChapterAtProgress(.84).id).toBe('packages')
     const {rerender}=render(
       <ChapterContent
-        chapter={getChapterAtProgress(.939999)}
-        progress={.939999}
+        chapter={getChapterAtProgress(.839999)}
+        progress={.839999}
         reducedMotion
       />,
     )
     expect(screen.getByLabelText('Social media performance')).toBeInTheDocument()
-    rerender(<ChapterContent chapter={getChapterAtProgress(.94)} progress={.94}/>)
+    rerender(<ChapterContent chapter={getChapterAtProgress(.84)} progress={.84}/>)
     expect(screen.getByText('Where should we take you next?')).toBeInTheDocument()
     expect(screen.queryByLabelText('Social media performance'))
       .not.toBeInTheDocument()
     rerender(
       <ChapterContent
-        chapter={getChapterAtProgress(.975)}
-        progress={.975}
+        chapter={getChapterAtProgress(.995)}
+        progress={.995}
       />,
     )
-    expect(screen.getByRole('article',{
-      name:'Contact Sanchari Kannadiga',
+    expect(screen.getByRole('region',{
+      name:'Contact XYZ Travellers',
     })).toBeInTheDocument()
     expect(screen.queryByText('Where should we take you next?'))
       .not.toBeInTheDocument()

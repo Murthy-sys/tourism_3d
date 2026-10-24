@@ -7,14 +7,17 @@ import { getBiomeWeights,smootherstep } from './terrain'
 import { createTourCoach } from './tourCoach'
 import { createTrekkingParty,updateTrekkingParty } from './trekkingParty'
 import { createWaterWorld,updateWaterWorld } from './waterWorld'
+import { createWaterfallWorld,updateWaterfallWorld } from './waterfallWorld'
+import { createWaterfallTravellers } from './waterfallTravellers'
+import { FOREST_DRIVE_END,getFinaleProgress } from './finaleConfig'
 
 const PHASE_RANGES={
   'mountain-trek':[0,.28],
   'trek-to-boat':[.28,.42],
   'water-boat':[.42,.60],
   'boat-to-jeep':[.60,.74],
-  'forest-jeep':[.74,.94],
-  contact:[.94,1],
+  'forest-jeep':[.74,FOREST_DRIVE_END],
+  contact:[FOREST_DRIVE_END,1],
 }
 
 const getStateProgress=state=>{
@@ -132,34 +135,22 @@ const createBlendState=root=>{
   return{materials,lights,shadows}
 }
 
-const resetBlendState=({materials,lights,shadows})=>{
+const resetBlendOpacity=({materials})=>{
   materials.forEach((base,material)=>{
     material.opacity=base.opacity
-    if(material.transparent!==base.transparent){
-      material.transparent=base.transparent
-      material.needsUpdate=true
-    }
-    material.depthWrite=base.depthWrite
-    if(material.alphaHash!==base.alphaHash){
-      material.alphaHash=base.alphaHash
-      material.needsUpdate=true
-    }
   })
-  lights.forEach((intensity,light)=>{light.intensity=intensity})
-  shadows.forEach((castShadow,object)=>{object.castShadow=castShadow})
 }
 
 const applyPresenceWeight=(blendState,weight,transport)=>{
   blendState.materials.forEach((base,material)=>{
-    if(transport||base.transparent) material.opacity*=weight
-    if(transport){
-      const transparent=base.transparent||weight<1
-      if(material.transparent!==transparent){
-        material.transparent=transparent
-        material.needsUpdate=true
-      }
-      material.depthWrite=weight<1?false:base.depthWrite
+    if(transport||(base.transparent&&!material.userData.distantLandmark)) material.opacity*=weight
+    const transparent=base.transparent||(transport&&weight<1)
+    if(material.transparent!==transparent||material.alphaHash!==base.alphaHash){
+      material.transparent=transparent
+      material.alphaHash=base.alphaHash
+      material.needsUpdate=true
     }
+    material.depthWrite=transport&&weight<1?false:base.depthWrite
   })
   blendState.lights.forEach((intensity,light)=>{light.intensity=intensity*weight})
   blendState.shadows.forEach((castShadow,object)=>{
@@ -216,6 +207,8 @@ export function createExpeditionController(scene,materials,quality){
   mountain.userData.coach=coach
   const water=createWaterWorld(materials,quality)
   const forest=createJungleWorld(materials,quality)
+  const waterfall=createWaterfallWorld(quality)
+  forest.add(waterfall)
   const trekker=createTrekkingParty(materials)
   const boat=createExpeditionBoat(materials)
   const jeep=createExpeditionJeep(materials)
@@ -264,12 +257,26 @@ export function createExpeditionController(scene,materials,quality){
   const roots=[...Object.values(worlds),...Object.values(transports)]
   isolateSharedMaterials(roots,materials)
   const blendStates=new Map(roots.map(root=>[root,createBlendState(root)]))
+  // The same four rider objects move into the clearing; their materials retain
+  // the jeep's existing ownership and are disposed once by the transport root.
+  const finale=createWaterfallTravellers(jeep)
+  transportRoot.add(finale.group)
 
   Object.values(worlds).forEach(world=>{world.visible=true})
   scene.add(mountain,water,forest,transportRoot)
 
-  const update=(state,elapsed,reducedMotion)=>{
-    roots.forEach(root=>resetBlendState(blendStates.get(root)))
+  let previousElapsed=0
+  const boatMotion={deltaSeconds:0}
+  const jeepMotion={deltaSeconds:0,lockHeading:false}
+  const update=(state,elapsed,reducedMotion,deltaSeconds)=>{
+    const frameDelta=Number.isFinite(deltaSeconds)?deltaSeconds:elapsed-previousElapsed
+    previousElapsed=elapsed
+    boatMotion.deltaSeconds=frameDelta
+    jeepMotion.deltaSeconds=frameDelta
+    // Keep the actual parking pose fixed until every traveller has boarded.
+    jeepMotion.lockHeading=state.phase==='contact'
+    // Opacity animations start from their base; program flags change only at fade boundaries.
+    roots.forEach(root=>resetBlendOpacity(blendStates.get(root)))
     const opening=getOpeningTrekState(
       state,
       mountain.userData.routeProgress,
@@ -287,16 +294,19 @@ export function createExpeditionController(scene,materials,quality){
         standingPoses:trekker.userData.standingPoses,
       },
     )
-    updateBoat(boat,water.userData.route,routeProgress(state,'boat'),elapsed,reducedMotion)
+    updateBoat(boat,water.userData.route,routeProgress(state,'boat'),elapsed,reducedMotion,boatMotion)
     updateJeep(
       jeep,
       forest.userData.route,
       routeProgress(state,'jeep',partySpan,jeep.userData.shoreStageProgress),
       elapsed,
-      reducedMotion,
+      reducedMotion||state.phase==='contact',
+      jeepMotion,
     )
+    finale.update(getFinaleProgress(getStateProgress(state)),elapsed,reducedMotion)
     updateHillWorld(mountain,elapsed)
     updateWaterWorld(water,elapsed,boat)
+    updateWaterfallWorld(waterfall,elapsed,reducedMotion)
 
     const transition=getExpeditionTransition(state)
     Object.entries(worlds).forEach(([name,world])=>{
@@ -306,7 +316,7 @@ export function createExpeditionController(scene,materials,quality){
     })
     Object.entries(transports).forEach(([name,transport])=>{
       const weight=transition.transports[name]
-      transport.visible=true
+      transport.visible=weight>0
       applyPresenceWeight(blendStates.get(transport),weight,true)
     })
     return transition
@@ -327,7 +337,8 @@ export function createExpeditionController(scene,materials,quality){
     worlds,
     transports,
     transportRoot,
-    scenery:{coach},
+    scenery:{coach,waterfall},
+    finale,
     dispose,
   }
 }

@@ -1,0 +1,24 @@
+Nature surfaces and HDR daylight
+================================
+The following source assets are CC0 1.0 Universal, by Poly Haven:
+https://polyhaven.com/license
+
+rock: Rock Face 03 https://polyhaven.com/a/rock_face_03
+grass: Aerial Grass Rock https://polyhaven.com/a/aerial_grass_rock
+soil: Forest Ground 04 https://polyhaven.com/a/forest_ground_04
+bark: Bark Willow https://polyhaven.com/a/bark_willow
+wood: Wooden Planks https://polyhaven.com/a/wooden_planks
+sky: Kloofendal 48d Partly Cloudy Pure Sky
+  https://polyhaven.com/a/kloofendal_48d_partly_cloudy_puresky
+environment: Forest Slope https://polyhaven.com/a/forest_slope
+
+The leaf color, opacity and normal are Leaf001 by ambientCG, CC0:
+https://ambientcg.com/view?id=Leaf001
+https://docs.ambientcg.com/license/
+
+Color, OpenGL normal, and combined AO/roughness/metalness maps were
+resized/recompressed from the providers' 1K originals for web delivery.
+Sky is the unmodified 1K source; the reflection HDR is averaged in linear
+radiance to 512 px. Leaf UVs select one side of the atlas.
+No provider preview images are redistributed.
+Reproduction: scripts/prepare-nature-assets.mjs.
