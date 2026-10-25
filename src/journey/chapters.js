@@ -76,6 +76,38 @@ export const STORIES=[
 ]
 export const OPENING_TREK_END=.14
 export const OPENING_DRIVE_END=OPENING_TREK_END
+export const OPENING_STORY=[
+  {
+    id:'city',
+    progressStart:0,
+    kicker:'A moment for yourself',
+    title:'Step away from the everyday.',
+    body:'Leave the rush behind. Refresh your body. Clear your mind.',
+  },
+  {
+    id:'boarding',
+    progressStart:.025,
+    kicker:'Your journey begins',
+    title:'A seat for a fresh start.',
+    body:'Meet your fellow travellers. The mountains are calling.',
+  },
+  {
+    id:'road',
+    progressStart:.045,
+    kicker:'From city streets to open hills',
+    title:'Let the city fall behind.',
+    body:'A change of scenery. A little room to breathe.',
+  },
+  {
+    id:'arrival',
+    progressStart:.105,
+    kicker:'The mountain trailhead',
+    title:'Breathe deeper. You’re here.',
+    body:'Step off the bus and into the hills.',
+  },
+]
+export const getOpeningStory=progress=>
+  OPENING_STORY.findLast(story=>progress>=story.progressStart)||OPENING_STORY[0]
 export const BOAT_OFFER_START=.42
 export const BOAT_OFFER_END=.74
 export const SOCIAL_PERFORMANCE_START=.80
@@ -111,7 +143,7 @@ export const BRAND_CAPABILITIES=[
   'Tourism Brand Collaborations',
 ]
 export const CHAPTERS=[
-  {id:'home',menuLabel:'Home',title:'The trail is calling.',kicker:'XYZ Travellers',body:'A journey across India begins here.',progressStart:0,progressEnd:OPENING_TREK_END,layout:'drive'},
+  {...OPENING_STORY[0],id:'home',menuLabel:'Home',progressEnd:OPENING_TREK_END,layout:'drive'},
   {
     id:'who-we-are',
     menuLabel:'Who We Are',

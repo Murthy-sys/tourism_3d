@@ -1,11 +1,11 @@
 import * as THREE from 'three'
 import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js'
 import { mesh } from './primitives'
-import { createEnvironmentMaterial,createLandscapeMaterial,createFoliageGeometry,createFoliageMaterial,createLeafTexture,projectGroundUV } from './environmentSurface'
+import { createEnvironmentMaterial,createLandscapeMaterial,createFoliageGeometry,createFoliageMaterial,createCanopyTexture,projectGroundUV } from './environmentSurface'
 import {createTrailhead} from './trailhead'
 import {createForestTreeGeometry} from './forestGeometry'
 import {TRAILHEAD_STANDING_POSES} from './trekkingParty'
-import {sampleRiverSurface,RIVER_START_Z,RIVER_END_Z} from './riverConfig'
+import {sampleRiverSurface,sampleRiverCrossSection,RIVER_SURFACE_START_Z,RIVER_END_Z} from './riverConfig'
 import {
   LANDMARKS,
   createTerrainGeometry,
@@ -122,12 +122,11 @@ const terrainColorAt=(color,x,z,height)=>{
 
 const renderedTerrainHeight=(heightAt,x,z)=>{
   const height=heightAt(x,z)-THREE.MathUtils.smoothstep(-z,32.5,38)*1.45
-  if(z>=RIVER_START_Z||z<RIVER_END_Z) return height
+  if(z>=RIVER_SURFACE_START_Z||z<RIVER_END_Z) return height
   const river=sampleRiverSurface(x,z)
   const shoreline=1-THREE.MathUtils.smoothstep(river.edgeDistance,2,7)
-  // The landing itself retains its height; the incoming valley sinks immediately
-  // behind it, underneath the single river-owned bed and shoreline surface.
-  const entry=THREE.MathUtils.smoothstep(-z,-RIVER_START_Z,-RIVER_START_Z+1)
+  // The river bends beside the landing, with its banks preserving the dry path.
+  const entry=THREE.MathUtils.smoothstep(-z,-RIVER_SURFACE_START_Z,-RIVER_SURFACE_START_Z+1)
   return Math.min(height,THREE.MathUtils.lerp(height,river.bedHeight-.8,shoreline*entry))
 }
 
@@ -194,11 +193,11 @@ const createTerrainSurround=(terrain,heightAt)=>{
   const core=terrain.geometry.getAttribute('position')
   const coreX=Array.from({length:widthSegments+1},(_,index)=>core.getX(index))
   const coreZ=Array.from({length:heightSegments+1},(_,index)=>core.getZ(index*(widthSegments+1)))
-  const right=[42,42+84/widthSegments,44,48,56,72,100,150,220,320]
+  const right=[42,42+84/widthSegments,...Array.from({length:21},(_,index)=>44+index*2),100,150,220,320]
   const left=right.map(value=>-value).reverse()
   const across=[...left.slice(0,-1),...coreX,...right.slice(1)]
-  const front=[52,52+104/heightSegments,54,58,66,78,96,122,160,220,320]
-  const back=[-320,-220,-160,-116,-92,-88,...Array.from({length:18},(_,index)=>-86+index*2)]
+  const front=[52,52+104/heightSegments,...Array.from({length:50},(_,index)=>54+index*2),160,180,220,320]
+  const back=[-360,-320,-280,-240,-200,-160,...Array.from({length:44},(_,index)=>-138+index*2)]
   const positions=[],colors=[],indices=[],color=new THREE.Color()
   const append=(xs,zs)=>{
     const base=positions.length/3
@@ -353,13 +352,17 @@ const landscapePosition=(index,salt,heightAt,routePoints)=>{
     const key=index+attempt*101
     const x=THREE.MathUtils.lerp(-33,33,deterministic(key,salt))
     const z=THREE.MathUtils.lerp(-35,18,deterministic(key,salt+1))
-    if(routeDistance(x,z,routePoints)>1.3){
+    if(routeDistance(x,z,routePoints)>1.3&&sampleRiverSurface(x,z).edgeDistance>2.5){
       return new THREE.Vector3(x,heightAt(x,z),z)
     }
   }
   const side=index%2?-1:1
   const z=THREE.MathUtils.lerp(-35,18,deterministic(index,salt+3))
-  const x=side*(5+deterministic(index,salt+4)*24)
+  let x=side*(5+deterministic(index,salt+4)*24)
+  if(sampleRiverSurface(x,z).edgeDistance<=2.5){
+    const river=sampleRiverCrossSection(z)
+    x=side<0?river.leftX-3:river.rightX+3
+  }
   return new THREE.Vector3(x,heightAt(x,z),z)
 }
 
@@ -531,7 +534,7 @@ const createMist=(quality)=>{
 
 export function createHillWorld(materials,quality='desktop'){
   const world=namedGroup('hill-world')
-  const leafMap=createLeafTexture()
+  const leafMap=createCanopyTexture()
   materials={
     ...materials,
     treeGeometries:Array.from({length:6},(_,index)=>createForestTreeGeometry(index,quality)),
@@ -539,8 +542,8 @@ export function createHillWorld(materials,quality='desktop'){
     stone:createEnvironmentMaterial('#838177','rock'),
     leaf:material('#556649',.98),
     leaf2:material('#77805c',.98),
-    foliage:createFoliageMaterial('#546747',leafMap),
-    foliageAlt:createFoliageMaterial('#74805a',leafMap),
+    foliage:createFoliageMaterial('#397c3b',leafMap),
+    foliageAlt:createFoliageMaterial('#4b8a3f',leafMap),
   }
   const heightAt=sampleMountainHeight
   const {route,routeProgress}=createRoute(heightAt)

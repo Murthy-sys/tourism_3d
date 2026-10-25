@@ -8,8 +8,19 @@ import JourneyShell from './components/JourneyShell'
 export default function App() {
   const [phase, setPhase] = useState('loading')
   const [journeyReady,setJourneyReady]=useState(false)
+  const [loadingState,setLoadingState]=useState({phase:'assets',completed:0,total:0})
+  const [loadAttempt,setLoadAttempt]=useState(0)
   const skipRef=useRef(null)
   const handleReady=useCallback(()=>setJourneyReady(true),[])
+  const handleLoadingState=useCallback(status=>{
+    setLoadingState(status)
+    if(status.phase==='error') setJourneyReady(false)
+  },[])
+  const retryLoading=useCallback(()=>{
+    setJourneyReady(false)
+    setLoadingState({phase:'assets',completed:0,total:0})
+    setLoadAttempt(attempt=>attempt+1)
+  },[])
   const handleLoaded=useCallback(()=>setPhase(current=>current==='loading'?'gate':current),[])
   const handleEnter=useCallback(()=>setPhase(current=>current==='gate'?'intro':current),[])
   const handleIntroComplete=useCallback(()=>setPhase(current=>current==='intro'?'site':current),[])
@@ -22,6 +33,8 @@ export default function App() {
     <>
       <JourneyShell
         onReady={handleReady}
+        onLoadingState={handleLoadingState}
+        loadAttempt={loadAttempt}
         introPhase={introPhase}
         onIntroComplete={handleIntroComplete}
       />
@@ -35,6 +48,8 @@ export default function App() {
       {phase === 'loading' && (
         <Preloader
           ready={journeyReady}
+          status={loadingState}
+          onRetry={retryLoading}
           onDone={handleLoaded}
         />
       )}

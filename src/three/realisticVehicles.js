@@ -1,6 +1,8 @@
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
+import { downloadAsset } from './assetDownload'
 
 const templates=new Map()
+const requests=new Set()
 let leases=0,pending=null
 const baseURL=import.meta.env?.BASE_URL||'/'
 const releaseUnused=owner=>{
@@ -33,16 +35,26 @@ const ownTemplate=(kind,scene)=>{
 const loadTemplate=(kind,url,timeoutMs=20000)=>new Promise((resolve,reject)=>{
   const controller=new AbortController()
   let expired=false
-  const timeout=setTimeout(()=>{
+  const cancel=error=>{
+    if(expired) return
     expired=true
     controller.abort()
-    reject(new Error(`${kind} model loading timed out`))
-  },timeoutMs)
+    clearTimeout(timeout)
+    requests.delete(cancel)
+    reject(error)
+  }
+  let timeout
+  const refresh=()=>{
+    clearTimeout(timeout)
+    timeout=setTimeout(()=>cancel(new Error(`${kind} model loading timed out`)),timeoutMs)
+  }
+  refresh()
+  requests.add(cancel)
   ;(async()=>{
     try{
-      const response=await fetch(url,{signal:controller.signal})
-      if(!response.ok) throw new Error(`${kind} model request failed (${response.status})`)
-      const gltf=await new GLTFLoader().parseAsync(await response.arrayBuffer(),url.slice(0,url.lastIndexOf('/')+1))
+      const data=await downloadAsset(url,{signal:controller.signal,onActivity:refresh})
+      if(expired) return
+      const gltf=await new GLTFLoader().parseAsync(data,url.slice(0,url.lastIndexOf('/')+1))
       const owner=ownTemplate(kind,gltf.scene)
       if(expired){
         owner.geometries.forEach(resource=>resource.dispose())
@@ -54,14 +66,19 @@ const loadTemplate=(kind,url,timeoutMs=20000)=>new Promise((resolve,reject)=>{
       releaseUnused(owner)
       resolve(owner)
     }catch(error){if(!expired) reject(error)}
-    finally{clearTimeout(timeout)}
+    finally{clearTimeout(timeout);requests.delete(cancel)}
   })()
 })
 
 /** Acquire once per scene lifecycle, then call releaseRealisticVehicles. */
-export function preloadRealisticVehicles(quality=typeof window!=='undefined'&&window.innerWidth<768?'mobile':'desktop',{timeout=20000}={}){
+export function preloadRealisticVehicles(quality=typeof window!=='undefined'&&window.innerWidth<768?'mobile':'desktop',{timeout=20000,strict=false}={}){
   leases++
-  if(pending) return pending
+  const validate=results=>{
+    const failed=results.find(result=>result.status==='rejected')
+    if(strict&&failed) throw failed.reason
+    return results
+  }
+  if(pending) return strict?pending.then(validate):pending
   const files={jeep:'utility-jeep.glb',bus:`tour-bus${quality==='mobile'?'-mobile':''}.glb`}
   pending=Promise.allSettled(Object.entries(files).map(([kind,file])=>{
     const existing=templates.get(kind)
@@ -70,12 +87,15 @@ export function preloadRealisticVehicles(quality=typeof window!=='undefined'&&wi
     if(results.every(result=>result.status==='rejected')) throw results[0].reason
     return results
   }).finally(()=>{pending=null})
-  return pending
+  return strict?pending.then(validate):pending
 }
 
 export function releaseRealisticVehicles(){
   leases=Math.max(0,leases-1)
   templates.forEach(releaseUnused)
+  queueMicrotask(()=>{
+    if(!leases) requests.forEach(cancel=>cancel(new DOMException('Scene released','AbortError')))
+  })
 }
 
 /** Shared immutable geometry and textures; each vehicle owns its materials. */

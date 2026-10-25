@@ -15,14 +15,15 @@ export function disposeObject3D(root){
   root.traverse(object=>{
     object.userData.disposeRealisticTraveller?.()
     object.userData.disposeRealisticVehicle?.()
+    object.userData.disposeRealisticWildlife?.()
     object.userData.disposeNaturalWater?.()
     if(object.isInstancedMesh) object.dispose()
-    if(object.geometry&&!object.geometry.userData.managedByTravellerTemplate&&!object.geometry.userData.managedByVehicleTemplate) geometries.add(object.geometry)
+    if(object.geometry&&!object.geometry.userData.managedByTravellerTemplate&&!object.geometry.userData.managedByVehicleTemplate&&!object.geometry.userData.managedByWildlifeTemplate) geometries.add(object.geometry)
     const values=Array.isArray(object.material)?object.material:[object.material]
     values.filter(Boolean).forEach(material=>materials.add(material))
   })
   materials.forEach(material=>Object.values(material).forEach(value=>{
-    if(value?.isTexture&&!value.userData.managedByTravellerTemplate&&!value.userData.managedByVehicleTemplate&&!value.userData.managedByNatureAssets&&(value.userData.ownedByEnvironment||value.userData.ownedByCharacter||value.userData.ownedByJourney)){
+    if(value?.isTexture&&!value.userData.managedByTravellerTemplate&&!value.userData.managedByVehicleTemplate&&!value.userData.managedByWildlifeTemplate&&!value.userData.managedByNatureAssets&&(value.userData.ownedByEnvironment||value.userData.ownedByCharacter||value.userData.ownedByJourney)){
       textures.add(value)
     }
   }))

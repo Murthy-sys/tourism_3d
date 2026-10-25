@@ -5,15 +5,16 @@ export const ACCESS_ROAD_WIDTH=5.6
 export const ACCESS_ROAD_SHOULDER=.85
 export const ACCESS_ROAD_CLEARANCE=.065
 export const ACCESS_ROAD_POINTS=Object.freeze([
-  [-72,76],[-51,62],[-34,48],[-26,38],[-18,34],[-8,34],
+  [-4,128],[-15,110],[-44,100],[-62,85],[-60,68],
+  [-44,53],[-26,38],[-18,34],[-8,34],
 ].map(point=>Object.freeze(point)))
 const curve=new THREE.CatmullRomCurve3(ACCESS_ROAD_POINTS.map(([x,z])=>new THREE.Vector3(x,0,z)),false,'centripetal')
-const points=curve.getSpacedPoints(96)
+const points=curve.getSpacedPoints(240)
 const length=curve.getLength()
 const smooth=value=>{const t=THREE.MathUtils.clamp(value,0,1);return t*t*(3-2*t)}
 
 export const sampleAccessRoad=(x,z)=>{
-  if(x<-80||x>0||z<25||z>84) return {distance:Infinity,progress:0,height:0}
+  if(x<-85||x>6||z<25||z>156) return {distance:Infinity,progress:0,height:0}
   let minimum=Infinity,progress=0
   for(let index=0;index<points.length-1;index++){
     const a=points[index],b=points[index+1],dx=b.x-a.x,dz=b.z-a.z
@@ -21,7 +22,8 @@ export const sampleAccessRoad=(x,z)=>{
     const distance=(x-a.x-dx*t)**2+(z-a.z-dz*t)**2
     if(distance<minimum){minimum=distance;progress=(index+t)/(points.length-1)}
   }
-  return {distance:Math.sqrt(minimum),progress,height:.35+4.8*(1-smooth(progress/.8))}
+  const ridgeHeight=4.8*smooth((z-38)/38)*(1-smooth((z-76)/52))
+  return {distance:Math.sqrt(minimum),progress,height:.35+ridgeHeight}
 }
 
 const cross=(a,b,p)=>(b.x-a.x)*(p.z-a.z)-(b.z-a.z)*(p.x-a.x)
@@ -53,7 +55,7 @@ const groundTriangles=terrainGeometries=>{
       const a=index.getX(offset),b=index.getX(offset+1),c=index.getX(offset+2)
       const minX=Math.min(position.getX(a),position.getX(b),position.getX(c)),maxX=Math.max(position.getX(a),position.getX(b),position.getX(c))
       const minZ=Math.min(position.getZ(a),position.getZ(b),position.getZ(c)),maxZ=Math.max(position.getZ(a),position.getZ(b),position.getZ(c))
-      if(maxX<-80||minX>0||maxZ<25||minZ>84) continue
+      if(maxX<-85||minX>6||maxZ<25||minZ>156) continue
       const vertices=[a,b,c].map(vertex=>new THREE.Vector3().fromBufferAttribute(position,vertex))
       triangles.push({vertices,minX,maxX,minZ,maxZ})
     }
@@ -118,7 +120,7 @@ export const createAccessRoad=({heightAt,terrainGeometry,terrainSurroundGeometry
   group.name='trailhead-access-road'
   const terrain=groundTriangles([terrainGeometry,terrainSurroundGeometry].filter(Boolean))
   const half=ACCESS_ROAD_WIDTH/2,outer=half+ACCESS_ROAD_SHOULDER
-  const segments=quality==='mobile'?64:96
+  const segments=quality==='mobile'?160:240
   const asphalt=createEnvironmentMaterial('#53584f','rock',{roughness:.94,bumpScale:.012,vertexColors:true})
   asphalt.color.set('#68736e')
   asphalt.normalScale?.set(.12,.12)

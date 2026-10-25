@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { readRuntimeProfile } from '../three/runtimeProfile'
+import { preloadJourneyFonts,releaseJourneyFonts } from '../journey/journeyFonts'
 
 export default function Hero3D({
   progress,
@@ -10,11 +11,14 @@ export default function Hero3D({
   introPhase='complete',
   onIntroComplete,
   onFinaleProgress,
+  onProgress,
+  onLoadingState,
+  loadAttempt=0,
 }) {
   const canvasRef = useRef(null)
   const apiRef = useRef(null)
-  const callbacksRef=useRef({onFallback,onReady,onIntroComplete,onFinaleProgress,introPhase,progress,reducedMotion})
-  callbacksRef.current={onFallback,onReady,onIntroComplete,onFinaleProgress,introPhase,progress,reducedMotion}
+  const callbacksRef=useRef({onFallback,onReady,onIntroComplete,onFinaleProgress,onProgress,onLoadingState,introPhase,progress,reducedMotion})
+  callbacksRef.current={onFallback,onReady,onIntroComplete,onFinaleProgress,onProgress,onLoadingState,introPhase,progress,reducedMotion}
   const failedRef=useRef(false)
   const fallbackIntroCompleted=useRef(false)
 
@@ -25,6 +29,7 @@ export default function Hero3D({
     let sceneApi
     let releaseAssets
     let cancelled=false
+    let startupFailed=false,readySent=false
     failedRef.current=false
     fallbackIntroCompleted.current=false
     const handleFallback=()=>{
@@ -44,57 +49,95 @@ export default function Hero3D({
       if(document.hidden) sceneApi?.pause?.()
       else sceneApi?.resume?.()
     }
+    const report=status=>{
+      if(!cancelled&&!startupFailed) callbacksRef.current.onLoadingState?.(status)
+    }
+    const reportError=error=>{
+      if(cancelled||startupFailed) return
+      startupFailed=true
+      sceneApi?.dispose()
+      sceneApi=undefined
+      apiRef.current=null
+      if(sceneRef) sceneRef.current=null
+      delete window.__journeyQA
+      delete window.__resetJourneyQA
+      releaseAssets?.()
+      callbacksRef.current.onLoadingState?.({phase:'error',completed:0,total:1,
+        message:'The journey could not finish loading. Check your connection and try again.',
+        error:error?.message||String(error)})
+    }
+    const reportReady=()=>{
+      if(cancelled||startupFailed||readySent) return
+      readySent=true
+      report({phase:'ready',completed:1,total:1,message:'Your journey is ready'})
+      callbacksRef.current.onReady?.()
+    }
     const initialize=async()=>{
       const profile=readRuntimeProfile()
-      const loadOptions={timeout:profile.assetTimeout}
+      // The watchdog measures inactivity, not total transfer duration. Healthy
+      // slow downloads continue until every model and texture is available.
+      const loadOptions={timeout:profile.assetTimeout,strict:true}
       const travellerURL=`${import.meta.env.BASE_URL}models/traveller${profile.compactAssets?'-compact':''}.glb`
+      report({phase:'assets',completed:0,total:5,message:'Loading journey assets'})
       let createIndiaJourney
       // Paint the lightweight gate before fetching/parsing the 3D engine.
-      let travellers,nature,vehicles
+      let travellers,nature,vehicles,wildlife
       try{
         const modules=await Promise.all([
           import('../three/indiaJourney'),import('../three/realisticTravellers'),
           import('../three/natureAssets'),import('../three/realisticVehicles'),
+          import('../three/realisticWildlife'),
         ])
         if(cancelled) return
-        ;[{createIndiaJourney},travellers,nature,vehicles]=modules
+        ;[{createIndiaJourney},travellers,nature,vehicles,wildlife]=modules
       }catch(error){
         if(cancelled) return
-        console.warn('3D engine unavailable:',error)
-        handleFallback()
-        callbacksRef.current.onReady?.()
+        reportError(error)
         return
       }
+      let assetsReleased=false
       releaseAssets=()=>{
+        if(assetsReleased) return
+        assetsReleased=true
         travellers.releaseRealisticTravellers()
         nature.releaseNatureAssets()
         vehicles.releaseRealisticVehicles()
+        wildlife.releaseRealisticWildlife()
+        releaseJourneyFonts()
       }
+      let completed=0
+      const loaded=promise=>promise.then(()=>{
+        completed++
+        report({phase:'assets',completed,total:5,message:'Loading journey assets'})
+      })
       try{
         await Promise.all([
-          travellers.preloadRealisticTravellers(travellerURL,loadOptions).catch(error=>{
-            if(!cancelled) console.warn('Detailed traveller model unavailable:',error)
-          }),
-          nature.preloadNatureAssets({...loadOptions,compact:profile.compactAssets}),
-          vehicles.preloadRealisticVehicles(profile.compactAssets?'mobile':'desktop',loadOptions).catch(error=>{
-            if(!cancelled) console.warn('Detailed vehicle models unavailable:',error)
-          }),
+          loaded(travellers.preloadRealisticTravellers(travellerURL,loadOptions)),
+          loaded(nature.preloadNatureAssets({...loadOptions,compact:profile.compactAssets,sky:true})),
+          loaded(vehicles.preloadRealisticVehicles(profile.compactAssets?'mobile':'desktop',loadOptions)),
+          loaded(wildlife.preloadRealisticWildlife(loadOptions)),
+          loaded(preloadJourneyFonts(loadOptions)),
         ])
       }catch(error){
-        // Keep the journey usable if the optional detailed model cannot load.
-        if(!cancelled) console.warn('Detailed traveller model unavailable:',error)
+        reportError(error)
+        return
       }
       if(cancelled) return
+      report({phase:'preparing',completed:0,total:1,message:'Preparing scenes for smooth travel'})
       try {
         sceneApi = createIndiaJourney(canvas,{
           runtimeProfile:profile,
           reducedMotion:callbacksRef.current.reducedMotion,
           intro:true,
           onContextLost:handleFallback,
-          onReady:()=>callbacksRef.current.onReady?.(),
+          onReady:reportReady,
+          onPrepareProgress:value=>report({phase:'preparing',completed:value,total:1,message:'Preparing scenes for smooth travel'}),
+          onPrepareError:reportError,
           onIntroComplete:()=>callbacksRef.current.onIntroComplete?.(),
           onFinaleProgress:value=>callbacksRef.current.onFinaleProgress?.(value),
+          onProgress:value=>callbacksRef.current.onProgress?.(value),
         })
+        if(startupFailed){sceneApi.dispose();sceneApi=undefined;return}
         apiRef.current = sceneApi
         if (sceneRef) sceneRef.current = sceneApi
         sceneApi.setIntroPhase(callbacksRef.current.introPhase)
@@ -123,7 +166,7 @@ export default function Hero3D({
         // Keep the CSS journey available if the renderer cannot initialize.
         console.warn('India 3D journey failed to initialize:', err)
         handleFallback()
-        callbacksRef.current.onReady?.()
+        reportReady()
       }
     }
     initialize()
@@ -139,7 +182,7 @@ export default function Hero3D({
       apiRef.current = null
       if (sceneRef) sceneRef.current = null
     }
-  }, [])
+  }, [loadAttempt])
 
   useEffect(()=>{ apiRef.current?.setReducedMotion(reducedMotion) },[reducedMotion])
   useEffect(()=>{

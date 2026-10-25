@@ -207,6 +207,51 @@ describe.each(['traveller.glb','traveller-compact.glb'])('realistic travellers u
     expect(Math.max(...gaps)).toBeLessThan(.02)
   })
 
+  it('preserves the real travellers facing and walking direction after scene preparation',async()=>{
+    await acquire()
+    const {createTrekkingParty,updateTrekkingParty}=await import('./trekkingParty')
+    const {captureSceneTransforms,restoreSceneTransforms}=await import('./scenePreparation')
+    const party=createTrekkingParty(primitives.createMaterials())
+    roots.push(party)
+    const curve=new THREE.LineCurve3(new THREE.Vector3(3.2,.35,34),new THREE.Vector3(0,3,12))
+    const update=({progress,departureWeight})=>{
+      updateTrekkingParty(party,curve,progress,.38,false,()=>.35,{departureWeight})
+      party.updateMatrixWorld(true)
+    }
+    const faceDirection=member=>{
+      const eye=member.getObjectByName('eyelashes01')
+      return bounds([eye]).getCenter(new THREE.Vector3())
+        .sub(bonePosition(member,'head')).setY(0).normalize()
+    }
+    const states=[
+      {progress:0,departureWeight:0},
+      {progress:.12,departureWeight:.3},
+      {progress:.3,departureWeight:1},
+      {progress:.7,departureWeight:1},
+    ]
+    update(states[0])
+    const initial=captureSceneTransforms(party)
+    const expected=states.map(state=>{
+      update(state)
+      return party.userData.members.map(faceDirection)
+    })
+    for(let attempt=0;attempt<2;attempt++){
+      for(const progress of [0,.2,.35,.5,.8,1]) update({progress,departureWeight:1})
+      restoreSceneTransforms(initial)
+      states.forEach((state,stateIndex)=>{
+        update(state)
+        party.userData.members.forEach((member,index)=>{
+          const direction=faceDirection(member)
+          expect(direction.distanceTo(expected[stateIndex][index])).toBeLessThan(1e-6)
+          if(state.departureWeight===1){
+            const travel=curve.getTangentAt(state.progress).setY(0).normalize()
+            expect(direction.dot(travel)).toBeGreaterThan(.999)
+          }
+        })
+      })
+    }
+  })
+
   it('coalesces concurrent leases and retains shared geometry until the last live traveller is disposed',async()=>{
     await Promise.all([acquire(),acquire()])
     expect(fetchMock).toHaveBeenCalledTimes(1)
@@ -255,5 +300,35 @@ describe.each(['traveller.glb','traveller-compact.glb'])('realistic travellers u
     expect(requestSignal.aborted).toBe(true)
     expect(skins(create())).toHaveLength(0)
     expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('cancels the model when the final waiting scene releases its lease',async()=>{
+    vi.useFakeTimers()
+    let signal
+    fetchMock.mockImplementationOnce((_url,options)=>{
+      signal=options.signal
+      return new Promise((_resolve,reject)=>signal.addEventListener('abort',()=>reject(new DOMException('Aborted','AbortError'))))
+    })
+    const outcome=expect(acquire()).rejects.toThrow('Scene released')
+    release()
+    await outcome
+    expect(signal.aborted).toBe(true)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('does not parse late bytes after selecting the procedural fallback',async()=>{
+    vi.useFakeTimers()
+    const {GLTFLoader}=await import('three/addons/loaders/GLTFLoader.js')
+    const parse=vi.spyOn(GLTFLoader.prototype,'parseAsync')
+    let complete
+    fetchMock.mockImplementationOnce(async()=>({ok:true,arrayBuffer:()=>new Promise(resolve=>{complete=resolve})}))
+    const outcome=expect(acquire()).rejects.toThrow(/timed out/)
+    await vi.advanceTimersByTimeAsync(20000)
+    await outcome
+    complete(new ArrayBuffer(0))
+    await Promise.resolve()
+    expect(parse).not.toHaveBeenCalled()
+    expect(skins(create())).toHaveLength(0)
+    parse.mockRestore()
   })
 })

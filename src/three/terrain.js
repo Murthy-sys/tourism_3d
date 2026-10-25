@@ -6,8 +6,8 @@ export const LANDMARKS=Object.freeze({
   mountainEntry:Object.freeze([2,3.1,22]),
   mountainStart:Object.freeze([0,5,12]),
   mountainLanding:Object.freeze([2,.35,-34]),
-  forestLanding:Object.freeze([-2,.25,-86]),
-  forestEnd:Object.freeze([1,.2,-132]),
+  forestLanding:Object.freeze([-2,.25,-138]),
+  forestEnd:Object.freeze([1,.2,-230]),
 })
 
 export const smootherstep=(a,b,value)=>{
@@ -47,10 +47,11 @@ export const sampleMountainHeight=(x,z)=>{
     (1-smootherstep(24,40,Math.abs(x-3)))
   const clearing=Math.max(corridor,turnout)
   const weight=1-(1-clearing)*(1-arrivalValley)
-  const valley=THREE.MathUtils.lerp(base,openingFloor(z),weight)
+  const foothills=THREE.MathUtils.lerp(base,openingFloor(z),weight)
+  const valley=THREE.MathUtils.lerp(foothills,.35,smootherstep(88,118,z))
   const road=sampleAccessRoad(x,z)
   const verge=ACCESS_ROAD_WIDTH/2+ACCESS_ROAD_SHOULDER
-  const roadCut=1-smootherstep(verge+.3,verge+9,road.distance)
+  const roadCut=1-smootherstep(verge+2,verge+9,road.distance)
   return THREE.MathUtils.lerp(valley,road.height,roadCut)
 }
 

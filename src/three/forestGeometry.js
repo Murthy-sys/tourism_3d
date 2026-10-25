@@ -1,6 +1,8 @@
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
-import { projectGroundUV } from './environmentSurface'
+import { createFoliageGeometry,projectGroundUV } from './environmentSurface'
+import { LANDMARKS } from './terrain'
+import { shiftFinaleZ } from './journeySpatial'
 
 const random=(index,salt)=>{
   const value=Math.sin(index*127.1+salt*311.7)*43758.5453
@@ -60,9 +62,10 @@ const curvedBranch=(points,baseRadius,tipRadius,seed,{rings=7,sides=7,root=false
   return geometry
 }
 
-const createTwigFoliage=(shoots,count,seed)=>{
+const createTwigFoliage=(shoots,count,seed,{distant=false,mobile=false}={})=>{
   const positions=[],normals=[],uvs=[],colors=[],indices=[]
   const center=new THREE.Vector3(),normal=new THREE.Vector3(),across=new THREE.Vector3(),along=new THREE.Vector3(),point=new THREE.Vector3()
+  const originalCenter=new THREE.Vector3(),envelope=new THREE.Box3()
   for(let leaf=0;leaf<count;leaf++){
     const shoot=shoots[leaf%shoots.length]
     const key=leaf+seed*173
@@ -73,17 +76,29 @@ const createTwigFoliage=(shoots,count,seed)=>{
     center.x+=Math.cos(azimuth)*scatter
     center.z+=Math.sin(azimuth)*scatter
     center.y+=(random(key,4)-.42)*shoot.volume*.8
+    originalCenter.copy(center)
+    // Keep outer sprays while overlapping the spaces between branch tips.
+    // The inner shoots cover the exposed branch network, rather than merely
+    // increasing the crown's radius or adding more scattered leaf specks.
+    if(leaf%5<2) center.lerp(shoot.inner||shoot.from,.48+random(key,11)*.22)
     normal.set(Math.cos(azimuth)*.7,.3+random(key,5),Math.sin(azimuth)*.7).normalize()
     across.set(-normal.z,0,normal.x).normalize()
     along.crossVectors(normal,across).normalize()
     const spin=(random(key,6)-.5)*Math.PI
     across.applyAxisAngle(normal,spin)
     along.crossVectors(normal,across).normalize()
-    const length=.12+random(key,7)*.12
-    const width=length*(.43+random(key,8)*.18)
-    const shade=.78+random(leaf%shoots.length+seed,9)*.24+random(key,10)*.08
+    const originalLength=.16+random(key,7)*.15
+    const originalWidth=originalLength*(.43+random(key,8)*.18)
+    // Each card now carries nine small photographed leaves. Distance cards
+    // cover a larger shoot to retain canopy mass at the lower vertex budget.
+    const length=(.34+random(key,7)*.16)*(distant?1.42:mobile?1.15:1)
+    const width=length*(.73+random(key,8)*.15)
+    const shade=.86+random(leaf%shoots.length+seed,9)*.14+random(key,10)*.06
     const offset=positions.length/3
     for(const [u,v] of [[0,0],[1,0],[1,1],[0,1]]){
+      point.copy(originalCenter).addScaledVector(across,(u-.5)*originalWidth*2).addScaledVector(along,(v-.5)*originalLength*2)
+      point.addScaledVector(normal,(u-.5)*(v-.5)*originalLength*.25)
+      envelope.expandByPoint(point)
       point.copy(center).addScaledVector(across,(u-.5)*width*2).addScaledVector(along,(v-.5)*length*2)
       point.addScaledVector(normal,(u-.5)*(v-.5)*length*.25)
       positions.push(point.x,point.y,point.z)
@@ -99,6 +114,17 @@ const createTwigFoliage=(shoots,count,seed)=>{
   geometry.setAttribute('uv',new THREE.Float32BufferAttribute(uvs,2))
   geometry.setAttribute('color',new THREE.Float32BufferAttribute(colors,3))
   geometry.setIndex(indices)
+  geometry.computeBoundingBox()
+  // Density changes must not move foliage into the existing camera, road,
+  // river or wildlife clearances. Fit the fuller crown to its original bounds.
+  const sourceSize=geometry.boundingBox.getSize(new THREE.Vector3())
+  const targetSize=envelope.getSize(new THREE.Vector3())
+  const sourceCenter=geometry.boundingBox.getCenter(new THREE.Vector3())
+  const targetCenter=envelope.getCenter(new THREE.Vector3())
+  geometry.translate(-sourceCenter.x,-sourceCenter.y,-sourceCenter.z)
+  geometry.scale(targetSize.x/sourceSize.x,targetSize.y/sourceSize.y,targetSize.z/sourceSize.z)
+  geometry.translate(targetCenter.x,targetCenter.y,targetCenter.z)
+  geometry.userData={interiorSprayFraction:.4,leavesPerShoot:9,envelopePreserved:true}
   return geometry
 }
 
@@ -151,7 +177,7 @@ export const createForestTreeGeometry=(variant,quality,{distant=false}={})=>{
       const bend=from.clone().lerp(to,.55)
       bend.y-=.13
       wood.push(curvedBranch([from,bend,to],.045-fraction*.015,.005,limb*3+fork+variant,{rings:distant?2:mobile?3:4,sides:distant?4:5}))
-      shoots.push({from:from.clone().lerp(to,.38),to,volume:.66+random(limb,variant+fork+28)*.42})
+      shoots.push({from:from.clone().lerp(to,.38),to,inner:start.clone().lerp(end,.40),volume:.66+random(limb,variant+fork+28)*.42})
     }
   }
   // The leader carries a small, offset crown rather than a bare pole above it.
@@ -159,25 +185,26 @@ export const createForestTreeGeometry=(variant,quality,{distant=false}={})=>{
   for(let index=0;index<3;index++) shoots.push({from:leader.clone().add(new THREE.Vector3(0,-.8,0)),to:leader.clone().add(new THREE.Vector3(Math.cos(index*2.1+variant)*.65,.18,Math.sin(index*2.1+variant)*.65)),volume:.75})
   const leaves=distant?(mobile?250:400):(mobile?680:1220)
   const skeleton=mergeGeometries(wood)
-  const crown=createTwigFoliage(shoots,leaves,variant+1)
+  const crown=createTwigFoliage(shoots,leaves,variant+1,{distant,mobile})
   wood.forEach(geometry=>geometry.dispose())
   skeleton.computeBoundingBox()
   skeleton.computeBoundingSphere()
   crown.computeBoundingBox()
   crown.computeBoundingSphere()
   skeleton.userData={branchCount:form.limbs*4,growthForm:variant,trunkHeight:height,curvedLimbs:true,rootFlare:true}
-  crown.userData={organicSilhouette:true,clusters:shoots.length,leaves,distant,distribution:'branch-tip-sprays'}
+  crown.userData={...crown.userData,organicSilhouette:true,clusters:shoots.length,leaves,distant,distribution:'overlapping-inner-and-outer-shoots'}
   return{skeleton,crown}
 }
 
 export const createForestGroundGeometry=(heightAt,quality)=>{
-  const geometry=new THREE.PlaneGeometry(160,88,quality==='mobile'?80:112,quality==='mobile'?88:112)
+  const front=LANDMARKS.forestLanding[2],rear=shiftFinaleZ(-174)
+  const geometry=new THREE.PlaneGeometry(160,front-rear,quality==='mobile'?80:112,quality==='mobile'?134:176)
   geometry.rotateX(-Math.PI/2)
-  geometry.translate(0,0,-130)
+  geometry.translate(0,0,(front+rear)/2)
   const positions=geometry.getAttribute('position')
   const colors=[]
-  const earth=new THREE.Color('#676147')
-  const moss=new THREE.Color('#596443')
+  const earth=new THREE.Color('#47583a')
+  const moss=new THREE.Color('#3c603a')
   const color=new THREE.Color()
   for(let index=0;index<positions.count;index+=1){
     const x=positions.getX(index),z=positions.getZ(index)
@@ -189,4 +216,34 @@ export const createForestGroundGeometry=(heightAt,quality)=>{
   geometry.setAttribute('color',new THREE.Float32BufferAttribute(colors,3))
   geometry.computeVertexNormals()
   return projectGroundUV(geometry,2)
+}
+
+/** Reuse the existing leaf-card budget as overlapping ground-level rosettes.
+ * Broad lower leaves connect the plant to the floor instead of hanging as
+ * isolated leaf specks around the centre of an otherwise empty shrub. */
+export const createForestUnderstoryGeometry=({seed,variant,scale,leaves})=>{
+  const geometry=createFoliageGeometry({seed,variant,scale,leaves})
+  const positions=geometry.getAttribute('position')
+  const center=new THREE.Vector3(),point=new THREE.Vector3()
+  for(let leaf=0;leaf<leaves;leaf++){
+    const start=leaf*4
+    center.set(0,0,0)
+    for(let vertex=0;vertex<4;vertex++) center.add(point.fromBufferAttribute(positions,start+vertex))
+    center.multiplyScalar(.25)
+    const radius=Math.hypot(center.x,center.z)/scale
+    const height=(.035+Math.max(0,1-radius/1.6)*(.13+random(leaf,seed)*.19))*scale
+    for(let vertex=0;vertex<4;vertex++){
+      point.fromBufferAttribute(positions,start+vertex).sub(center)
+      positions.setXYZ(start+vertex,
+        center.x+point.x*1.8,
+        Math.max(.015*scale,height+point.y*.85),
+        center.z+point.z*1.8,
+      )
+    }
+  }
+  geometry.computeVertexNormals()
+  geometry.computeBoundingBox()
+  geometry.computeBoundingSphere()
+  geometry.userData.growthForm='layered-ground-rosettes'
+  return geometry
 }

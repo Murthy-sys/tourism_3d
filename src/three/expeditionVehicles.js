@@ -10,6 +10,7 @@ const material=(color,roughness=.55,metalness=.08,extra={})=>new THREE.MeshStand
 const routeUpdate=(object,curve,progress,y=0,orient=true)=>{const p=THREE.MathUtils.clamp(progress,0,1),point=curve.getPointAt(p),tangent=curve.getTangentAt(Math.min(.999,p+.002));object.position.copy(point);object.position.y+=y;if(orient) object.rotation.y=Math.atan2(tangent.x,tangent.z);return{p,tangent}}
 const smooth01=value=>{const t=THREE.MathUtils.clamp(value,0,1);return t*t*t*(t*(t*6-15)+10)}
 const BOAT_DOCK_MERGE_END=.12
+const BOAT_DOCK_CLEARANCE=.04
 const DIRECTION_CHANGE_DISTANCE=.025
 const HEADING_MOVEMENT_DISTANCE=.002
 const MAX_TURN_SPEED=Math.PI*2
@@ -328,21 +329,31 @@ export function createExpeditionBoat(m){
 }
 
 export function updateBoat(boat,curve,progress,elapsed,reducedMotion,motionOptions){
-  const {p,tangent}=routeUpdate(boat,curve,progress,reducedMotion?0:Math.sin(elapsed*1.8)*.035,false)
-  const dockBlend=1-smooth01(p/BOAT_DOCK_MERGE_END)
+  const bob=reducedMotion?0:Math.sin(elapsed*1.8)*.035
+  const {p,tangent}=routeUpdate(boat,curve,progress,bob,false)
+  const dockBlend=1-smooth01((p-BOAT_DOCK_CLEARANCE)/(BOAT_DOCK_MERGE_END-BOAT_DOCK_CLEARANCE))
+  const arrivalBlend=1-smooth01((1-p-BOAT_DOCK_CLEARANCE)/(BOAT_DOCK_MERGE_END-BOAT_DOCK_CLEARANCE))
   boatLateralScratch.set(tangent.z,0,-tangent.x).normalize()
-  boat.position.addScaledVector(boatLateralScratch,(boat.userData.dockLateralOffset||0)*dockBlend)
+  boat.position.addScaledVector(boatLateralScratch,
+    (boat.userData.dockLateralOffset||0)*dockBlend+(boat.userData.arrivalDockLateralOffset||0)*arrivalBlend,
+  )
+  const cameraAnchor=boat.userData.cameraAnchor||(boat.userData.cameraAnchor=new THREE.Vector3())
+  cameraAnchor.copy(boat.position)
+  cameraAnchor.y-=bob
   updateVehicleHeading(boat,curve,p,tangent,reducedMotion,motionOptions)
   boat.rotation.z=reducedMotion?0:Math.sin(elapsed*1.3)*.025;boat.rotation.x=reducedMotion?0:Math.sin(elapsed*1.7)*.018
   boat.userData.routeTangent=tangent.clone()
-  const stroke=reducedMotion?0:Math.sin(elapsed*2.8),recovery=reducedMotion?0:Math.cos(elapsed*2.8)
+  const occupied=motionOptions?.occupied!==false
+  const rowing=occupied&&!reducedMotion
+  const stroke=rowing?Math.sin(elapsed*2.8):0,recovery=rowing?Math.cos(elapsed*2.8):0
   const port=boat.getObjectByName('boat-oar-left'),starboard=boat.getObjectByName('boat-oar-right'),rower=boat.getObjectByName('boat-rower')
   if(port&&starboard){
     port.rotation.x=-.18+stroke*.42;starboard.rotation.x=port.rotation.x;port.rotation.y=.12+recovery*.08;starboard.rotation.y=-port.rotation.y
   }
   if(rower){const torso=rower.userData.torsoPivot,left=rower.userData.leftElbow,right=rower.userData.rightElbow;torso.rotation.x=-.04-stroke*.18;left.rotation.x=-1.05+recovery*.28;right.rotation.x=left.rotation.x}
-  if(rower) syncExpeditionPerson(rower)
+  if(rower&&occupied) syncExpeditionPerson(rower)
   const wake=boat.userData.wake
+  if(wake) wake.visible=occupied
   if(wake&&!reducedMotion){
     wake.scale.x=1+Math.sin(elapsed*2.1)*.06
     const wakePulse=Math.sin(elapsed*2.6)*.05

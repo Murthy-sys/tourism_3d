@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import JourneyShell from './JourneyShell'
 import { FINALE_QUOTE } from '../journey/chapters'
+import { journeyProgressToScroll,scrollToJourneyProgress } from '../journey/scrollTimeline'
 
 const renderProgress=vi.hoisted(()=>vi.fn())
 const renderHero=vi.hoisted(()=>vi.fn())
@@ -57,9 +58,11 @@ describe('JourneyShell',()=>{
 
   it('forwards the rendered-journey readiness signal',()=>{
     const onReady=vi.fn()
-    render(<JourneyShell onReady={onReady}/>)
+    const onLoadingState=vi.fn()
+    render(<JourneyShell onReady={onReady} onLoadingState={onLoadingState} loadAttempt={2}/>)
     fireEvent.click(screen.getByRole('button',{name:'Ready journey'}))
     expect(onReady).toHaveBeenCalledOnce()
+    expect(renderHero.mock.calls.at(-1)[0]).toMatchObject({onLoadingState,loadAttempt:2})
   })
 
   it('locks scroll and keeps content inert until the introduction completes',()=>{
@@ -97,7 +100,8 @@ describe('JourneyShell',()=>{
     }))
     vi.stubGlobal('cancelAnimationFrame',vi.fn())
     vi.stubGlobal('scrollTo',vi.fn())
-    render(<JourneyShell/>)
+    const {container}=render(<JourneyShell/>)
+    Object.defineProperty(container.querySelector('.experience__track'),'offsetHeight',{value:innerHeight+10000})
     fireEvent.click(screen.getByRole('button',{name:'Open journey menu'}))
     const callsBeforeSelection=renderProgress.mock.calls.length
     fireEvent.click(screen.getByRole('button',{name:'Contact'}))
@@ -112,15 +116,91 @@ describe('JourneyShell',()=>{
     })
     const traversed=renderProgress.mock.calls.slice(callsBeforeSelection).map(([value])=>value)
     expect(traversed.at(-1)).toBeCloseTo(.995,6)
-    expect(traversed.some(value=>value>.28&&value<.42)).toBe(true)
-    expect(traversed.some(value=>value>.60&&value<.74)).toBe(true)
+    expect(traversed.some(value=>value>0&&value<.995)).toBe(true)
+    const nativeTargets=scrollTo.mock.calls.map(([options])=>options)
+    nativeTargets.forEach(({behavior,top})=>{
+      expect(behavior).toBe('instant')
+      expect(traversed.some(value=>Math.abs(value-scrollToJourneyProgress(top/10000))<1e-8)).toBe(true)
+    })
     expect(traversed.every((value,index)=>index===0||value>=traversed[index-1])).toBe(true)
+  })
+
+  it.each(['wheel','touchstart','keydown'])('hands menu navigation back to native input on %s',eventType=>{
+    const frames=new Map()
+    let nextFrame=0,top=0
+    vi.stubGlobal('requestAnimationFrame',vi.fn(callback=>{frames.set(++nextFrame,callback);return nextFrame}))
+    vi.stubGlobal('cancelAnimationFrame',vi.fn(id=>frames.delete(id)))
+    vi.stubGlobal('scrollTo',vi.fn(options=>{top=options.top}))
+    const {container}=render(<JourneyShell/>)
+    const track=container.querySelector('.experience__track')
+    Object.defineProperty(track,'offsetHeight',{value:innerHeight+10000})
+    track.getBoundingClientRect=()=>({top:-top})
+    const advance=time=>act(()=>{
+      const pending=[...frames.values()]
+      frames.clear()
+      pending.forEach(callback=>callback(time))
+    })
+    fireEvent.click(screen.getByRole('button',{name:'Open journey menu'}))
+    fireEvent.click(screen.getByRole('button',{name:'Contact'}))
+    advance(0)
+    advance(360)
+    expect(frames.size).toBe(1)
+    const calls=scrollTo.mock.calls.length
+    if(eventType==='keydown') fireEvent.keyDown(window,{key:'ArrowUp'})
+    else fireEvent(window,new Event(eventType))
+    top-=200
+    fireEvent.scroll(window)
+    advance(500)
+    expect(renderProgress.mock.calls.at(-1)[0]).toBeCloseTo(scrollToJourneyProgress(top/10000),10)
+    expect(scrollTo).toHaveBeenCalledTimes(calls)
+    expect(frames.size).toBe(0)
+  })
+
+  it('distinguishes deliberate navigation from ordinary wheel input',()=>{
+    const frames=[]
+    vi.stubGlobal('requestAnimationFrame',vi.fn(callback=>{frames.push(callback);return frames.length}))
+    vi.stubGlobal('cancelAnimationFrame',vi.fn())
+    const {container}=render(<JourneyShell/>)
+    const setProgress=vi.fn()
+    renderHero.mock.calls.at(-1)[0].sceneRef.current={setProgress}
+    const track=container.querySelector('.experience__track')
+    Object.defineProperty(track,'offsetHeight',{value:innerHeight+10000})
+    let position=.5
+    track.getBoundingClientRect=()=>({top:-journeyProgressToScroll(position)*10000})
+    const scroll=()=>{
+      fireEvent.scroll(window)
+      act(()=>frames.shift()(0))
+    }
+    scroll()
+    expect(setProgress).toHaveBeenLastCalledWith(.5,{navigation:true})
+    position=.52
+    fireEvent.wheel(window)
+    scroll()
+    expect(setProgress.mock.calls.at(-1)[0]).toBeCloseTo(.52)
+    expect(setProgress.mock.calls.at(-1)[1]).toEqual({navigation:false})
+    position=.87
+    fireEvent.keyDown(window,{key:'End'})
+    scroll()
+    expect(setProgress.mock.calls.at(-1)[0]).toBeCloseTo(.87)
+    expect(setProgress.mock.calls.at(-1)[1]).toEqual({navigation:true})
   })
 
   it('passes reduced-motion state to chapter overlays',()=>{
     vi.stubGlobal('matchMedia',vi.fn(()=>({matches:true})))
     render(<JourneyShell/>)
     expect(renderChapter.mock.calls.at(-1)[0].reducedMotion).toBe(true)
+  })
+
+  it('keeps chapter copy synchronized with the visible scene during slow travel',()=>{
+    render(<JourneyShell/>)
+    const onProgress=renderHero.mock.calls.at(-1)[0].onProgress
+    act(()=>onProgress(.5))
+    expect(renderChapter.mock.calls.at(-1)[0].progress).toBe(.5)
+    act(()=>onProgress(.2))
+    expect(renderChapter.mock.calls.at(-1)[0].progress).toBe(.2)
+    act(()=>onProgress(.901))
+    expect(renderChapter.mock.calls.at(-1)[0].progress).toBe(.901)
+    expect(renderProgress.mock.calls.at(-1)[0]).toBe(0)
   })
 
   it('updates the scene and content when the motion preference changes',()=>{
@@ -182,14 +262,14 @@ describe('JourneyShell',()=>{
     const track=container.querySelector('.experience__track')
     Object.defineProperty(track,'offsetHeight',{value:innerHeight+10000})
     let nativeProgress=.995
-    track.getBoundingClientRect=()=>({top:-nativeProgress*10000})
+    track.getBoundingClientRect=()=>({top:-journeyProgressToScroll(nativeProgress)*10000})
     const scroll=()=>{
       fireEvent.scroll(window)
       act(()=>frames.shift()(0))
     }
     scroll()
     const onFinaleProgress=renderHero.mock.calls.at(-1)[0].onFinaleProgress
-    expect(renderProgress.mock.calls.at(-1)[0]).toBe(.995)
+    expect(renderProgress.mock.calls.at(-1)[0]).toBeCloseTo(.995,12)
     expect(screen.queryByRole('heading',{name:FINALE_QUOTE})).not.toBeInTheDocument()
 
     act(()=>onFinaleProgress(.94))
@@ -199,7 +279,7 @@ describe('JourneyShell',()=>{
     expect(screen.queryByRole('region',{name:'Contact XYZ Travellers'})).not.toBeInTheDocument()
     act(()=>onFinaleProgress(.995))
     expect(screen.getByRole('region',{name:'Contact XYZ Travellers'})).toBeInTheDocument()
-    expect(renderProgress.mock.calls.at(-1)[0]).toBe(.995)
+    expect(renderProgress.mock.calls.at(-1)[0]).toBeCloseTo(.995,12)
     expect(renderHero.mock.calls.at(-1)[0].onFinaleProgress).toBe(onFinaleProgress)
 
     nativeProgress=.8
@@ -226,13 +306,13 @@ describe('JourneyShell',()=>{
     const {container}=render(<JourneyShell/>)
     const track=container.querySelector('.experience__track')
     Object.defineProperty(track,'offsetHeight',{value:innerHeight+10000})
-    track.getBoundingClientRect=()=>({top:-9950})
+    track.getBoundingClientRect=()=>({top:-journeyProgressToScroll(.995)*10000})
     fireEvent.scroll(window)
     act(()=>frames.shift()(0))
     expect(screen.queryByRole('region',{name:'Contact XYZ Travellers'})).not.toBeInTheDocument()
     act(()=>renderHero.mock.calls.at(-1)[0].onFallback())
     expect(screen.getByRole('region',{name:'Contact XYZ Travellers'})).toBeInTheDocument()
-    expect(renderChapter.mock.calls.at(-1)[0].progress).toBe(.995)
+    expect(renderChapter.mock.calls.at(-1)[0].progress).toBeCloseTo(.995,12)
   })
 
   it('routes Plan a Trip to Packages without opening an empty booking overlay',()=>{

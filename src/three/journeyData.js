@@ -1,5 +1,7 @@
 import { smootherstep } from './terrain'
 import { FOREST_DRIVE_END } from './finaleConfig'
+import { mapJourneyZ } from './journeySpatial'
+import { getCityCameraFrame } from './cityJourney'
 
 const stop = (id, name, kicker, description, region, palette, camera, target) => ({
   id, name, kicker, description, region, href: '#destinations', palette, camera, target,
@@ -37,10 +39,8 @@ const softenedLinear=value=>{
 const lerp = (a, b, t) => a + (b - a) * t
 const lerp3 = (a, b, t) => a.map((value, index) => lerp(value, b[index], t))
 const CINEMATIC_KEYFRAMES=[
-  {p:0,camera:[8.5,3.8,46],target:[-2,1.55,34.8]},
-  {p:.08,camera:[8,5.6,39.5],target:[2.6,1.9,28.5]},
-  {p:.12,camera:[8,7,40],target:[2.6,1.9,28.5],interpolation:'soft-linear'},
-  {p:.18,camera:[4.5,9.8,6],target:[0,3,-4]},
+  {p:.14,camera:[8.5,3.8,46],target:[-2,1.55,34.8],interpolation:'soft-linear'},
+  {p:.19,camera:[4.5,9.8,6],target:[0,3,-4]},
   {p:.28,camera:[8,7,-18],target:[2,1,-31.5]},
   {p:.35,camera:[7,6,-19],target:[2,1,-33]},
   {p:.42,camera:[-4,4,-27],target:[2,1,-34]},
@@ -52,8 +52,15 @@ const CINEMATIC_KEYFRAMES=[
   {p:.84,camera:[0,3.6,-100.5],target:[.15,1.15,-108]},
   {p:.94,camera:[1,3.8,-122],target:[1,.95,-130]},
   {p:1,camera:[1,3.8,-122],target:[1,.95,-130]},
-]
+].map(frame=>{
+  const shift=mapJourneyZ(frame.target[2])-frame.target[2]
+  return {...frame,camera:[frame.camera[0],frame.camera[1],frame.camera[2]+shift],target:[frame.target[0],frame.target[1],frame.target[2]+shift]}
+})
 const cinematicState=value=>{
+  if(value<=.14){
+    const frame=getCityCameraFrame(value)
+    return {cameraPosition:frame.camera,cameraTarget:frame.target}
+  }
   const found=CINEMATIC_KEYFRAMES.findIndex(keyframe=>value<=keyframe.p)
   const nextIndex=Math.max(1,found<0?CINEMATIC_KEYFRAMES.length-1:found)
   const a=CINEMATIC_KEYFRAMES[nextIndex-1]

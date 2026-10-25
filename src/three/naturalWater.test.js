@@ -1,6 +1,6 @@
 import * as THREE from 'three'
 import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest'
-import {attachNaturalReflection} from './naturalWater'
+import {attachNaturalReflection,beginNaturalWaterFrame} from './naturalWater'
 
 const shaderFor=material=>{
   const shader={uniforms:{},vertexShader:'#include <common>\n#include <project_vertex>',fragmentShader:'#include <common>\n#include <opaque_fragment>'}
@@ -15,8 +15,8 @@ const createRenderer=()=>{
   const viewport=new THREE.Vector4(12,23,640,480)
   let target=originalTarget,face=2,mip=1
   const renderer={
-    xr:{enabled:true},shadowMap:{autoUpdate:true},autoClear:true,
-    info:{autoReset:true,render:{calls:17,triangles:100}},
+    xr:{enabled:true},shadowMap:{autoUpdate:true,needsUpdate:true},autoClear:true,
+    info:{autoReset:true,render:{frame:1,calls:17,triangles:100}},
     getRenderTarget:()=>target,getActiveCubeFace:()=>face,getActiveMipmapLevel:()=>mip,
     getCurrentViewport:out=>out.copy(viewport),
     setRenderTarget:vi.fn((next,nextFace=0,nextMip=0)=>{
@@ -27,7 +27,8 @@ const createRenderer=()=>{
     clear:vi.fn(),
   }
   renderer.render=vi.fn(()=>{
-    if(renderer.info.autoReset) renderer.info.render={calls:0,triangles:0}
+    renderer.info.render.frame++
+    if(renderer.info.autoReset) Object.assign(renderer.info.render,{calls:0,triangles:0})
     renderer.info.render.calls+=5
     renderer.info.render.triangles+=70
   })
@@ -52,7 +53,10 @@ describe('natural planar water reflection lifecycle',()=>{
     camera.updateMatrixWorld(true)
     return{...context,camera,scene:new THREE.Scene()}
   }
-  const draw=(object,context)=>object.onBeforeRender(context.renderer,context.scene,context.camera)
+  const draw=(object,context,options={})=>{
+    if(options.beginFrame!==false) beginNaturalWaterFrame(context.renderer,{now,...options})
+    object.onBeforeRender(context.renderer,context.scene,context.camera)
+  }
 
   beforeEach(()=>{
     waterMeshes=[];targets=[];now=0
@@ -88,7 +92,7 @@ describe('natural planar water reflection lifecycle',()=>{
     expect(object.material.customProgramCacheKey()).toBe('cascade-motion-v3|natural-water-planar-v2')
   })
 
-  it.each([['desktop',50,512],['mobile',100,256]])('throttles %s captures and preserves the ordinary object callback', (quality,interval,resolution)=>{
+  it.each([['desktop',1000/15,384],['mobile',125,192]])('throttles %s captures and preserves the ordinary object callback', (quality,interval,resolution)=>{
     const object=water({quality}),context=renderContext()
     const firstHook=object.onBeforeRender
     // Reattachment must release the first target, rather than stacking captures.
@@ -102,6 +106,8 @@ describe('natural planar water reflection lifecycle',()=>{
     expect(object.onBeforeRender).not.toBe(firstHook)
     expect(object.material.userData.reflectionResolution).toBe(resolution)
     draw(object,context)
+    context.camera.position.x+=.1
+    context.camera.updateMatrixWorld(true)
     now=interval-1;draw(object,context)
     expect(context.renderer.render).toHaveBeenCalledOnce()
     now=interval;draw(object,context)
@@ -142,6 +148,72 @@ describe('natural planar water reflection lifecycle',()=>{
     expect(context.renderer.render).toHaveBeenCalledOnce()
   })
 
+  it('shares one capture per frame across visible water and keeps their previous textures ready',()=>{
+    const first=water(),second=water(),context=renderContext()
+    const firstShader=shaderFor(first.material),secondShader=shaderFor(second.material)
+    draw(first,context)
+    draw(second,context,{beginFrame:false})
+    expect(context.renderer.render).toHaveBeenCalledOnce()
+    expect(firstShader.uniforms.riverReflectionReady.value).toBe(1)
+    expect(secondShader.uniforms.riverReflectionReady.value).toBe(0)
+    now=16
+    draw(first,context)
+    draw(second,context,{beginFrame:false})
+    expect(context.renderer.render).toHaveBeenCalledTimes(2)
+    expect(secondShader.uniforms.riverReflectionReady.value).toBe(1)
+    now=32
+    draw(first,context)
+    draw(second,context,{beginFrame:false})
+    expect(context.renderer.render).toHaveBeenCalledTimes(2)
+    expect(firstShader.uniforms.riverReflectionReady.value).toBe(1)
+    expect(secondShader.uniforms.riverReflectionReady.value).toBe(1)
+  })
+
+  it('keeps stationary reduced-motion reflections cached but refreshes after camera movement',()=>{
+    const object=water(),context=renderContext()
+    draw(object,context,{reducedMotion:true})
+    now=5000
+    draw(object,context,{reducedMotion:true})
+    expect(context.renderer.render).toHaveBeenCalledOnce()
+    context.camera.position.x+=1
+    context.camera.updateMatrixWorld(true)
+    draw(object,context,{reducedMotion:true})
+    expect(context.renderer.render).toHaveBeenCalledTimes(2)
+    expect(shaderFor(object.material).uniforms.riverReflectionReady.value).toBe(1)
+  })
+
+  it('refreshes stationary scenery occasionally without a nested scene render on every interval',()=>{
+    const object=water(),context=renderContext()
+    draw(object,context)
+    now=100;draw(object,context)
+    now=499;draw(object,context)
+    expect(context.renderer.render).toHaveBeenCalledOnce()
+    now=500;draw(object,context)
+    expect(context.renderer.render).toHaveBeenCalledTimes(2)
+  })
+
+  it('applies the constrained capture rate even when the scene uses desktop materials',()=>{
+    const object=water(),context=renderContext()
+    draw(object,context,{constrainedDevice:true})
+    context.camera.position.x+=1
+    context.camera.updateMatrixWorld(true)
+    now=100;draw(object,context,{constrainedDevice:true})
+    expect(context.renderer.render).toHaveBeenCalledOnce()
+    now=125;draw(object,context,{constrainedDevice:true})
+    expect(context.renderer.render).toHaveBeenCalledTimes(2)
+  })
+
+  it('bounds unmanaged callers using the renderer frame after its nested capture',()=>{
+    const first=water(),second=water(),context=renderContext()
+    draw(first,context,{beginFrame:false})
+    draw(second,context,{beginFrame:false})
+    expect(context.renderer.render).toHaveBeenCalledOnce()
+    context.renderer.info.render.frame++
+    now=16
+    draw(second,context,{beginFrame:false})
+    expect(context.renderer.render).toHaveBeenCalledTimes(2)
+  })
+
   it('hides every water surface during capture, prevents recursion and restores renderer state',()=>{
     const first=water(),second=water(),context=renderContext()
     const {renderer,originalTarget,viewport}=context
@@ -152,8 +224,9 @@ describe('natural planar water reflection lifecycle',()=>{
       expect(second.visible).toBe(false)
       expect(renderer.xr.enabled).toBe(false)
       expect(renderer.shadowMap.autoUpdate).toBe(false)
+      expect(renderer.shadowMap.needsUpdate).toBe(false)
       expect(renderer.info.autoReset).toBe(false)
-      draw(second,context)
+      draw(second,context,{beginFrame:false})
       renderer.info.render.calls+=5
       renderer.info.render.triangles+=70
     })
@@ -163,8 +236,9 @@ describe('natural planar water reflection lifecycle',()=>{
     expect(second.visible).toBe(false)
     expect(renderer.xr.enabled).toBe(true)
     expect(renderer.shadowMap.autoUpdate).toBe(true)
+    expect(renderer.shadowMap.needsUpdate).toBe(true)
     expect(renderer.info.autoReset).toBe(true)
-    expect(renderer.info.render).toEqual({calls:22,triangles:170})
+    expect(renderer.info.render).toEqual({frame:1,calls:22,triangles:170})
     expect(renderer.getRenderTarget()).toBe(originalTarget)
     expect(renderer.getActiveCubeFace()).toBe(2)
     expect(renderer.getActiveMipmapLevel()).toBe(1)
@@ -180,6 +254,7 @@ describe('natural planar water reflection lifecycle',()=>{
     expect(object.visible).toBe(true)
     expect(context.renderer.xr.enabled).toBe(true)
     expect(context.renderer.shadowMap.autoUpdate).toBe(true)
+    expect(context.renderer.shadowMap.needsUpdate).toBe(true)
     expect(context.renderer.info.autoReset).toBe(true)
     expect(context.renderer.getRenderTarget()).toBe(context.originalTarget)
     expect(context.renderer.getActiveCubeFace()).toBe(2)

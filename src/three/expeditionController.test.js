@@ -50,7 +50,7 @@ describe('expedition controller integration',()=>{
     const controller=createExpeditionController(scene,createMaterials(),'mobile')
     const weights=[]
     const guidePositions=[]
-    ;[0,.045,.08,.12,.2,.28].forEach(progress=>{
+    ;[0,.14,.165,.19,.2,.28].forEach(progress=>{
       const transition=controller.update(getExpeditionState(progress),1,true)
       weights.push(transition.opening.departureWeight)
       guidePositions.push(
@@ -58,7 +58,7 @@ describe('expedition controller integration',()=>{
       )
     })
     expect(weights.slice(0,2)).toEqual([0,0])
-    expect(weights[2]).toBeCloseTo(.4376849383,8)
+    expect(weights[2]).toBeCloseTo(.5,8)
     expect(weights.slice(3)).toEqual([1,1,1])
     weights.slice(1).forEach((weight,index)=>
       expect(weight).toBeGreaterThanOrEqual(weights[index])
@@ -69,7 +69,7 @@ describe('expedition controller integration',()=>{
     controller.dispose()
   })
 
-  it('mounts one stationary coach as mountain scenery and never as a transport',()=>{
+  it('drives one coach from the city and parks it at the retained mountain stop',()=>{
     const scene=new THREE.Scene()
     const controller=createExpeditionController(scene,createMaterials(),'desktop')
     expect(Object.keys(controller.transports)).toEqual(['trekker','boat','jeep'])
@@ -78,21 +78,33 @@ describe('expedition controller integration',()=>{
       .toEqual(['trekker','boat','jeep'])
     const coach=controller.scenery.coach
     expect(coach.parent).toBe(controller.worlds.mountain.userData.trailhead)
+    controller.update(getExpeditionState(0),0,true)
+    const city=coach.position.clone()
+    expect(city.x).toBe(-4)
+    expect(city.y).toBeCloseTo(.35,7)
+    expect(city.z).toBe(150)
+    controller.update(getExpeditionState(.072),1,true)
+    expect(coach.position.distanceTo(city)).toBeGreaterThan(30)
+    controller.update(getExpeditionState(.105),2,true)
     scene.updateMatrixWorld(true)
-    const initial=coach.matrixWorld.clone()
-    ;[0,.08,.12,.28,.5,.84,1].forEach(progress=>{
+    const parked=coach.matrixWorld.clone()
+    expect(coach.position.x).toBeCloseTo(-4,8)
+    expect(coach.position.z).toBeCloseTo(34,8)
+    ;[.105,.12,.28,.5,.84,1].forEach(progress=>{
       controller.update(getExpeditionState(progress),progress*10,true)
       scene.updateMatrixWorld(true)
       expect(coach.parent).toBe(controller.worlds.mountain.userData.trailhead)
-      expect(coach.matrixWorld.equals(initial)).toBe(true)
+      expect(coach.matrixWorld.equals(parked)).toBe(true)
     })
+    controller.update(getExpeditionState(0),100,false)
+    expect(coach.position.toArray()).toEqual(city.toArray())
     controller.dispose()
   })
 
   it('plants the staged party beside the coach without intersections',()=>{
     const scene=new THREE.Scene()
     const controller=createExpeditionController(scene,createMaterials(),'desktop')
-    controller.update(getExpeditionState(0),0,true)
+    controller.update(getExpeditionState(.12),0,true)
     scene.updateMatrixWorld(true)
     const coachBounds=new THREE.Box3().setFromObject(controller.scenery.coach)
     controller.worlds.mountain.userData.route.getSpacedPoints(120)
@@ -168,7 +180,7 @@ describe('expedition controller integration',()=>{
     controller.dispose()
   })
 
-  it('keeps worlds visible and transports mounted while excluding absent transports from rendering',()=>{
+  it('keeps scenery and the moored boat visible while excluding absent passengers and jeep',()=>{
     const scene=new THREE.Scene()
     const controller=createExpeditionController(scene,createMaterials(),'mobile')
     const mountainMesh=controller.worlds.mountain.getObjectByProperty('isMesh',true)
@@ -179,8 +191,9 @@ describe('expedition controller integration',()=>{
     Object.values(controller.transports).forEach(root=>{
       expect(root.parent).toBe(controller.transportRoot)
     })
-    expect(controller.transports.trekker.visible).toBe(true)
-    expect(controller.transports.boat.visible).toBe(false)
+    expect(controller.transports.trekker.visible).toBe(false)
+    expect(controller.transports.boat.visible).toBe(true)
+    expect(controller.transports.boat.userData.members.every(member=>!member.visible)).toBe(true)
     expect(controller.transports.jeep.visible).toBe(false)
     const renderedObjects=[]
     scene.traverseVisible(object=>renderedObjects.push(object))
@@ -199,11 +212,14 @@ describe('expedition controller integration',()=>{
       depthWrite:false,
       alphaHash:false,
     })
+    controller.update(getExpeditionState(.105),.5,false)
+    expect(controller.transports.trekker.visible).toBe(true)
     controller.update(getExpeditionState(.9),1,false)
     expect(controller.worlds.mountain.visible).toBe(true)
     expect(controller.worlds.forest.visible).toBe(true)
     expect(controller.transports.trekker.visible).toBe(false)
-    expect(controller.transports.boat.visible).toBe(false)
+    expect(controller.transports.boat.visible).toBe(true)
+    expect(controller.transports.boat.userData.members.every(member=>!member.visible)).toBe(true)
     expect(controller.transports.jeep.visible).toBe(true)
     expect(mountainMesh.castShadow).toBe(false)
     expect(forestMesh.castShadow).toBe(true)
@@ -306,7 +322,42 @@ describe('expedition controller integration',()=>{
     controller.dispose()
   })
 
-  it('cross-fades both staged transports and restores the survivor at full weight',()=>{
+  it('moors a complete empty boat before the river and after departure in either direction',()=>{
+    const controller=createExpeditionController(new THREE.Scene(),createMaterials(),'mobile')
+    const boat=controller.transports.boat
+    const hull=boat.getObjectByName('boat-hull')
+    const oar=boat.userData.oars.port
+    const initialVersion=hull.material.version
+    const start=boat.position.clone()
+    expect(boat.visible).toBe(true)
+    expect(boat.userData.members.every(member=>!member.visible)).toBe(true)
+    for(const [index,progress] of [0,.17,.26,.28].entries()){
+      controller.update(getExpeditionState(progress),index*3,false)
+      expect(boat.position.x).toBeCloseTo(start.x,8)
+      expect(boat.position.z).toBeCloseTo(start.z,8)
+      expect(boat.userData.wake.visible).toBe(false)
+      expect(oar.rotation.x).toBeCloseTo(-.18,8)
+      expect(oar.rotation.y).toBeCloseTo(.12,8)
+      expect(boat.userData.members.every(member=>!member.visible)).toBe(true)
+    }
+    let arrival
+    for(const progress of [.35,.42,.5,.67,.74,.9,1,.9,.74,.67,.5,.35,.28,.17,0]){
+      const transition=controller.update(getExpeditionState(progress),10,true)
+      expect(boat.visible).toBe(true)
+      expect(hull.material).toMatchObject({opacity:1,transparent:false,depthWrite:true})
+      expect(hull.material.version).toBe(initialVersion)
+      expect(boat.userData.members.every(member=>member.visible)).toBe(transition.transports.boat>0)
+      if(progress>=.74){
+        arrival??=boat.position.clone()
+        expect(boat.position.distanceTo(arrival)).toBeLessThan(1e-7)
+        expect(boat.userData.wake.visible).toBe(false)
+      }
+    }
+    expect(boat.position.distanceTo(start)).toBeLessThan(1e-7)
+    controller.dispose()
+  })
+
+  it('cross-fades passengers while preserving the boat at full weight',()=>{
     const scene=new THREE.Scene()
     const controller=createExpeditionController(scene,createMaterials(),'desktop')
     const transition=controller.update(getExpeditionState(.67),1,true)
@@ -334,7 +385,8 @@ describe('expedition controller integration',()=>{
     expect(passengerMesh(boat).castShadow).toBe(false)
     expect(passengerMesh(jeep).castShadow).toBe(false)
     controller.update(getExpeditionState(.84),2,true)
-    expect(boat.visible).toBe(false)
+    expect(boat.visible).toBe(true)
+    expect(boat.userData.members.every(member=>!member.visible)).toBe(true)
     expect(jeep.visible).toBe(true)
     expect(passengerMaterial(boat)).toMatchObject({
       opacity:0,
@@ -366,14 +418,22 @@ describe('expedition controller integration',()=>{
     controller.dispose()
   })
 
-  it('keeps the waterfall flowing as a visible destination before forest presence',()=>{
+  it.each(['mobile','desktop'])('keeps all %s waterfall surfaces and shadows independent of biome handoffs',quality=>{
     const scene=new THREE.Scene()
-    const controller=createExpeditionController(scene,createMaterials(),'mobile')
-    const cascade=controller.scenery.waterfall.getObjectByName('waterfall-cascade-1')
-    for(const progress of [.42,.53,.62,.84,.53]){
+    const controller=createExpeditionController(scene,createMaterials(),quality)
+    const waterfall=controller.scenery.waterfall
+    const surfaces=[]
+    waterfall.traverse(object=>{
+      if(object.material) surfaces.push({object,opacity:object.material.opacity,shadow:object.castShadow})
+    })
+    for(const progress of [0,.16,.27,.42,.53,.62,.84,1,.53,.27,0]){
       controller.update(getExpeditionState(progress),1,true)
-      expect(cascade.visible).toBe(true)
-      expect(cascade.material.opacity).toBeGreaterThan(.3)
+      expect(waterfall.visible).toBe(true)
+      surfaces.forEach(({object,opacity,shadow})=>{
+        expect(object.visible).toBe(true)
+        expect(object.material.opacity).toBe(opacity)
+        expect(object.castShadow).toBe(shadow)
+      })
     }
     controller.dispose()
   })
@@ -488,9 +548,7 @@ describe('expedition controller integration',()=>{
     ;[0,.0001,.04,.08,.12,.16].forEach(localProgress=>{
       controller.update(getExpeditionState(.42+localProgress*.18),1,true)
       const point=route.getPointAt(localProgress)
-      const tangent=route.getTangentAt(localProgress).normalize()
-      const lateral=new THREE.Vector3(tangent.z,0,-tangent.x).normalize()
-      offsets.push(controller.transports.boat.position.clone().sub(point).dot(lateral))
+      offsets.push(controller.transports.boat.position.distanceTo(point))
       positions.push(controller.transports.boat.position.clone())
     })
     expect(Math.abs(offsets[0])).toBeGreaterThan(1)

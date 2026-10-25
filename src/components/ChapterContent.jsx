@@ -2,6 +2,7 @@ import {
   BRAND_CAPABILITIES,
   BOAT_OFFER_END,
   BOAT_OFFER_START,
+  getOpeningStory,
   SOCIAL_PERFORMANCE_START,
   TREK_PACKAGES,
 } from '../journey/chapters'
@@ -23,7 +24,18 @@ export default function ChapterContent({
   reducedMotion=false,
   onPlan,
 }){
-  if(chapter.layout==='drive')return null
+  if(chapter.layout==='drive'){
+    const story=getOpeningStory(progress)
+    return <article
+      className="chapter chapter--drive"
+      aria-labelledby="chapter-home"
+      data-opening-stage={story.id}
+    >
+      <p className="chapter__kicker">{story.kicker}</p>
+      <h1 id="chapter-home">{story.title}</h1>
+      <p className="chapter__body">{story.body}</p>
+    </article>
+  }
   const mobilePlacement=getMobileCardPlacement(chapter.layout,progress)
   const mobilePlacementClass=mobilePlacement
     ?`chapter--mobile-safe-${mobilePlacement}`

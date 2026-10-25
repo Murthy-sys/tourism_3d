@@ -7,6 +7,9 @@ import { createWaterWorld } from './waterWorld'
 import { createExpeditionJeep,updateJeep } from './expeditionVehicles'
 import { getJourneyState } from './journeyData'
 import { FINALE_CAMERAS,WATERFALL,WATERFALL_OUTFLOW,WATERFALL_VIEWING_POSITIONS,getFinaleGroundHeight,sampleFinaleWater } from './finaleConfig'
+import { mapJourneyZ,shiftFinaleZ } from './journeySpatial'
+import { distanceToForestRoute,sampleLandingGroundHeight } from './forestTerrain'
+import {sampleRiverSurface} from './riverConfig'
 import {
   getMobileTransportCamera,
   getResolvedCameraFrame,
@@ -59,6 +62,36 @@ const distanceToSegmentXZ=(point,start,end)=>{
 }
 
 describe('jungle world',()=>{
+  it.each(['mobile','desktop'])('connects the %s forest jetty to dry road with a grounded timber gangway',quality=>{
+    const world=createJungleWorld(createMaterials(),quality)
+    const water=createWaterWorld(createMaterials(),quality)
+    world.updateMatrixWorld(true)
+    water.updateMatrixWorld(true)
+    const road=world.getObjectByName('jeep-track-surface')
+    const position=road.geometry.getAttribute('position'),indices=road.geometry.getIndex()
+    for(let index=0;index<indices.count;index++){
+      const vertex=indices.getX(index)
+      expect(sampleRiverSurface(position.getX(vertex),position.getZ(vertex)).edgeDistance).toBeGreaterThan(.34)
+    }
+    const gangway=world.getObjectByName('forest-landing-gangway')
+    const bounds=new THREE.Box3().setFromObject(gangway)
+    const jetty=new THREE.Box3().setFromObject(water.getObjectByName('forest-jetty'))
+    expect(bounds.intersectsBox(jetty)).toBe(true)
+    const planks=gangway.children.filter(object=>object.name==='forest-gangway-plank')
+    expect(planks.length).toBeGreaterThan(6)
+    const dryEnd=planks.at(-1).position
+    expect(sampleRiverSurface(dryEnd.x,dryEnd.z).edgeDistance).toBeGreaterThan(.35)
+    const ray=new THREE.Raycaster(new THREE.Vector3(dryEnd.x,10,dryEnd.z),new THREE.Vector3(0,-1,0))
+    expect(ray.intersectObject(road)).not.toHaveLength(0)
+    const supports=gangway.children.filter(object=>object.name==='forest-gangway-support')
+    expect(supports).toHaveLength(4)
+    supports.forEach(support=>{
+      const foot=new THREE.Box3().setFromObject(support).min.y
+      expect(foot).toBeLessThan(sampleLandingGroundHeight(world.userData.route,support.position.x,support.position.z))
+    })
+    disposeObject3D(world)
+    disposeObject3D(water)
+  })
   it('contains layered vegetation, track, mist and outpost',()=>{
     const world=createJungleWorld(createMaterials(),'desktop')
     ;['jungle-foreground','jungle-midground','jungle-background','forest-track','jungle-mist','ranger-outpost','jungle-rocks','jungle-puddles']
@@ -75,8 +108,31 @@ describe('jungle world',()=>{
     expect(world.userData.counts.trees).toBeGreaterThanOrEqual(90)
     expect(world.userData.counts.undergrowth).toBeGreaterThanOrEqual(180)
     expect(world.userData.route.getPointAt(0).distanceTo(new THREE.Vector3(...LANDMARKS.forestLanding))).toBeLessThan(2)
+    expect(world.userData.route.getLength()).toBeGreaterThan(92)
+    expect(world.scale.toArray()).toEqual([1,1,1])
     expect(world.userData.routeClearance).toBeGreaterThanOrEqual(1.4)
     expect(world.userData.materialDetail).toEqual({leafVariants:6,barkVariants:2})
+    disposeObject3D(world)
+  })
+
+  it.each(['mobile','desktop'])('keeps the denser %s understory rooted outside the track and water',quality=>{
+    const world=createJungleWorld(createMaterials(),quality)
+    const groves=world.getObjectByName('forest-lush-understory')
+    expect(groves.children.every(object=>object.isInstancedMesh)).toBe(true)
+    expect(groves.children).toHaveLength(6)
+    expect(groves.userData.placements.length).toBeGreaterThanOrEqual(150)
+    groves.userData.placements.forEach(({x,z,radius})=>{
+      expect(distanceToForestRoute(world.userData.route,x,z)-radius).toBeGreaterThanOrEqual(1.4)
+      if(z-radius<shiftFinaleZ(-130)) expect(sampleFinaleWater(x,z).edgeDistance).toBeGreaterThan(radius+.6)
+    })
+    const matrix=new THREE.Matrix4(),point=new THREE.Vector3()
+    groves.children.forEach(shrubs=>{
+      for(let index=0;index<shrubs.count;index++){
+        shrubs.getMatrixAt(index,matrix)
+        point.set(0,shrubs.geometry.boundingBox.min.y,0).applyMatrix4(matrix)
+        expect(point.y-world.userData.heightAt(point.x,point.z)).toBeCloseTo(-.06,4)
+      }
+    })
     disposeObject3D(world)
   })
 
@@ -156,7 +212,7 @@ describe('jungle world',()=>{
       expect(surface).toBeTruthy()
       expect(Math.abs(new THREE.Box3().setFromObject(wheel,true).min.y-surface.point.y)).toBeLessThan(.01)
     })
-    expect(world.userData.route.getPointAt(1).toArray()).toEqual([...LANDMARKS.forestEnd])
+    expect(world.userData.route.getPointAt(1).distanceTo(new THREE.Vector3(...LANDMARKS.forestEnd))).toBeLessThan(1e-8)
     disposeObject3D(jeep)
     disposeObject3D(world)
     Object.values(materials).forEach(material=>material.dispose())
@@ -205,7 +261,7 @@ describe('jungle world',()=>{
     expect(new Set(trunks.map(trunk=>trunk.geometry)).size).toBe(6)
     expect(new Set(crowns.map(crown=>crown.geometry)).size).toBe(6)
     expect(trunks.every(trunk=>trunk.geometry.userData.branchCount>=14)).toBe(true)
-    expect(crowns.every(crown=>crown.geometry.userData.distribution==='branch-tip-sprays')).toBe(true)
+    expect(crowns.every(crown=>crown.geometry.userData.distribution==='overlapping-inner-and-outer-shoots')).toBe(true)
     expect(new Set(crowns.map(crown=>crown.geometry.userData.clusters)).size).toBeGreaterThan(1)
     const backdrop=world.getObjectByName('forest-dense-backdrop')
     expect(backdrop.children).toHaveLength(12)
@@ -230,8 +286,8 @@ describe('jungle world',()=>{
   it('keeps rolling ground out of the road and matches the finale clearing and pool basin',()=>{
     const world=createJungleWorld(createMaterials(),'mobile')
     const heightAt=world.userData.heightAt
-    const sideHeights=[-24,-16,16,24].flatMap(x=>[-100,-115,-125].map(z=>heightAt(x,z)))
-    expect(Math.max(...sideHeights)-heightAt(0,-120)).toBeGreaterThan(1.5)
+    const sideHeights=[-24,-16,16,24].flatMap(x=>[-100,-115,-125].map(z=>heightAt(x,mapJourneyZ(z))))
+    expect(Math.max(...sideHeights)-heightAt(0,mapJourneyZ(-120))).toBeGreaterThan(1.5)
     const ground=world.getObjectByName('forest-ground')
     ground.updateWorldMatrix(true,true)
     const ray=new THREE.Raycaster()
@@ -242,7 +298,7 @@ describe('jungle world',()=>{
     })
     expect(heightAt(WATERFALL.pool[0],WATERFALL.pool[2]))
       .toBeCloseTo(getFinaleGroundHeight(WATERFALL.pool[0],WATERFALL.pool[2]),6)
-    expect(new THREE.Box3().setFromObject(ground).min.z).toBeLessThanOrEqual(-174)
+    expect(new THREE.Box3().setFromObject(ground).min.z).toBeLessThanOrEqual(shiftFinaleZ(-174))
     disposeObject3D(world)
   })
 
@@ -252,7 +308,7 @@ describe('jungle world',()=>{
     const vines=[]
     world.traverse(object=>{if(object.name.startsWith('jungle-vine-')) vines.push(object)})
     expect(vines).toHaveLength(16)
-    const clearing=new THREE.Box3(new THREE.Vector3(-6,-5,-145),new THREE.Vector3(8,30,-129))
+    const clearing=new THREE.Box3(new THREE.Vector3(-6,-5,shiftFinaleZ(-145)),new THREE.Vector3(8,30,shiftFinaleZ(-129)))
     vines.forEach(vine=>{
       expect(vine.parent.name.startsWith('jungle-tree-')).toBe(true)
       const anchor=new THREE.Vector3(...vine.userData.branchAnchor)
@@ -316,7 +372,7 @@ describe('jungle world',()=>{
     const world=createJungleWorld(createMaterials(),'mobile')
     world.updateMatrixWorld(true)
     const footprints=[]
-    const viewingClearing=new THREE.Box3(new THREE.Vector3(-5,-5,-144),new THREE.Vector3(6,30,-130))
+    const viewingClearing=new THREE.Box3(new THREE.Vector3(-5,-5,shiftFinaleZ(-144)),new THREE.Vector3(6,30,shiftFinaleZ(-130)))
     world.traverse(object=>{
       if(!object.name.startsWith('jungle-tree-')) return
       expect(new THREE.Box3().setFromObject(object).intersectsBox(viewingClearing)).toBe(false)
@@ -347,11 +403,11 @@ describe('jungle world',()=>{
     ;[-1,1].forEach(side=>{
       const flank=instances.filter(({x})=>Math.sign(x-WATERFALL.center[0])===side)
       expect(flank.length).toBe(instances.length/2)
-      expect(Math.max(...flank.map(({z})=>z))).toBeGreaterThan(side<0?-151:-160)
-      expect(Math.min(...flank.map(({z})=>z))).toBeLessThan(-172)
+      expect(Math.max(...flank.map(({z})=>z))).toBeGreaterThan(shiftFinaleZ(side<0?-151:-160))
+      expect(Math.min(...flank.map(({z})=>z))).toBeLessThan(shiftFinaleZ(-172))
       flank.forEach(({x,z})=>{
         expect(Math.abs(x-WATERFALL.center[0])).toBeGreaterThan(26)
-        expect(z).toBeGreaterThan(-174)
+        expect(z).toBeGreaterThan(shiftFinaleZ(-174))
       })
     })
     const transform=new THREE.Matrix4()

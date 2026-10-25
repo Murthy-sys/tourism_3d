@@ -26,7 +26,7 @@ export default function IntroGate({ onEnter, enabled=true, leaving=false }) {
         </button>
 
         <div className="gate__foot">
-          <span className="gate__hint">Best experienced on desktop</span>
+          <span className="gate__hint">From the city rush to the quiet of the hills</span>
         </div>
       </div>
     </div>

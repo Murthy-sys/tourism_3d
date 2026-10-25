@@ -36,3 +36,37 @@ lettering and small hidden components, normalized vehicle dimensions and
 forward axes, quantized vertices using KHR_mesh_quantization. The mobile bus
 omits selected small interior components. No external decoder is required.
 Rebuild with scripts/prepare-vehicles.mjs and the original downloaded GLBs.
+
+
+forest-deer.glb
+
+Source: "deer_full body" by zcxsad1.
+https://sketchfab.com/zcxsad1
+https://sketchfab.com/3d-models/deer-full-body-2205809f7e61444db62640b2d02c89f3
+Licensed under Creative Commons Attribution 4.0 International (CC BY 4.0).
+https://creativecommons.org/licenses/by/4.0/
+Downloaded 2026-10-25 from the public Objaverse redistribution:
+https://huggingface.co/datasets/allenai/objaverse/resolve/main/glbs/000-073/2205809f7e61444db62640b2d02c89f3.glb
+The source author, license and original URL are also retained in GLB asset metadata.
+
+
+forest-boar.glb
+
+Source: "Boar" by Polynudj.
+https://sketchfab.com/polynudj
+https://sketchfab.com/3d-models/boar-fdd9a3b960994ee3938f3ae45c2bcb37
+Licensed under Creative Commons Attribution 4.0 International (CC BY 4.0).
+https://creativecommons.org/licenses/by/4.0/
+Downloaded 2026-10-25 from the public Objaverse redistribution:
+https://huggingface.co/datasets/allenai/objaverse/resolve/main/glbs/000-068/fdd9a3b960994ee3938f3ae45c2bcb37.glb
+The source author, license and original URL are also retained in GLB asset metadata.
+
+Local wildlife modifications: color textures resized to at most 1024px and
+normal/ORM textures to at most 512px; opaque maps encoded as JPEG at quality 85.
+Original topology, UV coordinates, transforms and normal maps are retained.
+Runtime adaptation normalizes scale and origin and adds a skeletal rig for
+gentle head and leg movement with terrain-following hoof placement.
+Rebuild with scripts/prepare-wildlife.mjs and the two original GLBs.
+CC BY 4.0 permits commercial use and modifications provided appropriate credit,
+a license link, and an indication of changes accompany redistribution. The
+authors do not endorse this project. No warranties are provided.

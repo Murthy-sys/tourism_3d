@@ -4,6 +4,7 @@ import { createExpeditionController } from './expeditionController'
 import { getJourneyState } from './journeyData'
 import { createMaterials } from './primitives'
 import { getJourneyQASnapshot,getProjectedObjectBounds,getResolvedCameraFrame } from './indiaJourney'
+import { LANDMARKS } from './terrain'
 
 describe('forest to waterfall continuity',()=>{
   it.each([
@@ -28,7 +29,7 @@ describe('forest to waterfall continuity',()=>{
       expect(jeep.userData.members).toEqual(identities)
       expect(snapshot.visibleMembers).toEqual({guides:1,tourists:3})
       identities.forEach(member=>expect(getProjectedObjectBounds(member,camera).fullyFramed).toBe(true))
-      expect(jeep.position.z).toBe(-132)
+      expect(jeep.position.z).toBeCloseTo(LANDMARKS.forestEnd[2],8)
       if(progress>=.97){
         expect(controller.finale.group.userData.stages).toEqual(['watching','watching','watching','watching'])
         const waterfall=controller.scenery.waterfall.getObjectByName('waterfall-cascade-1')

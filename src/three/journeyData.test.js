@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { JOURNEY_STOPS, clamp01, getExpeditionState, getJourneyState } from './journeyData'
 import { LANDMARKS } from './terrain'
+import { mapJourneyZ } from './journeySpatial'
+import { getCityCameraFrame } from './cityJourney'
 
 describe('India journey data', () => {
   it('runs south to north through every approved tourism stop', () => {
@@ -24,7 +26,7 @@ describe('India journey data', () => {
     expect(state.localProgress).toBeLessThanOrEqual(1)
   })
 
-  it('opens on the mountain trek with the four-person party visible', () => {
+  it('keeps the expedition state stable while the city opening owns the camera', () => {
     const opening=getJourneyState(.08)
     expect(opening.phase).toBe('mountain')
     expect(opening.expedition.activeTransport).toBe('trekker')
@@ -81,12 +83,12 @@ describe('India journey data', () => {
     const forestReveal=getJourneyState(.59)
     const forestApproach=getJourneyState(.60)
     const rounded=values=>values.map(value=>Number(value.toFixed(3)))
-    expect(rounded(corridor.cameraPosition)).toEqual([.8,1.55,-55])
-    expect(rounded(corridor.cameraTarget)).toEqual([-4.3,.42,-57.9])
-    expect(rounded(forestReveal.cameraPosition)).toEqual([-3,2.15,-81])
-    expect(rounded(forestReveal.cameraTarget)).toEqual([-.5,.73,-83.15])
-    expect(rounded(forestApproach.cameraPosition)).toEqual([-3,1.65,-82])
-    expect(rounded(forestApproach.cameraTarget)).toEqual([-2,.3,-86])
+    expect(rounded(corridor.cameraPosition)).toEqual(rounded([.8,1.55,mapJourneyZ(-57.9)+2.9]))
+    expect(rounded(corridor.cameraTarget)).toEqual([-4.3,.42,mapJourneyZ(-57.9)])
+    expect(rounded(forestReveal.cameraPosition)).toEqual(rounded([-3,2.15,mapJourneyZ(-83.15)+2.15]))
+    expect(rounded(forestReveal.cameraTarget)).toEqual(rounded([-.5,.73,mapJourneyZ(-83.15)]))
+    expect(rounded(forestApproach.cameraPosition)).toEqual([-3,1.65,LANDMARKS.forestLanding[2]+4])
+    expect(rounded(forestApproach.cameraTarget)).toEqual([-2,.3,LANDMARKS.forestLanding[2]])
     ;[corridor,forestReveal,forestApproach].forEach(({cameraPosition,cameraTarget})=>{
       const distance=Math.hypot(...cameraPosition.map(
         (value,index)=>value-cameraTarget[index],
@@ -96,17 +98,17 @@ describe('India journey data', () => {
     })
   })
 
-  it('uses the approved ground-level coach, departure, and mountain-entry camera beats',()=>{
-    const expected=[
-      {progress:0,camera:[8.5,3.8,46],target:[-2,1.55,34.8]},
-      {progress:.08,camera:[8,5.6,39.5],target:[2.6,1.9,28.5]},
-      {progress:.12,camera:[8,7,40],target:[2.6,1.9,28.5]},
-      {progress:.18,camera:[4.5,9.8,6],target:[0,3,-4]},
-    ]
-    expected.forEach(({progress,camera,target})=>{
-      expect(getJourneyState(progress).cameraPosition).toEqual(camera)
-      expect(getJourneyState(progress).cameraTarget).toEqual(target)
-    })
+  it('descends into the city, follows its coach, and holds the original mountain stop',()=>{
+    for(const progress of [0,.025,.045,.072,.105,.14]){
+      const frame=getCityCameraFrame(progress)
+      expect(getJourneyState(progress).cameraPosition).toEqual(frame.camera)
+      expect(getJourneyState(progress).cameraTarget).toEqual(frame.target)
+    }
+    expect(getJourneyState(0).cameraTarget[2]).toBeGreaterThan(140)
+    expect(getJourneyState(.105).cameraPosition).toEqual([8.5,3.8,46])
+    expect(getJourneyState(.105).cameraTarget).toEqual([-2,1.55,34.8])
+    expect(getJourneyState(.19).cameraPosition).toEqual([4.5,9.8,6])
+    expect(getJourneyState(.19).cameraTarget).toEqual([0,3,-4])
   })
 
   it('preserves the expedition handoffs and reserves the ending for the waterfall stop',()=>{
@@ -140,9 +142,12 @@ describe('India journey data', () => {
   })
 
   it('keeps the complete desktop rail continuous at dense progress samples',()=>{
-    for(let index=0;index<1000;index+=1){
-      const from=getJourneyState(index/1000)
-      const to=getJourneyState((index+1)/1000)
+    // This samples rail continuity, not per-frame movement; the runtime bounds each frame separately.
+    const samples=100000
+    let maximumJump=0
+    for(let index=0;index<samples;index+=1){
+      const from=getJourneyState(index/samples)
+      const to=getJourneyState((index+1)/samples)
       const jump=Math.max(
         Math.hypot(...from.cameraPosition.map(
           (value,axis)=>value-to.cameraPosition[axis],
@@ -151,8 +156,9 @@ describe('India journey data', () => {
           (value,axis)=>value-to.cameraTarget[axis],
         )),
       )
-      expect(jump).toBeLessThanOrEqual(.8)
+      maximumJump=Math.max(maximumJump,jump)
     }
+    expect(maximumJump).toBeLessThan(.1)
   })
 
   it('joins the mountain-entry rail with continuous velocity',()=>{
@@ -165,7 +171,7 @@ describe('India journey data', () => {
       (value,axis)=>value-b[axis],
     ))
 
-    for(const boundary of [.12,.18]){
+    for(const boundary of [.14,.19]){
       const before=getJourneyState(boundary-h)
       const at=getJourneyState(boundary)
       const after=getJourneyState(boundary+h)
@@ -180,8 +186,8 @@ describe('India journey data', () => {
   })
 
   it('moves monotonically through the softened mountain-entry segment',()=>{
-    const start=getJourneyState(.12)
-    const end=getJourneyState(.18)
+    const start=getJourneyState(.14)
+    const end=getJourneyState(.19)
     for(const field of ['cameraPosition','cameraTarget']){
       const delta=end[field].map(
         (value,axis)=>value-start[field][axis],
@@ -191,8 +197,8 @@ describe('India journey data', () => {
         0,
       )
       let previous=-Infinity
-      for(let index=0;index<=60;index+=1){
-        const current=getJourneyState(.12+index/1000)[field]
+      for(let index=0;index<=50;index+=1){
+        const current=getJourneyState(.14+index/1000)[field]
         const scalar=current.reduce(
           (sum,value,axis)=>
             sum+(value-start[field][axis])*delta[axis],

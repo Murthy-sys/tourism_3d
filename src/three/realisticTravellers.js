@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js'
+import { downloadAsset } from './assetDownload'
 
 const UP=new THREE.Vector3(0,1,0)
 const DOWN=new THREE.Vector3(0,-1,0)
@@ -9,6 +10,7 @@ const DEFAULT_URL=`${import.meta.env?.BASE_URL||'/'}models/traveller.glb`
 let template=null
 let pending=null
 let leases=0
+const requests=new Set()
 
 function collectResources(scene){
   const geometries=new Set(),materials=new Set(),textures=new Set(),skeletons=new Set()
@@ -108,22 +110,34 @@ function loadTemplate(url,timeout=LOAD_TIMEOUT){
   return new Promise((resolve,reject)=>{
     const controller=new AbortController()
     let expired=false
-    const timer=setTimeout(()=>{
+    const cancel=error=>{
+      if(expired) return
       expired=true
       controller.abort()
-      reject(new Error('Traveller model loading timed out'))
-    },timeout)
+      clearTimeout(timer)
+      requests.delete(cancel)
+      reject(error)
+    }
+    let timer
+    const refresh=()=>{
+      clearTimeout(timer)
+      timer=setTimeout(()=>cancel(new Error('Traveller model loading timed out')),timeout)
+    }
+    refresh()
+    requests.add(cancel)
     ;(async()=>{
       try{
-        const response=await fetch(url,{signal:controller.signal})
-        if(!response.ok) throw new Error(`Traveller model request failed (${response.status})`)
-        const data=await response.arrayBuffer()
+        const data=await downloadAsset(url,{signal:controller.signal,onActivity:refresh})
+        if(expired) return
         const gltf=await new GLTFLoader().parseAsync(data,url.slice(0,url.lastIndexOf('/')+1))
+        // A decoder may finish after cancellation. Release its resources before
+        // preparing the rig, and never publish it into an already running scene.
+        if(expired){disposeOwner({resources:collectResources(gltf.scene)});return}
         const owner=prepareTemplate(gltf.scene)
         if(expired){disposeOwner(owner);return}
         resolve(owner)
       }catch(error){if(!expired) reject(error)}
-      finally{clearTimeout(timer)}
+      finally{clearTimeout(timer);requests.delete(cancel)}
     })()
   })
 }
@@ -145,6 +159,11 @@ export function preloadRealisticTravellers(url=DEFAULT_URL,{timeout=LOAD_TIMEOUT
 export function releaseRealisticTravellers(){
   leases=Math.max(0,leases-1)
   releaseUnused()
+  // React StrictMode can acquire again in the same task. Abort only when no
+  // replacement scene has claimed the in-flight request by the next microtask.
+  queueMicrotask(()=>{
+    if(!leases) requests.forEach(cancel=>cancel(new DOMException('Scene released','AbortError')))
+  })
 }
 
 export const disposeRealisticTravellerTemplate=releaseRealisticTravellers

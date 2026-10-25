@@ -34,6 +34,7 @@ describe('leased photographic nature assets',()=>{
     while(leases>0) release()
     await vi.runAllTimersAsync()
     vi.restoreAllMocks()
+    vi.unstubAllGlobals()
     vi.useRealTimers()
   })
 
@@ -133,5 +134,66 @@ describe('leased photographic nature assets',()=>{
     await ready
     expect(loader.getNatureSurface('bark').map).toBeTruthy()
     expect(loader.getNatureSurface('rock')).toBeNull()
+  })
+  it('retains photographic lighting and surfaces without downloading the optional panorama',async()=>{
+    leases++
+    const ready=loader.preloadNatureAssets({compact:true,sky:false})
+    expect(requests).toHaveLength(19)
+    expect(requests.some(request=>request.url.endsWith('/sky.hdr'))).toBe(false)
+    expect(requests.some(request=>request.url.endsWith('/environment.hdr'))).toBe(true)
+    finish()
+    await ready
+    expect(loader.getNatureTexture('environment')).toBeTruthy()
+    expect(loader.getNatureSurface('rock').normalMap).toBeTruthy()
+  })
+  it('rejects incomplete strict startup maps and fills only the missing cache entries on retry',async()=>{
+    const ready=acquire()
+    requests.forEach(request=>{
+      if(request.url.endsWith('leaf-alpha.jpg')) request.onError(new Error('404'))
+      else succeed(request)
+    })
+    await ready
+    vi.stubGlobal('fetch',vi.fn(async()=>new Response(null,{status:404})))
+    leases++
+    await expect(loader.preloadNatureAssets({strict:true})).rejects.toThrow('1 missing')
+    expect(fetch).toHaveBeenCalledTimes(1)
+    expect(loader.getNatureTexture('environment')).toBeTruthy()
+  })
+  it('cancels strict landscape transfers when no scene is waiting for them',async()=>{
+    const signals=[]
+    vi.stubGlobal('fetch',vi.fn((_url,{signal})=>new Promise((_resolve,reject)=>{
+      signals.push(signal)
+      signal.addEventListener('abort',()=>reject(signal.reason),{once:true})
+    })))
+    leases++
+    const outcome=expect(loader.preloadNatureAssets({strict:true})).rejects.toThrow('missing')
+    release()
+    await outcome
+    expect(signals).toHaveLength(20)
+    expect(signals.every(signal=>signal.aborted)).toBe(true)
+    expect(vi.getTimerCount()).toBe(0)
+    expect(loader.getNatureTexture('rock-color')).toBeNull()
+  })
+  it('fully decodes strict local images and HDRs before exposing the landscape cache',async()=>{
+    vi.stubGlobal('fetch',vi.fn(async()=>new Response(new Uint8Array([1,2,3]))))
+    const OriginalURL=URL
+    class BlobURL extends OriginalURL{}
+    BlobURL.createObjectURL=vi.fn(()=>`blob:landscape-${Math.random()}`)
+    BlobURL.revokeObjectURL=vi.fn()
+    vi.stubGlobal('URL',BlobURL)
+    vi.spyOn(RGBELoader.prototype,'parse').mockReturnValue({data:new Uint16Array(4),width:1,height:1,type:THREE.HalfFloatType})
+    leases++
+    const ready=loader.preloadNatureAssets({strict:true,compact:true})
+    await vi.advanceTimersByTimeAsync(0)
+    expect(requests).toHaveLength(18)
+    expect(requests.every(request=>request.url.startsWith('blob:'))).toBe(true)
+    requests.forEach(succeed)
+    await ready
+    expect(loader.getNatureTexture('sky').isDataTexture).toBe(true)
+    expect(loader.getNatureTexture('sky').colorSpace).toBe(THREE.LinearSRGBColorSpace)
+    expect(loader.getNatureTexture('sky').flipY).toBe(true)
+    expect(BlobURL.revokeObjectURL).toHaveBeenCalledTimes(18)
+    expect(fetch).toHaveBeenCalledTimes(20)
+    expect(vi.getTimerCount()).toBe(0)
   })
 })

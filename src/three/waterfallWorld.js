@@ -22,7 +22,8 @@ const named=(name,geometry,material,position,rotation)=>{
 
 // Opaque fog cannot blend a distant cliff into the photographed cloud sky.
 // Custom blending keeps the cliff in the opaque geography pass while smoothly
-// revealing the actual sky. Distant discarded fragments do not occlude trees.
+// revealing the actual sky. The lower cliff remains behind the cascade while
+// the high distant upland dissolves into haze instead of cutting across it.
 const addCliffAtmosphere=material=>{
   const compile=material.onBeforeCompile
   const cacheKey=material.customProgramCacheKey()
@@ -33,8 +34,22 @@ const addCliffAtmosphere=material=>{
   material.blendDst=THREE.OneMinusSrcAlphaFactor
   material.onBeforeCompile=(shader,renderer)=>{
     compile.call(material,shader,renderer)
+    shader.vertexShader='varying float vCliffWorldHeight;\n'+shader.vertexShader
+    shader.vertexShader=shader.vertexShader.replace('#include <begin_vertex>',`
+      #include <begin_vertex>
+      vec4 cliffWorldPoint=vec4(transformed,1.0);
+      #ifdef USE_INSTANCING
+        cliffWorldPoint=instanceMatrix*cliffWorldPoint;
+      #endif
+      vCliffWorldHeight=(modelMatrix*cliffWorldPoint).y;
+    `)
+    shader.fragmentShader='varying float vCliffWorldHeight;\n'+shader.fragmentShader
     shader.fragmentShader=shader.fragmentShader.replace('#include <alphatest_fragment>',`
-      diffuseColor.a *= 1.0-smoothstep(90.0,150.0,length(vViewPosition));
+      float cliffDistance=length(vViewPosition);
+      float lowerCliffHaze=mix(1.0,0.12,smoothstep(90.0,300.0,cliffDistance));
+      float uplandHaze=1.0-smoothstep(90.0,150.0,cliffDistance);
+      float uplandWeight=smoothstep(18.0,44.0,vCliffWorldHeight);
+      diffuseColor.a *= mix(lowerCliffHaze,uplandHaze,uplandWeight);
       #include <alphatest_fragment>
     `)
     // Three normally forces alpha to one for objects in the opaque queue.
@@ -43,8 +58,8 @@ const addCliffAtmosphere=material=>{
       #include <opaque_fragment>
     `)
   }
-  material.customProgramCacheKey=()=>`${cacheKey}-cliff-atmosphere-v3`
-  material.userData.atmosphereFade={near:90,far:150}
+  material.customProgramCacheKey=()=>`${cacheKey}-cliff-atmosphere-v5`
+  material.userData.atmosphereFade={near:90,far:300,minimumOpacity:.12,uplandFar:150,heightStart:18,heightEnd:44}
   return material
 }
 

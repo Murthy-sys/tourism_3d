@@ -151,7 +151,7 @@ describe('journey chapters', () => {
     expect(getProgressForChapter('contact')).toBe(.995)
     expect(getChapterAtProgress(getProgressForChapter('contact')).id).toBe('contact')
   })
-  it('reserves the opening for the mountain party before company content', () => {
+  it('reserves the city departure and mountain arrival before company content', () => {
     expect(OPENING_TREK_END).toBeGreaterThanOrEqual(.12)
     expect(OPENING_DRIVE_END).toBe(OPENING_TREK_END)
     expect(getChapterAtProgress(.08).layout).toBe('drive')

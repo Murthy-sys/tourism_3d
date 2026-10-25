@@ -1,6 +1,6 @@
 import * as THREE from 'three'
 import { describe,expect,it } from 'vitest'
-import { createEnvironmentMaterial,createFoliageGeometry,createLeafTexture } from './environmentSurface'
+import { createEnvironmentMaterial,createFoliageGeometry,createLeafTexture,createCanopyTexture,createFoliageMaterial } from './environmentSurface'
 
 describe('procedural environment resources',()=>{
   it('owns separate small textures per material and uses linear relief with sRGB color',()=>{
@@ -38,5 +38,26 @@ describe('procedural environment resources',()=>{
     map.dispose()
     geometry.dispose()
     copy.dispose()
+  })
+
+  it('packs leafy shoots into one reusable cutout atlas with a bounded texture cost',()=>{
+    const map=createCanopyTexture(),copy=createCanopyTexture()
+    expect(map.image.width).toBe(256)
+    expect(map.image.data.byteLength).toBe(256*256*4)
+    expect(map.image.data).toEqual(copy.image.data)
+    const alpha=Array.from(map.image.data).filter((_,index)=>index%4===3)
+    expect(alpha.filter(value=>value>128).length).toBeGreaterThan(256*256*.22)
+    expect(alpha.filter(value=>value===0).length).toBeGreaterThan(256*256*.35)
+    for(let x=0;x<256;x++){
+      expect(map.image.data[x*4+3]).toBe(0)
+      expect(map.image.data[(255*256+x)*4+3]).toBe(0)
+    }
+    const first=createFoliageMaterial('#39883e',map),second=createFoliageMaterial('#438b43',map)
+    expect(first.map).toBe(second.map)
+    expect(first.alphaMap).toBeNull()
+    expect(first.transparent).toBe(false)
+    expect(first.alphaTest).toBeGreaterThan(.3)
+    expect(first.color.g).toBeGreaterThan(first.color.r*2)
+    first.dispose();second.dispose();map.dispose();copy.dispose()
   })
 })

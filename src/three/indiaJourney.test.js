@@ -23,27 +23,123 @@ import {
 } from './indiaJourney'
 import { createExpeditionController } from './expeditionController'
 import { getJourneyState } from './journeyData'
+import { getCityCameraFrame } from './cityJourney'
+import { WATERFALL } from './finaleConfig'
 import { createMaterials,disposeObject3D } from './primitives'
+import { createTrekkingParty,updateTrekkingParty } from './trekkingParty'
+import { createExpeditionBoat,updateBoat } from './expeditionVehicles'
+import { journeyProgressToScroll,scrollToJourneyProgress,JOURNEY_TRAVEL_SCREENS } from '../journey/scrollTimeline'
 
 describe('journey progress controller',()=>{
+  it.each([.07,.20,.50,.80])(
+    'finishes manual scrolling promptly at progress %s instead of queueing travel',initial=>{
+      for(const quality of ['desktop','mobile']) for(const direction of [-1,1]){
+        for(const fps of [20,60,120]){
+          const controller=IndiaJourney.createJourneyProgressController({initial,quality})
+          const origin=journeyProgressToScroll(initial)
+          let target=initial,previous=initial
+          // A 900 px wheel burst across 600 ms on a 900 px viewport.
+          for(let frame=1;frame<=fps*.6;frame++){
+            target=scrollToJourneyProgress(origin+direction*(frame/(fps*.6))/JOURNEY_TRAVEL_SCREENS)
+            controller.setTarget(target,{navigation:false})
+            const value=controller.advance(1/fps)
+            expect(direction*(value-previous)).toBeGreaterThanOrEqual(-1e-12)
+            expect(direction*(target-value)).toBeGreaterThanOrEqual(-1e-12)
+            previous=value
+          }
+          // Keep delivering redundant React prop updates during idle, as in production.
+          for(let frame=0;frame<Math.ceil(fps*.25);frame++){
+            controller.setTarget(target)
+            controller.advance(1/fps)
+          }
+          expect(controller.value()).toBe(target)
+          for(let frame=0;frame<fps*3;frame++) controller.advance(1/fps)
+          expect(controller.value()).toBe(target)
+        }
+      }
+    },
+  )
+
+  it('smooths small wheel steps without increasing their distance',()=>{
+    for(const initial of [.07,.2,.5,.8]){
+      const controller=IndiaJourney.createJourneyProgressController({initial})
+      const target=scrollToJourneyProgress(journeyProgressToScroll(initial)+30/900/JOURNEY_TRAVEL_SCREENS)
+      controller.setTarget(target)
+      const first=controller.advance(1/60)
+      expect(first).toBeGreaterThan(initial)
+      expect(first).toBeLessThan(target)
+      for(let frame=0;frame<15;frame++) controller.advance(1/60)
+      expect(controller.value()).toBe(target)
+    }
+  })
+
+  it('reverses manual movement immediately and settles at the latest scroll position',()=>{
+    const controller=IndiaJourney.createJourneyProgressController({initial:.5})
+    controller.setTarget(.53)
+    for(let frame=0;frame<5;frame++) controller.advance(1/60)
+    let previous=controller.value()
+    controller.setTarget(.49,{navigation:false})
+    for(let frame=0;frame<20;frame++){
+      const value=controller.advance(1/60)
+      expect(value).toBeLessThanOrEqual(previous)
+      expect(value).toBeGreaterThanOrEqual(.49)
+      previous=value
+    }
+    expect(controller.value()).toBe(.49)
+  })
+  it('finishes long chapter navigation without slowing to a crawl near its destination',()=>{
+    for(const destination of [.07,.21,.56,.87,.995]){
+      const controller=IndiaJourney.createJourneyProgressController()
+      for(let frame=0;frame<8*60;frame++){
+        const t=Math.min(1,frame/(.9*60))
+        controller.setTarget(destination*t*t*t*(t*(t*6-15)+10),{navigation:true})
+        controller.advance(1/60)
+      }
+      expect(controller.value()).toBe(destination)
+      controller.setTarget(destination-.001)
+      const before=controller.value()
+      controller.advance(1/60)
+      expect(controller.value()).toBeLessThan(before)
+    }
+  })
+  it('advances through slow foreground frames while excluding suspended time',()=>{
+    const controller=IndiaJourney.createJourneyProgressController({quality:'desktop'})
+    controller.setTarget(.5,{navigation:true})
+    for(let frame=0;frame<30;frame++) controller.advance(IndiaJourney.getActiveFrameDelta(.4))
+    expect(controller.value()).toBe(.5)
+    expect(IndiaJourney.getActiveFrameDelta(1/60)).toBe(1/60)
+    expect(IndiaJourney.getActiveFrameDelta(30)).toBe(30)
+    expect(IndiaJourney.getActiveFrameDelta(Infinity)).toBe(Infinity)
+  })
+  it('bounds motion after a foreground stall without hiding frame pressure from quality adaptation',()=>{
+    expect(IndiaJourney.getMotionFrameDelta(1/60)).toBe(1/60)
+    expect(IndiaJourney.getMotionFrameDelta(0)).toBe(0)
+    for(const elapsed of [.08,.24,.4,1.99]){
+      expect(IndiaJourney.getMotionFrameDelta(IndiaJourney.getActiveFrameDelta(elapsed))).toBe(.05)
+    }
+    expect(IndiaJourney.getActiveFrameDelta(.4)).toBe(.24)
+    for(const elapsed of [-1,2,30,NaN,Infinity]){
+      expect(IndiaJourney.getMotionFrameDelta(elapsed)).toBe(0)
+    }
+  })
   it('advances one controller once per frame and returns its rendered progress',()=>{
     const controller=IndiaJourney.createJourneyProgressController({
       quality:'desktop',
     })
-    controller.setTarget(1)
+    controller.setTarget(1,{navigation:true})
 
     const rendered=IndiaJourney.advanceJourneyFrame(controller,1/60)
 
-    expect(rendered).toBeCloseTo(.85/60,8)
+    expect(rendered).toBeCloseTo(.35/60/60,8)
     expect(controller.value()).toBe(rendered)
   })
 
   it.each([
-    ['mobile',.65/60],
-    ['desktop',.85/60],
+    ['mobile',.18/60],
+    ['desktop',.22/60],
   ])('bounds the first %s frame after a zero-to-one jump',(quality,maximum)=>{
     const controller=IndiaJourney.createJourneyProgressController({quality})
-    controller.setTarget(1)
+    controller.setTarget(1,{navigation:true})
     controller.advance(1/60)
     expect(controller.value()).toBeGreaterThan(0)
     expect(controller.value()).toBeLessThanOrEqual(maximum)
@@ -97,9 +193,76 @@ describe('journey progress controller',()=>{
     controller.setTarget(-3)
     expect(controller.target()).toBe(0)
   })
+
+  it('does not retain a long wheel backlog after fast repeated input',()=>{
+    for(const screens of [1.99,2.01,3]){
+      const controller=IndiaJourney.createJourneyProgressController({initial:.46})
+      const target=scrollToJourneyProgress(journeyProgressToScroll(.46)+screens/JOURNEY_TRAVEL_SCREENS)
+      controller.setTarget(target,{navigation:false})
+      for(let frame=0;frame<15;frame++) controller.advance(1/60)
+      expect(controller.value()).toBe(target)
+    }
+  })
+
+  it('retains explicit seek intent across redundant prop updates and returns to wheel pace',()=>{
+    const controller=IndiaJourney.createJourneyProgressController({initial:.46})
+    controller.setTarget(.58,{navigation:true})
+    for(let frame=0;frame<60;frame++){
+      controller.setTarget(.58)
+      controller.advance(1/60)
+    }
+    expect(controller.value()).toBeGreaterThan(.55)
+    controller.setTarget(controller.value()+.003,{navigation:false})
+    const previous=controller.value()
+    controller.advance(1/60)
+    expect(controller.value()).toBeGreaterThan(previous)
+    expect(controller.value()).toBeLessThan(controller.target())
+    for(let frame=0;frame<15;frame++) controller.advance(1/60)
+    expect(controller.value()).toBe(controller.target())
+  })
 })
 
 describe('renderer quality', () => {
+  it('keeps framing fixed while the walking party and boat animate in place',()=>{
+    const materials=createMaterials()
+    const party=createTrekkingParty(materials),boat=createExpeditionBoat(materials)
+    const parent=new THREE.Group()
+    parent.position.set(3,2,-8)
+    parent.rotation.y=.7
+    parent.scale.setScalar(1.2)
+    parent.add(party,boat)
+    const route=new THREE.CatmullRomCurve3([
+      new THREE.Vector3(0,.35,0),new THREE.Vector3(0,.35,-30),
+    ])
+    const anchors={trekker:[],boat:[]},boatHeights=[],partyHeights=[]
+    try{
+      for(const elapsed of [0,.17,.43,1.1,3.4]){
+        updateTrekkingParty(party,route,.3,elapsed,false,()=>.35)
+        updateBoat(boat,route,.5,elapsed,false)
+        anchors.trekker.push(getTransportWorldPosition('trekker',party))
+        anchors.boat.push(getTransportWorldPosition('boat',boat))
+        boatHeights.push(boat.position.y)
+        partyHeights.push(party.userData.members[0].position.y)
+      }
+      Object.values(anchors).forEach(values=>values.forEach(value=>{
+        expect(value.distanceTo(values[0])).toBeLessThan(1e-8)
+      }))
+      expect(Math.max(...boatHeights)-Math.min(...boatHeights)).toBeGreaterThan(.02)
+      expect(Math.max(...partyHeights)-Math.min(...partyHeights)).toBeGreaterThan(.005)
+    }finally{
+      disposeObject3D(parent)
+      Object.values(materials).forEach(material=>material.dispose())
+    }
+  })
+  it('restores clarity after sustained healthy 60Hz frames without needing a high-refresh display',()=>{
+    const controller=createAdaptivePixelRatioController(1.75,{warmupMs:0,cooldownMs:0})
+    for(let i=0;i<34;i++) controller.observe(30)
+    expect(controller.value()).toBe(1.5)
+    for(let i=0;i<120;i++) controller.observe(1000/60)
+    expect(controller.value()).toBe(1.5)
+    for(let i=0;i<64;i++) controller.observe(1000/60)
+    expect(controller.value()).toBe(1.75)
+  })
   it('ignores warm-up and isolated slow mobile frames',()=>{
     const controller=createAdaptivePixelRatioController(1.75,{
       warmupFrames:3,
@@ -302,7 +465,7 @@ describe('renderer quality', () => {
     expect(distance('trekker')).toBeGreaterThan(distance('boat'))
     expect(distance('jeep')).toBeGreaterThan(distance('boat'))
   })
-  it('holds the mobile coach composition and blends exactly into trekker framing',()=>{
+  it('follows the city coach, holds the mountain stop, then blends into trekker framing',()=>{
     const openingState={
       cameraPosition:[8.5,3.8,46],
       cameraTarget:[-2,1.55,34.8],
@@ -320,18 +483,17 @@ describe('renderer quality', () => {
       progress:0,
       state:openingState,
       transportPosition,
-    })).toEqual({
-      camera:openingState.cameraPosition,
-      target:openingState.cameraTarget,
-    })
-    expect(frame(0)).toEqual({
+    })).toEqual(getCityCameraFrame(0,'desktop'))
+    expect(frame(0)).toEqual(getCityCameraFrame(0,'mobile'))
+    expect(frame(.105)).toEqual({
       camera:[3.5,5.1,67],
       target:[-2.5,1.55,34.8],
     })
     expect(frame(.045)).toEqual(frame(0))
-    const middle=frame(.08)
-    expect(middle.camera[2]).toBeLessThan(frame(0).camera[2])
-    expect(frame(.12)).toEqual(
+    expect(frame(.14)).toEqual(frame(.105))
+    const middle=frame(.165)
+    expect(middle.camera[2]).toBeLessThan(frame(.14).camera[2])
+    expect(frame(.19)).toEqual(
       getMobileTransportCamera('trekker',transportPosition),
     )
   })
@@ -496,7 +658,7 @@ describe('renderer quality', () => {
     const scene=new THREE.Scene()
     const materials=createMaterials()
     const controller=createExpeditionController(scene,materials,'desktop')
-    const state=getJourneyState(.12)
+    const state=getJourneyState(.19)
     const transition=controller.update(state.expedition,0,true)
     const transport=controller.transports.trekker
     const transportPosition=getTransportWorldPosition(
@@ -505,7 +667,7 @@ describe('renderer quality', () => {
     ).toArray()
     const frame=getResolvedCameraFrame({
       quality:'desktop',
-      progress:.12,
+      progress:.19,
       state,
       transportPosition,
     })
@@ -564,6 +726,33 @@ describe('renderer quality', () => {
     Object.values(materials).forEach(material=>material.dispose())
     expect(snapshot.visibleMembers).toEqual({guides:1,tourists:3})
   })
+  it('shows the empty moored boat from both approach cameras before boarding begins',()=>{
+    const scene=new THREE.Scene(),materials=createMaterials()
+    const controller=createExpeditionController(scene,materials,'desktop')
+    try{
+      const progress=.26,state=getJourneyState(progress)
+      controller.update(state.expedition,0,true)
+      for(const [quality,fov,aspect] of [['desktop',48,1440/900],['mobile',60,390/844]]){
+        const frame=getResolvedCameraFrame({
+          quality,progress,state,
+          transportPosition:getTransportWorldPosition('trekker',controller.transports.trekker).toArray(),
+        })
+        const camera=new THREE.PerspectiveCamera(fov,aspect,.1,420)
+        camera.position.set(...frame.camera)
+        camera.lookAt(...frame.target)
+        const boat=controller.transports.boat
+        const hull=getProjectedObjectBounds(boat.getObjectByName('boat-hull'),camera)
+        expect(hull.rendered).toBe(true)
+        expect(hull.coverage).toBeGreaterThan(.001)
+        for(const passenger of boat.userData.members){
+          expect(getProjectedObjectBounds(passenger,camera).rendered).toBe(false)
+        }
+      }
+    }finally{
+      controller.dispose()
+      Object.values(materials).forEach(material=>material.dispose())
+    }
+  })
   it('keeps all four production boat occupants visible at the distant forest reveal',()=>{
     const scene=new THREE.Scene()
     const materials=createMaterials()
@@ -616,7 +805,7 @@ describe('renderer quality', () => {
         camera.lookAt(...frame.target)
         camera.updateMatrixWorld(true)
         for(const height of [0,8,16]){
-          const fall=new THREE.Vector3(1,height,-151).project(camera)
+          const fall=new THREE.Vector3(WATERFALL.center[0],height,WATERFALL.center[2]).project(camera)
           expect(Math.abs(fall.x)).toBeLessThan(.9)
           expect(fall.y).toBeGreaterThan(0)
           expect(fall.y).toBeLessThan(.8)
@@ -658,9 +847,18 @@ describe('renderer quality', () => {
   })
   it('keeps camera convergence tied to wall time when rendering stalls',()=>{
     expect(getCameraDampingFactor(1)).toBeGreaterThan(.85)
-    expect(getCameraDampingFactor(1/60)).toBeCloseTo(getDampingFactor(1/60),8)
+    expect(getCameraDampingFactor(1/60)).toBeCloseTo(1-Math.exp(-14/60),8)
     expect(getCameraDampingFactor(1/15,'mobile'))
       .toBeLessThan(getCameraDampingFactor(1/15,'desktop'))
+  })
+  it.each(['mobile','desktop'])('settles a %s camera promptly after scrolling stops',quality=>{
+    for(const fps of [20,60,120]){
+      const current=new THREE.Vector3(),target=new THREE.Vector3(0,0,-10)
+      for(let frame=0;frame<fps;frame++){
+        dampCameraVector(current,target,getCameraDampingFactor(1/fps,quality),getCameraMaximumStep(1/fps))
+      }
+      expect(current.distanceTo(target)).toBeLessThan(.05)
+    }
   })
   it.each(['mobile','desktop'])(
     'keeps %s camera damping consistent across display refresh rates',
@@ -706,7 +904,7 @@ describe('renderer quality', () => {
   })
   it('measures local camera-rail continuity independently of render speed',()=>{
     ;[.08,.26,.35,.5,.59,.67,.84].forEach(progress=>{
-      expect(getCameraRailJump(progress)).toBeLessThanOrEqual(.8)
+      expect(getCameraRailJump(progress,.00001)).toBeLessThan(.1)
     })
   })
   it('reports only weighted, ancestor-visible, opaque occupants projected into the camera',()=>{

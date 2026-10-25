@@ -101,6 +101,9 @@ export function updateTrekkingParty(
     const standingPoint=new THREE.Vector3(...standing.position)
     member.position.lerpVectors(standingPoint,routePoint,weight)
     const surfaceY=contactHeight(member.position.x,member.position.z,routePoint)
+    // Camera framing follows the route surface, not the root compensation
+    // that keeps a walking character's alternating soles on the terrain.
+    member.userData.cameraGroundY=surfaceY
     member.rotation.y=lerpHeading(standing.heading,routeHeading,weight)
 
     const phase=elapsed*5.2+member.phase

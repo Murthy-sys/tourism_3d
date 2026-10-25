@@ -8,8 +8,12 @@ import { createTourCoach } from './tourCoach'
 import { createTrekkingParty,updateTrekkingParty } from './trekkingParty'
 import { createWaterWorld,updateWaterWorld } from './waterWorld'
 import { createWaterfallWorld,updateWaterfallWorld } from './waterfallWorld'
+import { sampleRiverSurface } from './riverConfig'
 import { createWaterfallTravellers } from './waterfallTravellers'
 import { FOREST_DRIVE_END,getFinaleProgress } from './finaleConfig'
+import { createCityWorld,updateCityWorld } from './cityWorld'
+import { CITY_ARRIVAL,TREK_DEPARTURE,TREK_ENTRY,createCityApproach,createCoachRoadSampler,updateCityCoach } from './cityJourney'
+import { batchStaticScenery } from './staticScenery'
 
 const PHASE_RANGES={
   'mountain-trek':[0,.28],
@@ -26,7 +30,7 @@ const getStateProgress=state=>{
 }
 
 export const getOpeningDepartureWeight=state=>
-  smootherstep(.045,.12,getStateProgress(state))
+  smootherstep(TREK_DEPARTURE,TREK_ENTRY,getStateProgress(state))
 
 export const getOpeningTrekState=(state,routeLandmarks,partySpan)=>{
   const progress=getStateProgress(state)
@@ -36,7 +40,7 @@ export const getOpeningTrekState=(state,routeLandmarks,partySpan)=>{
     routeLandmarks.mountainEntry-partySpan,
   )
   const landingTail=1-partySpan
-  const routeProgress=progress<=.12
+  const routeProgress=progress<=TREK_ENTRY
     ?THREE.MathUtils.lerp(
       routeLandmarks.trailheadStart,
       entryTail,
@@ -45,7 +49,7 @@ export const getOpeningTrekState=(state,routeLandmarks,partySpan)=>{
     :THREE.MathUtils.lerp(
       entryTail,
       landingTail,
-      smootherstep(.12,.28,progress),
+      smootherstep(TREK_ENTRY,.28,progress),
     )
   return{departureWeight,routeProgress}
 }
@@ -114,11 +118,12 @@ const isolateSharedMaterials=(roots,callerMaterials)=>{
   })
 }
 
-const createBlendState=root=>{
+const createBlendState=(root,excluded=new Set())=>{
   const materials=new Map()
   const lights=new Map()
   const shadows=new Map()
   root.traverse(object=>{
+    if(excluded.has(object)) return
     const values=Array.isArray(object.material)?object.material:[object.material]
     values.filter(Boolean).forEach(material=>{
       if(materials.has(material)) return
@@ -130,7 +135,7 @@ const createBlendState=root=>{
       })
     })
     if(object.isLight) lights.set(object,object.intensity)
-    if(object.isMesh) shadows.set(object,object.castShadow)
+    if(object.isMesh&&!object.userData.staticBatchProxy) shadows.set(object,object.castShadow)
   })
   return{materials,lights,shadows}
 }
@@ -186,7 +191,7 @@ const getDeckSurfaceBounds=deck=>{
   return bounds
 }
 
-const clearanceAlongLateral=(hullBounds,deckBounds,lateral,gap=.24)=>{
+const clearanceAlongLateral=(hullBounds,deckBounds,lateral,gap=.6)=>{
   const thresholds=['x','z'].map(axis=>{
     const component=lateral[axis]
     if(Math.abs(component)<1e-6) return Infinity
@@ -199,12 +204,16 @@ const clearanceAlongLateral=(hullBounds,deckBounds,lateral,gap=.24)=>{
 
 export function createExpeditionController(scene,materials,quality){
   const mountain=createHillWorld(materials,quality)
+  const city=createCityWorld(materials,quality)
+  const approach=createCityApproach(quality)
+  city.add(approach)
   const coach=createTourCoach(quality)
   const coachPose=mountain.userData.trailhead.userData.coachPose
   coach.position.copy(coachPose.position)
   coach.rotation.y=coachPose.heading
   mountain.userData.trailhead.add(coach)
   mountain.userData.coach=coach
+  const coachRoadHeight=createCoachRoadSampler(mountain.getObjectByName('trailhead-road-surface'),coach)
   const water=createWaterWorld(materials,quality)
   const forest=createJungleWorld(materials,quality)
   const waterfall=createWaterfallWorld(quality)
@@ -238,34 +247,70 @@ export function createExpeditionController(scene,materials,quality){
   )
 
   updateBoat(boat,water.userData.route,1,0,true)
+  transportRoot.updateMatrixWorld(true)
+  const endTangent=water.userData.route.getTangentAt(.999).normalize()
+  const endLateral=new THREE.Vector3(endTangent.z,0,-endTangent.x).normalize()
+  boat.userData.arrivalDockLateralOffset=clearanceAlongLateral(
+    new THREE.Box3().setFromObject(boat.getObjectByName('boat-hull')),
+    new THREE.Box3().setFromObject(water.getObjectByName('forest-jetty')),
+    endLateral,
+  )
+  updateBoat(boat,water.userData.route,1,0,true)
+  transportRoot.updateMatrixWorld(true)
   const dockedBoatBounds=new THREE.Box3().setFromObject(boat)
   let jeepStage=.04
   for(;jeepStage<=.3;jeepStage+=.01){
     updateJeep(jeep,forest.userData.route,jeepStage,0,true)
     transportRoot.updateMatrixWorld(true)
     const jeepBounds=new THREE.Box3().setFromObject(jeep)
+    const dryShore=[jeepBounds.min.x,jeepBounds.max.x].every(x=>
+      [jeepBounds.min.z,jeepBounds.max.z].every(z=>sampleRiverSurface(x,z).edgeDistance>.25),
+    )
     if(
+      dryShore&&
       !dockedBoatBounds.intersectsBox(jeepBounds)&&
       dockedBoatBounds.distanceToPoint(jeepBounds.getCenter(new THREE.Vector3()))>.5
     ) break
   }
   jeep.userData.shoreStageProgress=Math.min(jeepStage,.3)
+  updateBoat(boat,water.userData.route,0,0,true,{occupied:false,lockHeading:true})
+  boat.userData.members.forEach(member=>{member.visible=false})
 
   const worlds={mountain,water,forest}
   const transports={trekker,boat,jeep}
   const partySpan=Math.max(...trekker.userData.routeOffsets)
-  const roots=[...Object.values(worlds),...Object.values(transports)]
+  const roots=[city,...Object.values(worlds),...Object.values(transports)]
   isolateSharedMaterials(roots,materials)
-  const blendStates=new Map(roots.map(root=>[root,createBlendState(root)]))
+  const staticRoots={
+    mountain:['hill-rock-faces','hill-vegetation','hill-trail','mountain-water-landing',
+      'trailhead-edge-grass','trailhead-edge-stones','trailhead-framing-bushes'],
+    water:['distant-forest-silhouette','mountain-water-landing','forest-water-landing'],
+    forest:['forest-near-layer','forest-mid-layer','forest-far-layer','jungle-undergrowth',
+      'jungle-rocks','jungle-fallen-timber','ranger-outpost'],
+  }
+  const batching=Object.fromEntries(Object.entries(staticRoots).map(([name,names])=>[
+    name,batchStaticScenery(worlds[name],names.map(rootName=>worlds[name].getObjectByName(rootName))),
+  ]))
+  // Landscapes and the moored hull exist before the travellers reach them.
+  // Only the passenger copies participate in the transport handoff fade.
+  const waterfallObjects=new Set(),boatPassengerObjects=new Set()
+  waterfall.traverse(object=>waterfallObjects.add(object))
+  boat.userData.members.forEach(member=>member.traverse(object=>boatPassengerObjects.add(object)))
+  const blendStates=new Map(roots.map(root=>[
+    root,createBlendState(root,root===forest?waterfallObjects:root===boat?boatPassengerObjects:undefined),
+  ]))
+  const boatPassengerBlends=boat.userData.members.map(member=>createBlendState(member))
   // The same four rider objects move into the clearing; their materials retain
   // the jeep's existing ownership and are disposed once by the transport root.
   const finale=createWaterfallTravellers(jeep)
   transportRoot.add(finale.group)
 
   Object.values(worlds).forEach(world=>{world.visible=true})
-  scene.add(mountain,water,forest,transportRoot)
+  scene.add(city,mountain,water,forest,transportRoot)
 
   let previousElapsed=0
+  let previousPhase=null
+  const previousTransportPresence={trekker:0,boat:0,jeep:0}
   const boatMotion={deltaSeconds:0}
   const jeepMotion={deltaSeconds:0,lockHeading:false}
   const update=(state,elapsed,reducedMotion,deltaSeconds)=>{
@@ -277,12 +322,23 @@ export function createExpeditionController(scene,materials,quality){
     jeepMotion.lockHeading=state.phase==='contact'
     // Opacity animations start from their base; program flags change only at fade boundaries.
     roots.forEach(root=>resetBlendOpacity(blendStates.get(root)))
+    boatPassengerBlends.forEach(resetBlendOpacity)
+    const progress=getStateProgress(state)
+    const transition=getExpeditionTransition(state)
+    boatMotion.occupied=transition.transports.boat>0
+    boatMotion.lockHeading=state.phase!=='water-boat'
+    const phaseChanged=state.phase!==previousPhase
+    const shouldUpdateTransport=name=>phaseChanged||previousTransportPresence[name]>0||
+      (transition.transports[name]>0&&(name!=='trekker'||progress>=CITY_ARRIVAL))
+    updateCityCoach(coach,progress,coachRoadHeight)
+    city.visible=progress<.20
+    if(city.visible) updateCityWorld(city,elapsed,reducedMotion,progress)
     const opening=getOpeningTrekState(
       state,
       mountain.userData.routeProgress,
       partySpan,
     )
-    updateTrekkingParty(
+    if(shouldUpdateTransport('trekker')) updateTrekkingParty(
       trekker,
       mountain.userData.route,
       opening.routeProgress,
@@ -295,7 +351,7 @@ export function createExpeditionController(scene,materials,quality){
       },
     )
     updateBoat(boat,water.userData.route,routeProgress(state,'boat'),elapsed,reducedMotion,boatMotion)
-    updateJeep(
+    if(shouldUpdateTransport('jeep')) updateJeep(
       jeep,
       forest.userData.route,
       routeProgress(state,'jeep',partySpan,jeep.userData.shoreStageProgress),
@@ -307,8 +363,8 @@ export function createExpeditionController(scene,materials,quality){
     updateHillWorld(mountain,elapsed)
     updateWaterWorld(water,elapsed,boat)
     updateWaterfallWorld(waterfall,elapsed,reducedMotion)
+    if(progress>.5) forest.userData.wildlife.update(elapsed,reducedMotion)
 
-    const transition=getExpeditionTransition(state)
     Object.entries(worlds).forEach(([name,world])=>{
       const weight=transition.worlds[name]
       world.visible=true
@@ -316,9 +372,22 @@ export function createExpeditionController(scene,materials,quality){
     })
     Object.entries(transports).forEach(([name,transport])=>{
       const weight=transition.transports[name]
-      transport.visible=weight>0
+      if(name==='boat'){
+        transport.visible=true
+        applyPresenceWeight(blendStates.get(transport),1,false)
+        boat.userData.members.forEach((member,index)=>{
+          member.visible=weight>0
+          applyPresenceWeight(boatPassengerBlends[index],weight,true)
+        })
+        return
+      }
+      transport.visible=weight>0&&(name!=='trekker'||progress>=CITY_ARRIVAL)
       applyPresenceWeight(blendStates.get(transport),weight,true)
     })
+    previousPhase=state.phase
+    previousTransportPresence.trekker=trekker.visible?transition.transports.trekker:0
+    previousTransportPresence.boat=transition.transports.boat
+    previousTransportPresence.jeep=transition.transports.jeep
     return transition
   }
 
@@ -326,7 +395,7 @@ export function createExpeditionController(scene,materials,quality){
   const dispose=()=>{
     if(disposed) return
     disposed=true
-    ;[mountain,water,forest,transportRoot].forEach(root=>{
+    ;[city,mountain,water,forest,transportRoot].forEach(root=>{
       root.parent?.remove(root)
       disposeObject3D(root)
     })
@@ -337,8 +406,9 @@ export function createExpeditionController(scene,materials,quality){
     worlds,
     transports,
     transportRoot,
-    scenery:{coach,waterfall},
+    scenery:{coach,waterfall,city},
     finale,
+    batching,
     dispose,
   }
 }

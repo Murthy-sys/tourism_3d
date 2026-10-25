@@ -5,9 +5,13 @@ import { LANDMARKS } from './terrain'
 import { createExpeditionBoat,updateBoat } from './expeditionVehicles'
 import { createWaterWorld,updateWaterWorld } from './waterWorld'
 import { createForestRoute,distanceToForestRoute,sampleForestGroundHeight,sampleLandingGroundHeight } from './forestTerrain'
-import { sampleRiverCrossSection,sampleRiverSurface } from './riverConfig'
+import { sampleRiverCrossSection,sampleRiverSurface,RIVER_SURFACE_START_Z,RIVER_SURFACE_END_Z } from './riverConfig'
+import {createExpeditionController} from './expeditionController'
+import {getExpeditionState} from './journeyData'
 import { getTransportCamera } from './indiaJourney'
 import { createJungleWorld } from './jungleWorld'
+import { mapJourneyZ } from './journeySpatial'
+import { WATERFALL } from './finaleConfig'
 
 const averageNormalY=object=>{
   const normals=object.geometry.getAttribute('normal')
@@ -47,7 +51,7 @@ describe('water world',()=>{
     expect(gravel.reduce((sum,object)=>sum+object.count,0)).toBeGreaterThanOrEqual(80)
     water.updateMatrixWorld(true)
     const basinBounds=new THREE.Box3().setFromObject(basin)
-    expect(basinBounds.max.z).toBeLessThanOrEqual(LANDMARKS.mountainLanding[2]+3)
+    expect(basinBounds.max.z).toBe(RIVER_SURFACE_START_Z+2)
     expect(basinBounds.min.z).toBeCloseTo(LANDMARKS.forestLanding[2],5)
     disposeObject3D(water)
   })
@@ -70,6 +74,24 @@ describe('water world',()=>{
     expect(water.userData.forestLanding).toBe(water.getObjectByName('forest-water-landing'))
     expect(water.userData.forestSightline).toBe(water.getObjectByName('distant-forest-silhouette'))
     expect(water.userData.surfaceMaterials.every(material=>material.roughness<.45)).toBe(true)
+    expect(water.userData.route.getLength()).toBeGreaterThan(104)
+    expect(water.scale.toArray()).toEqual([1,1,1])
+    disposeObject3D(water)
+  })
+
+  it.each(['mobile','desktop'])('roots natural-size %s woodland along the extended river using six instanced draws',quality=>{
+    const water=createWaterWorld(createMaterials(),quality)
+    const woodland=water.getObjectByName('river-bank-woodland')
+    expect(woodland.children).toHaveLength(6)
+    expect(woodland.children.every(object=>object.isInstancedMesh)).toBe(true)
+    const placements=woodland.userData.placements
+    const depths=placements.map(({z})=>z)
+    expect(Math.max(...depths)-Math.min(...depths)).toBeGreaterThan(70)
+    placements.forEach(({x,z,scale})=>{
+      expect(sampleRiverSurface(x,z).edgeDistance).toBeGreaterThanOrEqual(4)
+      expect(scale).toBeGreaterThanOrEqual(.65)
+      expect(scale).toBeLessThan(1.2)
+    })
     disposeObject3D(water)
   })
 
@@ -84,16 +106,16 @@ describe('water world',()=>{
     disposeObject3D(water)
   })
 
-  it.each(['mobile','desktop'])('widens the %s channel without folded triangles at the boat-route bends',quality=>{
+  it.each(['mobile','desktop'])('keeps the winding %s channel navigable without folded triangles at its bends',quality=>{
     const water=createWaterWorld(createMaterials(),quality)
     const geometry=water.userData.water.geometry,position=geometry.getAttribute('position')
     const columns=geometry.userData.crossSectionColumns
     for(let row=0;row<=geometry.userData.routeSegments;row++){
       const z=position.getZ(row*columns)
       const width=rowWidth(water.userData.water,row)
-      if(z<=-44&&z>=-75){
-        expect(width).toBeGreaterThan(30)
-        expect(width).toBeLessThan(46)
+      if(z<=mapJourneyZ(-44)&&z>=mapJourneyZ(-75)){
+        expect(width).toBeGreaterThan(12)
+        expect(width).toBeLessThan(19)
       }
       for(let column=1;column<columns;column++){
         expect(position.getX(row*columns+column)).toBeGreaterThan(position.getX(row*columns+column-1))
@@ -163,16 +185,19 @@ describe('water world',()=>{
     const colors=geometry.getAttribute('color'),edge=row*columns,center=edge+Math.floor(columns/2)
     expect(Math.abs(colors.getZ(center)-colors.getZ(edge))).toBeGreaterThan(.035)
     for(let index=0;index<colors.count;index++){
-      expect(colors.getZ(index)).toBeGreaterThan(colors.getY(index))
+      expect(colors.getZ(index)).toBeGreaterThan(colors.getX(index))
       expect(colors.getY(index)).toBeGreaterThan(colors.getX(index))
+      expect(Math.abs(colors.getZ(index)-colors.getY(index))).toBeLessThan(.08)
     }
     const rebuildNormals=vi.spyOn(geometry,'computeVertexNormals')
     updateWaterWorld(water,.83)
     expect(rebuildNormals).not.toHaveBeenCalled()
     const normals=geometry.getAttribute('normal')
     const edgeNormal=new THREE.Vector3().fromBufferAttribute(normals,edge)
-    const centerNormal=new THREE.Vector3().fromBufferAttribute(normals,center)
-    expect(edgeNormal.distanceTo(centerNormal)).toBeGreaterThan(.005)
+    const acrossWater=Array.from({length:columns},(_,column)=>
+      edgeNormal.distanceTo(new THREE.Vector3().fromBufferAttribute(normals,edge+column)),
+    )
+    expect(Math.max(...acrossWater)).toBeGreaterThan(.005)
     const heights=[]
     for(let index=0;index<geometry.getAttribute('position').count;index+=1){
       heights.push(geometry.getAttribute('position').getY(index))
@@ -213,7 +238,7 @@ describe('water world',()=>{
       const frame=getTransportCamera(quality,'boat',point.toArray())
       const origin=new THREE.Vector3(...frame.camera)
       for(const height of [6,12,15.5]){
-        const direction=new THREE.Vector3(1,height,-151).sub(origin)
+        const direction=new THREE.Vector3(WATERFALL.center[0],height,WATERFALL.center[2]).sub(origin)
         const ray=new THREE.Raycaster(origin,direction.clone().normalize(),0,direction.length()-.2)
         const opaqueHits=ray.intersectObjects([water.userData.forestSightline,forest],true)
           .filter(hit=>hit.object.material.depthWrite!==false)
@@ -228,7 +253,7 @@ describe('water world',()=>{
     const water=createWaterWorld(createMaterials(),'desktop')
     const material=water.getObjectByName('reflective-water').material
     expect(material.userData.reflectionMode).toBe('planar-fresnel')
-    expect(material.userData.reflectionResolution).toBe(512)
+    expect(material.userData.reflectionResolution).toBe(384)
     expect(material.envMapIntensity).toBeGreaterThan(0)
     expect(material.normalMap.isDataTexture).toBe(true)
     expect(material.normalMap.generateMipmaps).toBe(true)
@@ -239,14 +264,19 @@ describe('water world',()=>{
     disposeObject3D(water)
   })
 
-  it('tapers only the landing coves while preserving a broad main channel',()=>{
+  it('continues both ends around bends beyond the jetties instead of capping a pond at each dock',()=>{
     const water=createWaterWorld(createMaterials(),'desktop')
     const surface=water.getObjectByName('reflective-water')
     const rows=surface.geometry.userData.routeSegments
     const start=rowWidth(surface,0),middle=rowWidth(surface,Math.floor(rows/2)),end=rowWidth(surface,rows)
-    expect(middle).toBeGreaterThan(start*2.5)
-    expect(middle).toBeGreaterThan(end*3)
+    expect(middle).toBeGreaterThan(start*1.4)
+    expect(middle).toBeGreaterThan(end*1.15)
     expect(end).toBeGreaterThan(6)
+    const bounds=new THREE.Box3().setFromObject(surface)
+    expect(bounds.max.z-LANDMARKS.mountainLanding[2]).toBeGreaterThanOrEqual(20)
+    expect(LANDMARKS.forestLanding[2]-bounds.min.z).toBeGreaterThanOrEqual(22)
+    expect(sampleRiverCrossSection(bounds.max.z).centerX).toBeLessThan(-20)
+    expect(sampleRiverCrossSection(bounds.min.z).centerX).toBeLessThan(-20)
     disposeObject3D(water)
   })
 
@@ -259,7 +289,7 @@ describe('water world',()=>{
     const rows=new Map()
     for(let index=0;index<positions.count;index+=1){
       const x=positions.getX(index),z=positions.getZ(index)
-      if(z< -85.8||z> -76.2||Math.abs(x)>8) continue
+      if(z<mapJourneyZ(-85.8)||z>mapJourneyZ(-76.2)||Math.abs(x)>8) continue
       if(!rows.has(z)) rows.set(z,[])
       rows.get(z).push(x)
     }
@@ -272,8 +302,8 @@ describe('water world',()=>{
     })
     const route=createForestRoute()
     const ray=new THREE.Raycaster()
-    for(let z=-76.4;z>-85.6;z-=.43){
-      const center=THREE.MathUtils.lerp(LANDMARKS.forestLanding[0],4.2,(z-LANDMARKS.forestLanding[2])/14)
+    for(let z=mapJourneyZ(-76.4);z>mapJourneyZ(-85.6);z-=.43){
+      const center=THREE.MathUtils.lerp(LANDMARKS.forestLanding[0],4.2,(z-LANDMARKS.forestLanding[2])/28)
       for(const offset of [-4.8,-3.4,3.4,4.8]){
         const x=center+offset
         ray.set(new THREE.Vector3(x,20,z),new THREE.Vector3(0,-1,0))
@@ -288,7 +318,7 @@ describe('water world',()=>{
     const basin=water.getObjectByName('water-basin-ground')
     water.updateMatrixWorld(true)
     const ray=new THREE.Raycaster()
-    for(let z=-43;z>=-75;z-=3.7){
+    for(let z=mapJourneyZ(-43);z>=mapJourneyZ(-75);z-=3.7){
       const section=sampleRiverCrossSection(z)
       for(const side of [-1,1]){
         const bank=side<0?section.leftX:section.rightX
@@ -304,8 +334,8 @@ describe('water world',()=>{
         expect(heights.at(-1)).toBeGreaterThan(.1)
       }
     }
-    const barSection=sampleRiverCrossSection(-59.5)
-    ray.set(new THREE.Vector3(barSection.leftX+1.6,20,-59.5),new THREE.Vector3(0,-1,0))
+    const barSection=sampleRiverCrossSection(mapJourneyZ(-59.5))
+    ray.set(new THREE.Vector3(barSection.leftX+1.6,20,mapJourneyZ(-59.5)),new THREE.Vector3(0,-1,0))
     expect(ray.intersectObject(basin)[0].point.y).toBeGreaterThan(.04)
     for(let progress=.12;progress<=.88;progress+=.08){
       const point=water.userData.route.getPointAt(progress)
@@ -322,7 +352,7 @@ describe('water world',()=>{
     const basin=water.getObjectByName('water-basin-ground')
     const basinBounds=new THREE.Box3().setFromObject(basin)
     expect(basin.geometry.userData.continuousBasin).toBe(true)
-    for(let z=-35;z>=-85;z-=2){
+    for(let z=mapJourneyZ(-35);z>=mapJourneyZ(-85);z-=2){
       const section=sampleRiverCrossSection(z)
       expect(basinBounds.min.x).toBeLessThan(section.leftX-10)
       expect(basinBounds.max.x).toBeGreaterThan(section.rightX+10)
@@ -388,7 +418,7 @@ describe('water world',()=>{
       ray.set(new THREE.Vector3(point.x,20,point.z),new THREE.Vector3(0,-1,0))
       expect(ray.intersectObject(basin)[0].point.y).toBeLessThan(-.05)
     })
-    expect(new THREE.Box3().setFromObject(water.getObjectByName('reflective-water')).min.z).toBeGreaterThanOrEqual(seamZ-1e-5)
+    expect(new THREE.Box3().setFromObject(water.getObjectByName('reflective-water')).min.z).toBeCloseTo(RIVER_SURFACE_END_Z,5)
     disposeObject3D(water)
     disposeObject3D(forest)
   })
@@ -423,5 +453,48 @@ describe('water world',()=>{
     expect(new Set(foam.children.map(child=>child.material)).size).toBe(foam.children.length)
     expect(new Set(wakes[0].children.map(child=>child.material)).size).toBe(wakes[0].children.length)
     disposeObject3D(water)
+  })
+
+  it.each(['mobile','desktop'])('keeps the full %s boat hull over rendered water at both jetties and during departure',quality=>{
+    const scene=new THREE.Scene()
+    const controller=createExpeditionController(scene,createMaterials(),quality)
+    const {water,mountain,forest}=controller.worlds
+    const bed=[
+      water.getObjectByName('water-basin-ground'),
+      mountain.getObjectByName('hill-terrain'),
+      mountain.getObjectByName('hill-terrain-surround'),
+      forest.getObjectByName('forest-ground'),
+    ]
+    const ray=new THREE.Raycaster(),down=new THREE.Vector3(0,-1,0)
+    try{
+      for(const progress of [.28,.42,.425,.43,.44,.6,.68]){
+        controller.update(getExpeditionState(progress),0,true,0)
+        scene.updateMatrixWorld(true)
+        const hull=new THREE.Box3().setFromObject(controller.transports.boat.getObjectByName('boat-hull'))
+        const dock=water.getObjectByName(progress<.6?'boat-jetty':'forest-jetty')
+        expect(hull.intersectsBox(new THREE.Box3().setFromObject(dock)),`dock collision at ${progress}`).toBe(false)
+        const gangway=forest.getObjectByName('forest-landing-gangway')
+        expect(hull.intersectsBox(new THREE.Box3().setFromObject(gangway)),`gangway collision at ${progress}`).toBe(false)
+        for(const x of [hull.min.x,(hull.min.x+hull.max.x)/2,hull.max.x]){
+          for(const z of [hull.min.z,(hull.min.z+hull.max.z)/2,hull.max.z]){
+            expect(sampleRiverSurface(x,z).inside,`dry hull at ${progress}: ${x},${z}`).toBe(true)
+            ray.set(new THREE.Vector3(x,10,z),down)
+            const waterHit=ray.intersectObject(water.userData.water)[0]
+            const groundHit=ray.intersectObjects(bed)[0]
+            expect(waterHit,`missing rendered water at ${progress}: ${x},${z}`).toBeTruthy()
+            expect(groundHit,`missing river bed at ${progress}: ${x},${z}`).toBeTruthy()
+            expect(groundHit.point.y,`ground intersects hull at ${progress}: ${x},${z}`).toBeLessThan(hull.min.y-.05)
+            expect(waterHit.point.y).toBeGreaterThan(hull.min.y)
+          }
+        }
+      }
+      const jeep=controller.transports.jeep
+      expect(sampleRiverSurface(jeep.position.x,jeep.position.z).inside).toBe(false)
+      expect(sampleForestGroundHeight(forest.userData.route,jeep.position.x,jeep.position.z)).toBeGreaterThan(.01)
+      const dryPath=mountain.userData.route.getSpacedPoints(100).filter(point=>point.z>-32.4&&point.z<-15)
+      dryPath.forEach(point=>expect(sampleRiverSurface(point.x,point.z).inside).toBe(false))
+    }finally{
+      controller.dispose()
+    }
   })
 })

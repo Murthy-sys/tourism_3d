@@ -1,10 +1,13 @@
 import * as THREE from 'three'
 import { mesh } from './primitives'
-import { createEnvironmentMaterial,createLandscapeMaterial,createFoliageGeometry,createFoliageMaterial,createLeafTexture,createRippleNormalMap,projectGroundUV } from './environmentSurface'
+import { createEnvironmentMaterial,createLandscapeMaterial,createFoliageMaterial,createLeafTexture,createCanopyTexture,createRippleNormalMap,projectGroundUV } from './environmentSurface'
 import { LANDMARKS } from './terrain'
 import { FINALE_CAMERAS,WATERFALL,WATERFALL_VIEWING_POSITIONS,sampleFinaleWater } from './finaleConfig'
-import { createForestGroundGeometry,createForestTreeGeometry } from './forestGeometry'
+import { createForestGroundGeometry,createForestTreeGeometry,createForestUnderstoryGeometry } from './forestGeometry'
 import { createForestRoute,distanceToForestRoute as distanceToRoute,sampleForestGroundHeight,sampleLandingGroundHeight,refineForestLandingGeometry,matchLandingBoundaryNormals } from './forestTerrain'
+import { mapJourneyZ,shiftFinaleZ } from './journeySpatial'
+import { createRiverRoute,sampleRiverSurface } from './riverConfig'
+import { createForestWildlife } from './forestWildlife'
 
 const ROUTE_CLEARANCE=1.4
 const nameGroup=name=>{const group=new THREE.Group();group.name=name;return group}
@@ -41,11 +44,11 @@ const obstacleClearance=(route,object)=>{
 }
 
 const inFinaleClearing=(x,z,radius=0)=>
-  (x+radius>-6&&x-radius<8&&z+radius>-145&&z-radius<-129)||
-  (Math.abs(x-WATERFALL.center[0])-radius<24&&z+radius>-161&&z-radius<-144)
+  (x+radius>-6&&x-radius<8&&z+radius>shiftFinaleZ(-145)&&z-radius<shiftFinaleZ(-129))||
+  (Math.abs(x-WATERFALL.center[0])-radius<24&&z+radius>shiftFinaleZ(-161)&&z-radius<shiftFinaleZ(-144))
 
 const inFinaleWater=(x,z,radius=0)=>
-  z-radius<-130&&sampleFinaleWater(x,z).edgeDistance<radius+.6
+  z-radius<shiftFinaleZ(-130)&&sampleFinaleWater(x,z).edgeDistance<radius+.6
 
 const offsetFromRoute=(route,index,salt,minDistance,maxDistance,radius=0,sightlines=[],grove=false)=>{
   const progress=grove
@@ -82,16 +85,35 @@ const offsetFromRoute=(route,index,salt,minDistance,maxDistance,radius=0,sightli
 
 const createForestMaterials=()=>{
   const leafMap=createLeafTexture()
+  const canopyMap=createCanopyTexture()
   return{
     trunk:createEnvironmentMaterial('#655d4e','bark'),
     trunkAlt:createEnvironmentMaterial('#756a58','bark'),
     bark:createEnvironmentMaterial('#685b48','bark'),
     barkAlt:createEnvironmentMaterial('#7b6d54','bark'),
-    leaf:['#4f6242','#6d7851','#40593d','#576b43','#76805a','#49614c']
-      .map(color=>createFoliageMaterial(color,leafMap)),
-    fern:createFoliageMaterial('#64784e',leafMap),
+    leaf:['#2e7c38','#448f3c','#296d3b','#39833a','#4a923f','#347c42']
+      .map(color=>createFoliageMaterial(color,canopyMap)),
+    fern:createFoliageMaterial('#3d8640',leafMap),
     grass:new THREE.MeshStandardMaterial({color:'#7b8457',roughness:.98,side:THREE.DoubleSide}),
   }
+}
+
+const createForestGroundMaterial=()=>{
+  const material=createLandscapeMaterial({bumpScale:.045})
+  material.color.set('#8daa79')
+  const compile=material.onBeforeCompile
+  const cacheKey=material.customProgramCacheKey()
+  material.onBeforeCompile=shader=>{
+    compile(shader)
+    shader.fragmentShader=shader.fragmentShader
+      .replace('float wetEdge=1.0-smoothstep(0.12,0.72,vLandWorld.y);',
+        'float wetEdge=1.0-smoothstep(-0.06,0.12,vLandWorld.y);')
+      .replace('*cos(vLandWorld.z*.37)*.5+.5)*.32;',
+        '*cos(vLandWorld.z*.37)*.5+.5)*.12;')
+  }
+  material.customProgramCacheKey=()=>`${cacheKey}-forest-floor-v1`
+  material.userData.forestFloor='moss-and-low-groundcover'
+  return material
 }
 
 const createMistMaterial=()=>{
@@ -158,18 +180,52 @@ const createJungleTree=(materials,index,scale,geometry,variant=index%6)=>{
 const createUndergrowth=(materials,index,scale)=>{
   const plant=nameGroup(`undergrowth-${index}`)
   const foliage=mesh(
-    createFoliageGeometry({seed:index+140,variant:index%3===0?4:1,scale:scale*.38,leaves:36}),
+    createForestUnderstoryGeometry({seed:index+140,variant:index%3===0?4:1,scale:scale*.38,leaves:36}),
     index%3===0?materials.fern:materials.leaf[(index+1)%materials.leaf.length],
-    [0,.3*scale,0],
+    [0,-.025,0],
   )
   plant.add(foliage)
   return plant
 }
 
+const addUnderstoryGroves=(world,materials,route,heightAt,sightlines,quality)=>{
+  const group=nameGroup('forest-lush-understory')
+  const count=quality==='mobile'?26:38
+  const placements=[]
+  const transform=new THREE.Object3D()
+  for(let variant=0;variant<6;variant++){
+    const geometry=createForestUnderstoryGeometry({seed:710+variant,variant:variant%3===0?4:1,scale:1.1,leaves:quality==='mobile'?120:170})
+    const material=variant%3===0?materials.fern:materials.leaf[variant]
+    const shrubs=new THREE.InstancedMesh(geometry,material,count)
+    shrubs.name=`forest-shrub-grove-${variant}`
+    const bounds=geometry.boundingBox
+    const radius=Math.hypot(Math.max(Math.abs(bounds.min.x),Math.abs(bounds.max.x)),Math.max(Math.abs(bounds.min.z),Math.abs(bounds.max.z)))
+    for(let index=0;index<count;index++){
+      const key=index+variant*count
+      const scale=.72+hashed(key,718)*.62
+      const position=offsetFromRoute(route,key,710,3.1,18,radius*scale,sightlines,true)
+      position.y=heightAt(position.x,position.z)-bounds.min.y*scale*.85-.06
+      transform.position.copy(position)
+      transform.rotation.y=hashed(key,719)*Math.PI*2
+      transform.scale.set(scale,scale*.85,scale)
+      transform.updateMatrix()
+      shrubs.setMatrixAt(index,transform.matrix)
+      placements.push({x:position.x,z:position.z,radius:radius*scale})
+    }
+    shrubs.receiveShadow=true
+    shrubs.computeBoundingBox()
+    shrubs.computeBoundingSphere()
+    group.add(shrubs)
+  }
+  group.userData.placements=placements
+  world.add(group)
+  return placements.length
+}
+
 const addForestBackdrop=(world,materials,quality,heightAt,sightlines)=>{
   const backdrop=nameGroup('forest-dense-backdrop')
   const instances=[]
-  const count=quality==='mobile'?9:14
+  const count=quality==='mobile'?14:22
   const matrix=new THREE.Matrix4(),quaternion=new THREE.Quaternion(),scaleVector=new THREE.Vector3()
   const axis=new THREE.Vector3(0,1,0)
   for(let variant=0;variant<6;variant+=1){
@@ -187,7 +243,7 @@ const addForestBackdrop=(world,materials,quality,heightAt,sightlines)=>{
       const scale=.72+Math.pow(hashed(key,202),.65)*.73
       const width=.83+hashed(key,208)*.32
       const radius=baseRadius*scale*Math.max(width,1/width)
-      let z=-91-hashed(key,203)*80
+      let z=mapJourneyZ(-91-hashed(key,203)*80)
       let x=side*(29+hashed(key,204)*34)
       while(inFinaleClearing(x,z,radius)||inFinaleWater(x,z,radius)||sightlines.some(({start,end,clearance,cameraClearance=clearance})=>
         distanceToSegmentXZ(x,z,start,end)-radius<clearance||
@@ -244,7 +300,7 @@ const addFinaleThickets=(world,materials,treeGeometries,quality,heightAt,sightli
       const scale=.8+hashed(key,303)*.54
       const radius=baseRadius*scale
       const rearProgress=row/(rows-1)
-      let z=-149-rearProgress*23-hashed(key,304)*(4.2-rearProgress*3.3)
+      let z=shiftFinaleZ(-149-rearProgress*23-hashed(key,304)*(4.2-rearProgress*3.3))
       let x=WATERFALL.center[0]+side*(28+column*4.5+hashed(key,305)*3.4)
       while(inFinaleClearing(x,z,radius)||inFinaleWater(x,z,radius)||sightlines.some(({start,end,clearance,cameraClearance=clearance})=>
         distanceToSegmentXZ(x,z,start,end)-radius<clearance||
@@ -280,7 +336,7 @@ const addFinaleThickets=(world,materials,treeGeometries,quality,heightAt,sightli
 const createTrackGeometry=route=>{
   const positions=[]
   const indices=[]
-  const segments=100
+  const segments=180
   for(let index=0;index<=segments+1;index+=1){
     const progress=Math.min(index/segments,1)
     const point=route.getPointAt(progress)
@@ -293,19 +349,69 @@ const createTrackGeometry=route=>{
       point.x-tangent.z*halfWidth,point.y-.015,point.z+tangent.x*halfWidth,
       point.x+tangent.z*halfWidth,point.y-.015,point.z-tangent.x*halfWidth,
     )
-    if(index<segments+1){
-      const offset=index*2
-      indices.push(offset,offset+2,offset+1,offset+1,offset+2,offset+3)
-    }
+  }
+  let landingProgress=0
+  for(let index=0;index<segments+1;index++){
+    const offset=index*2
+    // Dirt starts on the dry bank. The jetty connection is a supported timber
+    // gangway, so no road ribbon is suspended over the incoming river bend.
+    const dry=[offset,offset+1,offset+2,offset+3].every(vertex=>
+      sampleRiverSurface(positions[vertex*3],positions[vertex*3+2]).edgeDistance>.35,
+    )
+    if(!dry) continue
+    if(indices.length===0) landingProgress=index/segments
+    indices.push(offset,offset+2,offset+1,offset+1,offset+2,offset+3)
   }
   const geometry=new THREE.BufferGeometry()
   geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3))
   geometry.setIndex(indices)
+  geometry.userData.landingProgress=landingProgress
   geometry.computeVertexNormals()
   return projectGroundUV(geometry,1.2)
 }
 
-const addInlet=(world,m,materials,route,obstacles)=>{
+const createLandingGangway=(route,landingProgress)=>{
+  const gangway=nameGroup('forest-landing-gangway')
+  const direction=createRiverRoute().getTangentAt(1).setY(0).normalize()
+  const start=new THREE.Vector3(...LANDMARKS.forestLanding).addScaledVector(direction,1.43)
+  start.y=LANDMARKS.forestLanding[1]+.26
+  const end=route.getPointAt(Math.min(1,landingProgress+.004))
+  end.y-=.015
+  const along=end.clone().sub(start)
+  const horizontal=Math.hypot(along.x,along.z),length=along.length()
+  const lateral=new THREE.Vector3(along.z,0,-along.x).normalize()
+  const heading=Math.atan2(along.x,along.z),pitch=-Math.atan2(along.y,horizontal)
+  const timber=createEnvironmentMaterial('#786b55','wood')
+  const count=Math.ceil(length/.3),plankGeometry=new THREE.BoxGeometry(1.48,.14,length/count*.96)
+  for(let index=0;index<count;index++){
+    const point=start.clone().lerp(end,(index+.5)/count)
+    point.y-=.07
+    const plank=mesh(plankGeometry,timber,point.toArray())
+    plank.name='forest-gangway-plank'
+    plank.rotation.set(pitch,heading,0,'YXZ')
+    gangway.add(plank)
+  }
+  const beamGeometry=new THREE.BoxGeometry(.12,.18,length)
+  for(const side of [-1,1]){
+    const center=start.clone().lerp(end,.5).addScaledVector(lateral,side*.56)
+    center.y-=.2
+    const beam=mesh(beamGeometry,timber,center.toArray())
+    beam.rotation.set(pitch,heading,0,'YXZ')
+    beam.name='forest-gangway-beam'
+    gangway.add(beam)
+    for(const t of [.12,1]){
+      const point=start.clone().lerp(end,t).addScaledVector(lateral,side*.56)
+      const ground=sampleLandingGroundHeight(route,point.x,point.z)-.08
+      const height=Math.max(.16,point.y-.12-ground)
+      const support=mesh(new THREE.CylinderGeometry(.065,.085,height,7),timber,[point.x,ground+height/2,point.z])
+      support.name='forest-gangway-support'
+      gangway.add(support)
+    }
+  }
+  return gangway
+}
+
+const addInlet=(world,m,materials,route,obstacles,landingProgress)=>{
   const inlet=nameGroup('forest-inlet')
   const [landingX,landingY,landingZ]=LANDMARKS.forestLanding
   ;[-1,1].forEach(side=>{
@@ -329,13 +435,14 @@ const addInlet=(world,m,materials,route,obstacles)=>{
   })
   const landing=nameGroup('forest-water-landing')
   landing.position.set(landingX,landingY,landingZ)
-  const waterApproach=new THREE.Vector3(landingX-4.2,landingY-.2,landingZ+72).normalize()
+  const waterApproach=createRiverRoute().getTangentAt(1)
   landing.rotation.y=Math.atan2(waterApproach.x,waterApproach.z)
   const deck=nameGroup('forest-landing-deck')
   deck.position.y=.18
   deck.userData.surfaceOwner='forest-jetty'
   landing.add(deck)
   inlet.add(landing)
+  inlet.add(createLandingGangway(route,landingProgress))
   const roots=nameGroup('jungle-roots')
   ;[-1,1].forEach(side=>{for(let index=0;index<5;index+=1){
     const x=landingX+side*(3.8+index*.32),z=landingZ-1+index*1.55
@@ -364,22 +471,25 @@ export function createJungleWorld(m,quality='desktop'){
   materials.water.normalScale=new THREE.Vector2(.25,.25)
   const route=createForestRoute()
   const heightAt=(x,z)=>sampleForestGroundHeight(route,x,z)
+  const wildlife=createForestWildlife({route,heightAt,quality})
+  const wildlifeClearings=wildlife.group.userData.animals.map(({anchor,clearingRadius})=>({
+    start:anchor,end:anchor,clearance:clearingRadius,cameraClearance:clearingRadius,
+  }))
   const forestGround=mesh(
     matchLandingBoundaryNormals(refineForestLandingGeometry(createForestGroundGeometry(heightAt,quality),route),route),
-    createLandscapeMaterial({bumpScale:.045}),
+    createForestGroundMaterial(),
   )
   forestGround.name='forest-ground'
-  world.add(forestGround)
-  const jeepSightlineEnd=route.getPointAt(.5)
-  const drivingSightlines=[
-    [4,4,25],
-    [3,4,13.5],
-  ].map(cameraOffset=>({
-      start:jeepSightlineEnd.clone().add(new THREE.Vector3(...cameraOffset)),
-      end:jeepSightlineEnd,
+  world.add(forestGround,wildlife.group)
+  const drivingSightlines=[.04,.18,.32,.5,.68,.84,1].flatMap(progress=>{
+    const end=route.getPointAt(progress)
+    return [[4,4,25],[3,4,13.5]].map(cameraOffset=>({
+      start:end.clone().add(new THREE.Vector3(...cameraOffset)),
+      end,
       clearance:1.1,
       cameraClearance:8.2,
     }))
+  })
   const finaleSightlines=Object.values(FINALE_CAMERAS).map(({camera,target})=>({
     start:new THREE.Vector3(...camera),
     end:new THREE.Vector3(...target),
@@ -393,6 +503,7 @@ export function createJungleWorld(m,quality='desktop'){
     cameraClearance:2,
   }))
   const sightlines=[...drivingSightlines,...finaleSightlines,...viewingSightlines]
+  const treeSightlines=[...sightlines,...wildlifeClearings]
   const track=nameGroup('forest-track')
   const trackSurface=mesh(createTrackGeometry(route),createEnvironmentMaterial('#79705a','soil',{bumpScale:.035}))
   trackSurface.name='jeep-track-surface'
@@ -401,12 +512,12 @@ export function createJungleWorld(m,quality='desktop'){
   world.add(track)
 
   const obstacles=[]
-  const forestLanding=addInlet(world,materials,forestMaterials,route,obstacles)
+  const forestLanding=addInlet(world,materials,forestMaterials,route,obstacles,trackSurface.geometry.userData.landingProgress)
   const treeGeometries=Array.from({length:6},(_,variant)=>createForestTreeGeometry(variant,quality))
   const layers=[
-    {name:'forest-near-layer',legacy:'jungle-foreground',desktop:48,mobile:34,min:5,max:10,salt:20,scale:.72},
-    {name:'forest-mid-layer',legacy:'jungle-midground',desktop:44,mobile:38,min:10,max:19,salt:40,scale:.9},
-    {name:'forest-far-layer',legacy:'jungle-background',desktop:36,mobile:30,min:19,max:31,salt:60,scale:1.02},
+    {name:'forest-near-layer',legacy:'jungle-foreground',desktop:64,mobile:44,min:5,max:10,salt:20,scale:.72},
+    {name:'forest-mid-layer',legacy:'jungle-midground',desktop:58,mobile:46,min:10,max:19,salt:40,scale:.9},
+    {name:'forest-far-layer',legacy:'jungle-background',desktop:44,mobile:36,min:19,max:31,salt:60,scale:1.02},
   ]
   let treeCount=0
   const sightlineTrees=[]
@@ -420,7 +531,7 @@ export function createJungleWorld(m,quality='desktop'){
       tree.rotation.y=hashed(index,layer.salt+9)*Math.PI*2
       tree.updateMatrixWorld(true)
       const {center,radius}=obstacleFootprint(tree)
-      const position=offsetFromRoute(route,index,layer.salt,layer.min,layer.max,radius,sightlines,true)
+      const position=offsetFromRoute(route,index,layer.salt,layer.min,layer.max,radius,treeSightlines,true)
       position.x-=center.x
       position.z-=center.z
       position.y=heightAt(position.x,position.z)
@@ -435,16 +546,17 @@ export function createJungleWorld(m,quality='desktop'){
     legacy.userData.layer=group
     world.add(legacy)
   })
-  treeCount+=addForestBackdrop(world,forestMaterials,quality,heightAt,sightlines)
-  treeCount+=addFinaleThickets(world,forestMaterials,treeGeometries,quality,heightAt,sightlines)
+  treeCount+=addForestBackdrop(world,forestMaterials,quality,heightAt,treeSightlines)
+  treeCount+=addFinaleThickets(world,forestMaterials,treeGeometries,quality,heightAt,treeSightlines)
 
   const undergrowth=nameGroup('jungle-undergrowth')
-  const undergrowthCount=quality==='mobile'?176:224
+  const undergrowthCount=quality==='mobile'?200:276
   const undergrowthSightlines=sightlines.map(sightline=>({
     ...sightline,
     clearance:.78,
     cameraClearance:4.15,
-  }))
+  })).concat(wildlifeClearings)
+  const shrubCount=addUnderstoryGroves(world,forestMaterials,route,heightAt,undergrowthSightlines,quality)
   for(let index=0;index<undergrowthCount;index+=1){
     const scale=.45+hashed(index,82)*.65
     const plant=createUndergrowth(forestMaterials,index,scale)
@@ -458,10 +570,10 @@ export function createJungleWorld(m,quality='desktop'){
   }
   world.add(undergrowth)
 
-  const routeCoverCount=quality==='mobile'?100:180
+  const routeCoverCount=quality==='mobile'?180:300
   const bankCoverCount=routeCoverCount+32
   const bankCover=new THREE.InstancedMesh(
-    createFoliageGeometry({seed:301,variant:4,scale:.6,leaves:64}),
+    createForestUnderstoryGeometry({seed:301,variant:4,scale:.6,leaves:64}),
     forestMaterials.fern,
     bankCoverCount,
   )
@@ -474,9 +586,9 @@ export function createJungleWorld(m,quality='desktop'){
     const scale=.7+hashed(index,317)*.6
     const position=index<routeCoverCount
       ?offsetFromRoute(route,index,310,3.2,29,.9,undergrowthSightlines)
-      :new THREE.Vector3(1+side*(8.5+hashed(index,313)*3.8),0,-139.5-hashed(index,314)*6)
+      :new THREE.Vector3(1+side*(8.5+hashed(index,313)*3.8),0,shiftFinaleZ(-139.5-hashed(index,314)*6))
     while(inFinaleWater(position.x,position.z,coverRadius*scale)) position.z+=.35
-    position.y=heightAt(position.x,position.z)+.32
+    position.y=heightAt(position.x,position.z)-.025
     coverRotation.setFromAxisAngle(new THREE.Vector3(0,1,0),hashed(index,316)*Math.PI*2)
     coverMatrix.compose(position,coverRotation,coverScale.setScalar(scale))
     bankCover.setMatrixAt(index,coverMatrix)
@@ -488,7 +600,7 @@ export function createJungleWorld(m,quality='desktop'){
 
   const vines=nameGroup('jungle-vines')
   const vineCount=quality==='mobile'?16:30
-  const vineTrees=sightlineTrees.filter(tree=>tree.position.z>-126&&!inFinaleClearing(tree.position.x,tree.position.z,5))
+  const vineTrees=sightlineTrees.filter(tree=>tree.position.z>mapJourneyZ(-126)&&!inFinaleClearing(tree.position.x,tree.position.z,5))
   const vineAnchors=new Map()
   for(let index=0;index<vineCount;index+=1){
     const tree=vineTrees[Math.floor(index*vineTrees.length/vineCount)]
@@ -524,7 +636,7 @@ export function createJungleWorld(m,quality='desktop'){
   const rockCount=quality==='mobile'?10:22
   for(let index=0;index<rockCount;index+=1){
     const radius=.24+(index%4)*.11
-    const position=offsetFromRoute(route,index,120,3.1,13,radius)
+    const position=offsetFromRoute(route,index,120,3.1,13,radius,wildlifeClearings)
     const rock=mesh(new THREE.DodecahedronGeometry(radius,1),materials.stone,[position.x,heightAt(position.x,position.z)+.1,position.z],[index*.2,0,index*.1])
     rock.name='jungle-rock'
     rocks.add(rock)
@@ -536,7 +648,7 @@ export function createJungleWorld(m,quality='desktop'){
   const logCount=quality==='mobile'?5:9
   for(let index=0;index<logCount;index+=1){
     const halfLength=1.1+(index%3)*.28
-    const position=offsetFromRoute(route,index,140,4.5,15,Math.hypot(halfLength,.23))
+    const position=offsetFromRoute(route,index,140,4.5,15,Math.hypot(halfLength,.23),wildlifeClearings)
     const log=mesh(new THREE.CylinderGeometry(.16,.23,halfLength*2,7),index%2?forestMaterials.bark:forestMaterials.barkAlt,[position.x,heightAt(position.x,position.z)+.22,position.z],[Math.PI/2,hashed(index,144)*Math.PI,0])
     log.name='fallen-log'
     fallenTimber.add(log)
@@ -582,7 +694,7 @@ export function createJungleWorld(m,quality='desktop'){
   world.add(shafts)
 
   const outpost=nameGroup('ranger-outpost')
-  outpost.position.set(-43,heightAt(-43,-110),-110)
+  outpost.position.set(-43,heightAt(-43,mapJourneyZ(-110)),mapJourneyZ(-110))
   outpost.add(
     mesh(new THREE.BoxGeometry(5,.5,3.5),materials.wood,[0,.25,0]),
     mesh(new THREE.BoxGeometry(4,2.4,2.7),materials.sand,[0,1.7,0]),
@@ -592,8 +704,8 @@ export function createJungleWorld(m,quality='desktop'){
   world.add(outpost)
 
   const light=new THREE.SpotLight('#e7d5ac',8,42,.5,.75)
-  light.position.set(-8,16,-101)
-  light.target.position.set(0,0,-114)
+  light.position.set(-8,16,mapJourneyZ(-101))
+  light.target.position.set(0,0,mapJourneyZ(-114))
   world.add(light,light.target)
 
   world.updateMatrixWorld(true)
@@ -611,10 +723,11 @@ export function createJungleWorld(m,quality='desktop'){
     routeClearance,
     routeObstacles:obstacles,
     sightlineClearance,
-    counts:{trees:treeCount,undergrowth:undergrowthCount+bankCoverCount},
+    counts:{trees:treeCount,undergrowth:undergrowthCount+bankCoverCount+shrubCount},
     materialDetail:{leafVariants:forestMaterials.leaf.length,barkVariants:2},
     forestLanding,
-    copyAnchor:new THREE.Vector3(-7,3,-128),
+    wildlife,
+    copyAnchor:new THREE.Vector3(-7,3,mapJourneyZ(-128)),
   }
   return world
 }

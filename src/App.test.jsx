@@ -4,9 +4,10 @@ import App from './App'
 
 vi.mock('./components/CustomCursor',()=>({default:()=>null}))
 vi.mock('./components/Preloader',()=>({
-  default:({ready,onDone})=><div>
+  default:({ready,status,onRetry,onDone})=><div>
     <span>Loader ready: {String(ready)}</span>
     {ready&&<button onClick={onDone}>Finish loader</button>}
+    {status?.phase==='error'&&<button onClick={onRetry}>Retry loading</button>}
   </div>,
 }))
 vi.mock('./components/IntroGate',()=>({
@@ -15,13 +16,31 @@ vi.mock('./components/IntroGate',()=>({
   </div>,
 }))
 vi.mock('./components/JourneyShell',()=>({
-  default:({onReady,introPhase,onIntroComplete})=><div aria-label="Journey" data-intro-phase={introPhase}>
+  default:({onReady,onLoadingState,loadAttempt,introPhase,onIntroComplete})=><div aria-label="Journey" data-intro-phase={introPhase} data-attempt={loadAttempt}>
     <button onClick={onReady}>Render first frame</button>
     <button onClick={onIntroComplete}>Finish introduction</button>
+    <button onClick={()=>onLoadingState({phase:'error'})}>Fail loading</button>
+    <button onClick={()=>onLoadingState({phase:'preparing',completed:1,total:1})}>Finish preparation work</button>
   </div>,
 }))
 
 describe('App startup lifecycle',()=>{
+  it('keeps Start locked through preparation and retries without remounting the page',()=>{
+    render(<App/>)
+    const journey=screen.getByLabelText('Journey')
+    fireEvent.click(screen.getByRole('button',{name:'Finish preparation work'}))
+    expect(screen.getByRole('button',{name:'Start'})).toBeDisabled()
+    fireEvent.click(screen.getByRole('button',{name:'Fail loading'}))
+    expect(screen.getByText('Loader ready: false')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button',{name:'Retry loading'}))
+    expect(screen.getByLabelText('Journey')).toBe(journey)
+    expect(journey).toHaveAttribute('data-attempt','1')
+    expect(screen.getByRole('button',{name:'Start'})).toBeDisabled()
+    expect(screen.queryByRole('button',{name:'Retry loading'})).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button',{name:'Render first frame'}))
+    fireEvent.click(screen.getByRole('button',{name:'Finish loader'}))
+    expect(screen.getByRole('button',{name:'Start'})).toBeEnabled()
+  })
   it('keeps one opaque gate and one journey mounted throughout loading and introduction',()=>{
     render(<App/>)
     const journey=screen.getByLabelText('Journey')

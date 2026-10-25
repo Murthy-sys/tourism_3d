@@ -1,13 +1,14 @@
 import { smootherstep } from './terrain'
+import { shiftFinaleZ } from './journeySpatial'
 
 export const FOREST_DRIVE_END=.90
 export const FINALE_WALK_END=.97
 export const FINALE_GROUND_Y=.185
 export const WATERFALL=Object.freeze({
-  center:Object.freeze([1,0,-151]),
+  center:Object.freeze([1,0,shiftFinaleZ(-151)]),
   height:16,
   width:4.8,
-  pool:Object.freeze([1,.08,-147.5]),
+  pool:Object.freeze([1,.08,shiftFinaleZ(-147.5)]),
   poolRadius:Object.freeze([7,4.8]),
 })
 // A river leaves the pool on the far side of the viewing bank. Samples are shared
@@ -20,7 +21,7 @@ const outflowControls=[
   [44,-144.5,2.7,-.1],
   [58,-145,3,-.17],
   [77,-149,3.2,-.25],
-]
+].map(([x,z,width,level])=>[x,shiftFinaleZ(z),width,level])
 const catmull=(a,b,c,d,t)=>.5*((2*b)+(-a+c)*t+(2*a-5*b+4*c-d)*t*t+(-a+3*b-3*c+d)*t*t*t)
 export const WATERFALL_OUTFLOW=Object.freeze(Array.from({length:73},(_,index)=>{
   const progress=index/72*(outflowControls.length-1)
@@ -49,14 +50,14 @@ export const sampleFinaleWater=(x,z)=>{
   return{distance,level,edgeDistance}
 }
 export const WATERFALL_VIEWING_POSITIONS=Object.freeze([
-  Object.freeze([-3,FINALE_GROUND_Y,-139]),
-  Object.freeze([-1,FINALE_GROUND_Y,-140]),
-  Object.freeze([1,FINALE_GROUND_Y,-139]),
-  Object.freeze([3,FINALE_GROUND_Y,-140]),
+  Object.freeze([-3,FINALE_GROUND_Y,shiftFinaleZ(-139)]),
+  Object.freeze([-1,FINALE_GROUND_Y,shiftFinaleZ(-140)]),
+  Object.freeze([1,FINALE_GROUND_Y,shiftFinaleZ(-139)]),
+  Object.freeze([3,FINALE_GROUND_Y,shiftFinaleZ(-140)]),
 ])
 export const FINALE_CAMERAS=Object.freeze({
-  desktop:Object.freeze({camera:[17,9,-119],target:[-4,5,-145]}),
-  mobile:Object.freeze({camera:[12,12,-111],target:[0,9.5,-145]}),
+  desktop:Object.freeze({camera:[17,9,shiftFinaleZ(-119)],target:[-4,5,shiftFinaleZ(-145)]}),
+  mobile:Object.freeze({camera:[12,12,shiftFinaleZ(-111)],target:[0,9.5,shiftFinaleZ(-145)]}),
 })
 
 // The pool is cut into the terrain; the approach remains a level, grounded clearing.

@@ -269,6 +269,18 @@ describe('realistic vehicles using the shipped GLBs',()=>{
     expect(createJeep().userData.realisticVehicle).not.toBe(true)
     expect(createCoach().userData.realisticVehicle).toBe(true)
   })
+  it('requires both detailed vehicles in strict startup mode',async()=>{
+    fetchMock.mockImplementation(url=>url.endsWith('/utility-jeep.glb')
+      ?Promise.reject(new TypeError('Jeep unavailable')):respond(url))
+    leases++
+    await expect(adapter.preloadRealisticVehicles('desktop',{strict:true})).rejects.toThrow('Jeep unavailable')
+    fetchMock.mockImplementation(respond)
+    leases++
+    await expect(adapter.preloadRealisticVehicles('desktop',{strict:true})).resolves.toHaveLength(2)
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+    expect(createJeep().userData.realisticVehicle).toBe(true)
+    expect(createCoach().userData.realisticVehicle).toBe(true)
+  })
 
   it('keeps both procedural fallbacks available after failed requests and can retry',async()=>{
     fetchMock.mockRejectedValue(new TypeError('Network unavailable'))
@@ -296,5 +308,35 @@ describe('realistic vehicles using the shipped GLBs',()=>{
     expect(signals.every(signal=>signal.aborted)).toBe(true)
     expect(createJeep().userData.realisticVehicle).not.toBe(true)
     expect(createCoach().userData.realisticVehicle).not.toBe(true)
+  })
+
+  it('cancels abandoned scene downloads without waiting for the deadline',async()=>{
+    vi.useFakeTimers()
+    const signals=[]
+    fetchMock.mockImplementation((_url,{signal})=>new Promise((_resolve,reject)=>{
+      signals.push(signal)
+      signal.addEventListener('abort',()=>reject(new DOMException('Aborted','AbortError')),{once:true})
+    }))
+    const outcome=expect(acquire()).rejects.toThrow('Scene released')
+    release()
+    await outcome
+    expect(signals.every(signal=>signal.aborted)).toBe(true)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('does not parse a response body delivered after the startup deadline',async()=>{
+    vi.useFakeTimers()
+    const {GLTFLoader}=await import('three/addons/loaders/GLTFLoader.js')
+    const parse=vi.spyOn(GLTFLoader.prototype,'parseAsync')
+    const complete=[]
+    fetchMock.mockImplementation(async()=>({ok:true,arrayBuffer:()=>new Promise(resolve=>complete.push(resolve))}))
+    const outcome=expect(acquire()).rejects.toThrow(/timed out/)
+    await vi.advanceTimersByTimeAsync(20000)
+    await outcome
+    complete.forEach(resolve=>resolve(new ArrayBuffer(0)))
+    await Promise.resolve()
+    expect(parse).not.toHaveBeenCalled()
+    expect(createCoach().userData.realisticVehicle).not.toBe(true)
+    parse.mockRestore()
   })
 })

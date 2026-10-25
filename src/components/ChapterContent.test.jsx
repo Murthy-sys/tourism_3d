@@ -10,9 +10,22 @@ import {
 } from '../journey/chapters'
 
 describe('cinematic chapter content',()=>{
-  it('does not render company copy during the opening drive',()=>{
-    const {container}=render(<ChapterContent chapter={CHAPTERS[0]} progress={.08}/>)
-    expect(container).toBeEmptyDOMElement()
+  it('keeps the city-to-mountain story aligned when scrolling in both directions',()=>{
+    const {rerender}=render(<ChapterContent chapter={CHAPTERS[0]} progress={0}/>)
+    expect(screen.getByRole('heading',{name:'Step away from the everyday.'})).toBeInTheDocument()
+    expect(screen.getByRole('article')).toHaveTextContent('Refresh your body. Clear your mind.')
+    for(const [progress,stage,title] of [
+      [.03,'boarding','A seat for a fresh start.'],
+      [.08,'road','Let the city fall behind.'],
+      [.12,'arrival','Breathe deeper. You’re here.'],
+      [.02,'city','Step away from the everyday.'],
+    ]){
+      rerender(<ChapterContent chapter={CHAPTERS[0]} progress={progress}/>)
+      expect(screen.getByRole('article')).toHaveAttribute('data-opening-stage',stage)
+      expect(screen.getByRole('heading',{name:title})).toBeInTheDocument()
+    }
+    expect(screen.getByRole('article')).not.toHaveClass('chapter--glass-card')
+    expect(screen.queryByText('Who we are')).not.toBeInTheDocument()
   })
 
   it('renders the Who We Are heading and approved paragraph without services',()=>{

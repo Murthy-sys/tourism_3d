@@ -41,7 +41,7 @@ describe('waterfall finale',()=>{
     expect(dispose).toHaveBeenCalledOnce()
   })
 
-  it('dissolves distant cliff silhouettes into the sky while keeping the nearby finale opaque',()=>{
+  it('retains the distant cascade backdrop while dissolving the high upland into sky',()=>{
     const world=createWaterfallWorld()
     try{
       for(const name of ['waterfall-rock-face','waterfall-bank-boulders']){
@@ -59,8 +59,11 @@ describe('waterfall finale',()=>{
           fragmentShader:THREE.ShaderLib.standard.fragmentShader,
         }
         material.onBeforeCompile(shader)
-        expect(shader.fragmentShader).toContain('1.0-smoothstep(90.0,150.0,length(vViewPosition))')
-        expect(shader.fragmentShader.indexOf('diffuseColor.a *= 1.0-smoothstep'))
+        expect(shader.vertexShader).toContain('instanceMatrix*cliffWorldPoint')
+        expect(shader.vertexShader).toContain('(modelMatrix*cliffWorldPoint).y')
+        expect(shader.fragmentShader).toContain('mix(1.0,0.12,smoothstep(90.0,300.0,cliffDistance))')
+        expect(shader.fragmentShader).toContain('smoothstep(18.0,44.0,vCliffWorldHeight)')
+        expect(shader.fragmentShader.indexOf('diffuseColor.a *= mix'))
           .toBeLessThan(shader.fragmentShader.indexOf('#include <alphatest_fragment>'))
         expect(shader.fragmentShader.indexOf('#undef OPAQUE'))
           .toBeLessThan(shader.fragmentShader.indexOf('#include <opaque_fragment>'))
@@ -68,14 +71,27 @@ describe('waterfall finale',()=>{
         const distance=new THREE.Vector3(...FINALE_CAMERAS.desktop.camera)
           .distanceTo(new THREE.Vector3(...WATERFALL.center))
         expect(distance).toBeLessThan(material.userData.atmosphereFade.near)
-        const opacityAt=position=>1-THREE.MathUtils.smoothstep(
-          new THREE.Vector3(...position).distanceTo(new THREE.Vector3(...WATERFALL.center)),
-          material.userData.atmosphereFade.near,material.userData.atmosphereFade.far,
-        )
-        // The mountain approach must not reveal a distant vertical slab; the
-        // middle river view retains its rocky backdrop around the cascade.
-        expect(opacityAt([6,12,8])).toBe(0)
-        expect(opacityAt([4,4,-56])).toBeGreaterThan(.95)
+        const opacityAt=(position,height=0)=>{
+          const d=new THREE.Vector3(...position).distanceTo(new THREE.Vector3(...WATERFALL.center))
+          const {near,far,minimumOpacity,uplandFar,heightStart,heightEnd}=material.userData.atmosphereFade
+          return THREE.MathUtils.lerp(
+            THREE.MathUtils.lerp(1,minimumOpacity,THREE.MathUtils.smoothstep(d,near,far)),
+            1-THREE.MathUtils.smoothstep(d,near,uplandFar),
+            THREE.MathUtils.smoothstep(height,heightStart,heightEnd),
+          )
+        }
+        expect(opacityAt([6,12,8])).toBeGreaterThan(.12)
+        expect(opacityAt([6,12,400])).toBeCloseTo(.12,6)
+        expect(opacityAt([4,4,WATERFALL.center[2]+75])).toBeGreaterThan(.95)
+        // A long river view retains rock behind the full cascade, but the
+        // 100m upland cannot form a gray cutout across the bright sky.
+        const distant=[4,5,WATERFALL.center[2]+180]
+        expect(opacityAt(distant,16)).toBeGreaterThan(.5)
+        expect(opacityAt(distant,21)).toBeGreaterThan(.5)
+        expect(opacityAt(distant,32)).toBeLessThan(opacityAt(distant,21))
+        expect(opacityAt(distant,44)).toBe(0)
+        expect(opacityAt(distant,100)).toBe(0)
+        expect(opacityAt([4,4,WATERFALL.center[2]+50],44)).toBe(1)
       }
     }finally{disposeObject3D(world)}
   })

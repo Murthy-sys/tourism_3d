@@ -25,14 +25,14 @@ describe('mountain-water-forest terrain contracts',()=>{
     expect(Object.isFrozen(LANDMARKS)).toBe(true)
   })
 
-  it('adds a flat trailhead and mountain entry without changing later landmarks',()=>{
+  it('keeps the mountain arrival and expands both later landscape corridors',()=>{
     expect(LANDMARKS).toMatchObject({
       trailheadStart:[3.2,.35,34],
       mountainEntry:[2,3.1,22],
       mountainStart:[0,5,12],
       mountainLanding:[2,.35,-34],
-      forestLanding:[-2,.25,-86],
-      forestEnd:[1,.2,-132],
+      forestLanding:[-2,.25,-138],
+      forestEnd:[1,.2,-230],
     })
     Object.values(LANDMARKS).forEach(landmark=>expect(Object.isFrozen(landmark)).toBe(true))
     expect(sampleMountainHeight(3.2,34)).toBeCloseTo(.35,1)

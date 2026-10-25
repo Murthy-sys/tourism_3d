@@ -161,9 +161,7 @@ export const projectGroundUV=(geometry,metersPerRepeat=3)=>{
   return geometry
 }
 
-export const createLeafTexture=()=>{
-  const photographed=getNatureTexture('leaf-color')
-  if(photographed&&getNatureTexture('leaf-alpha')) return photographed
+const createProceduralLeafTexture=()=>{
   const size=64,pixels=new Uint8Array(size*size*4)
   for(let y=0;y<size;y+=1){
     for(let x=0;x<size;x+=1){
@@ -185,19 +183,85 @@ export const createLeafTexture=()=>{
   return texture
 }
 
+export const createLeafTexture=()=>{
+  const photographed=getNatureTexture('leaf-color')
+  return photographed&&getNatureTexture('leaf-alpha')?photographed:createProceduralLeafTexture()
+}
+
+const texturePixels=texture=>{
+  const source=texture?.image
+  if(source?.data) return source
+  if(!source?.width||typeof document==='undefined') return null
+  const canvas=document.createElement('canvas')
+  canvas.width=source.width;canvas.height=source.height
+  const context=canvas.getContext('2d',{willReadFrequently:true})
+  if(!context) return null
+  context.drawImage(source,0,0)
+  return context.getImageData(0,0,source.width,source.height)
+}
+
+/** A photographed leafy shoot replaces one isolated, oversized leaf per card.
+ * Each world creates one small atlas and shares it across every tree species;
+ * draw count and crown topology stay unchanged as the canopy becomes fuller. */
+export const createCanopyTexture=()=>{
+  let source=createLeafTexture()
+  let color=texturePixels(source)
+  let alpha=source.userData.managedByNatureAssets?texturePixels(getNatureTexture('leaf-alpha')):null
+  if(!color||(source.userData.managedByNatureAssets&&!alpha)){
+    source=createProceduralLeafTexture();color=source.image;alpha=null
+  }
+  const photographed=Boolean(alpha)
+  const cropWidth=photographed?color.width/2:color.width
+  const size=256,pixels=new Uint8Array(size*size*4)
+  const shoots=[
+    [.50,.92,-1.0,.30],[.50,.89,1.0,.31],
+    [.49,.76,-.90,.33],[.50,.74,.88,.32],
+    [.50,.60,-.84,.34],[.50,.57,.76,.34],
+    [.51,.43,-.52,.32],[.51,.42,.55,.31],[.50,.34,.04,.33],
+  ]
+  shoots.forEach(([baseX,baseY,angle,length],leaf)=>{
+    const width=length*.64,sin=Math.sin(angle),cos=Math.cos(angle)
+    const shade=.94+hash(leaf,22)*.10
+    for(let y=0;y<size;y++) for(let x=0;x<size;x++){
+      const dx=(x+.5)/size-baseX,dy=(y+.5)/size-baseY
+      const u=(dx*cos+dy*sin)/width+.5,v=(dy*cos-dx*sin)/length+1
+      if(u<0||u>=1||v<0||v>=1) continue
+      const sourceX=Math.min(cropWidth-1,Math.floor(u*cropWidth))
+      const sourceY=Math.min(color.height-1,Math.floor(v*color.height))
+      const from=(sourceY*color.width+sourceX)*4
+      const coverage=(alpha?alpha.data[from+1]:color.data[from+3])/255
+      if(coverage<.01) continue
+      const to=(y*size+x)*4,oldAlpha=pixels[to+3]/255
+      const combined=coverage+oldAlpha*(1-coverage)
+      for(let channel=0;channel<3;channel++) pixels[to+channel]=Math.min(255,Math.round(
+        (color.data[from+channel]*shade*coverage+pixels[to+channel]*oldAlpha*(1-coverage))/combined))
+      pixels[to+3]=Math.round(combined*255)
+    }
+  })
+  if(!source.userData.managedByNatureAssets) source.dispose()
+  const texture=textureFrom(pixels,size,THREE.SRGBColorSpace)
+  texture.wrapS=texture.wrapT=THREE.ClampToEdgeWrapping
+  texture.userData.canopyAtlas=true
+  texture.userData.photographed=photographed
+  texture.userData.leavesPerShoot=shoots.length
+  return texture
+}
+
 export const createFoliageMaterial=(color,map=createLeafTexture())=>{
   const detailed=map.userData.managedByNatureAssets
+  const photographic=detailed||map.userData.photographed
   const material=new THREE.MeshStandardMaterial({
-    color:detailed?new THREE.Color('#ffffff').lerp(new THREE.Color(color),.23):color,
+    color:photographic?new THREE.Color('#ffffff').lerp(new THREE.Color(color),map.userData.canopyAtlas ? .56 : .32):color,
     map,alphaMap:detailed?getNatureTexture('leaf-alpha'):null,
     normalMap:detailed?getNatureTexture('leaf-normal'):null,
     normalScale:new THREE.Vector2(.25,.25),
-    alphaTest:.45,side:THREE.DoubleSide,
+    alphaTest:map.userData.canopyAtlas ? .36 : .45,side:THREE.DoubleSide,
     alphaToCoverage:true,
-    roughness:.84,metalness:0,vertexColors:true,
+    roughness:.81,metalness:0,vertexColors:true,
   })
   material.forceSinglePass=true
   material.userData.surfaceDetail='individual-leaf-clusters'
+  if(map.userData.canopyAtlas) material.userData.surfaceDetail='photographic-leafy-shoots'
   return material
 }
 

@@ -1,12 +1,17 @@
 import { readFileSync } from 'node:fs'
 import { describe,expect,it } from 'vitest'
+import { journeyProgressToScroll,scrollToJourneyProgress } from '../src/journey/scrollTimeline.js'
+import { captureProgressBounds,departureWeightBounds } from './visual-qa-progress.mjs'
 
 const source=readFileSync('scripts/visual-qa.mjs','utf8')
 const styles=readFileSync('src/index.css','utf8')
 
 describe('visual QA fail-closed corpus',()=>{
-  it('captures every approved trailhead beat before the retained journey states',()=>{
+  it('captures city boarding and every approved trailhead beat before the retained journey states',()=>{
     ;[
+      "name:'city-establishing'",
+      "name:'city-boarding'",
+      "name:'city-to-mountains'",
       "name:'trailhead-establishing'",
       "name:'travelers-beside-coach'",
       "name:'trailhead-departure'",
@@ -28,18 +33,19 @@ describe('visual QA fail-closed corpus',()=>{
     expect(source).toContain('snapshot.opening.coach.rendered')
     expect(source).toContain('snapshot.opening.fullyFramedMembers')
     expect(source).toContain('snapshot.opening.departureWeight')
-    expect(source).toContain('Coach world matrix changed')
+    expect(source).toContain('Parked coach world matrix changed')
     expect(source).toContain("hasOwnProperty.call(snapshot.transportWeights,'coach')")
   })
 
-  it('verifies the live brand overview, creator card, and boating offer card',()=>{
+  it('verifies the approved brand paragraph and boating offer card',()=>{
     expect(source).toContain("title:'Destination stories. Brand impact.'")
-    expect(source).toContain("title:'Karnataka, experienced deeply.'")
+    expect(source).not.toContain("title:'Karnataka, experienced deeply.'")
     expect(source).toContain("title:'What We Offer'")
     expect(source).toContain('layout.content.creatorCard')
     expect(source).toContain('body:WHO_WE_ARE.body')
     expect(source).toContain('items:BRAND_CAPABILITIES')
-    expect(source).toContain('items:WHO_WE_ARE.creator.pillars')
+    expect(source).not.toContain('items:WHO_WE_ARE.creator.pillars')
+    expect(source).toContain('items:[]')
     expect(source).toContain("name:'water-corridor'")
     expect(source).toContain('layout.content.body!==state.content.body')
     expect(source).toContain('JSON.stringify(layout.content.items)')
@@ -79,9 +85,43 @@ describe('visual QA fail-closed corpus',()=>{
     expect(source).toContain("requested==='mobile'&&!layout.overlay")
   })
 
-  it('normalizes travel so every approved progress sample lands on an exact pixel',()=>{
+  it('keeps normalized capture travel and validates nonlinear semantic targets within one scroll pixel',()=>{
     expect(source).toContain('const captureTravel=10000')
     expect(source).toContain('track.style.height=`${innerHeight+captureTravel}px`')
+    expect(source).toContain('progress:journeyProgressToScroll(state.progress)')
+    expect(source).toContain('captureProgressBounds(state.progress,captureTravel)')
+    expect(source).toContain('snapshot.progress.target<progressBounds.min')
+    expect(source).toContain('snapshot.progress.target>progressBounds.max')
+    for(const progress of [0,.035,.072,.112,.13,.13999,.14001,.165,.195,.35,.50,.59,.67,.79,.835,.995,1]){
+      const pixel=journeyProgressToScroll(progress)*10000
+      const bounds=captureProgressBounds(progress,10000)
+      for(const roundedPixel of [Math.floor(pixel),Math.ceil(pixel)]){
+        const semantic=Number(scrollToJourneyProgress(roundedPixel/10000).toFixed(6))
+        expect(semantic).toBeGreaterThanOrEqual(bounds.min)
+        expect(semantic).toBeLessThanOrEqual(bounds.max)
+      }
+      if(pixel>2) expect(scrollToJourneyProgress((pixel-2)/10000)).toBeLessThan(bounds.min)
+      if(pixel<9998) expect(scrollToJourneyProgress((pixel+2)/10000)).toBeGreaterThan(bounds.max)
+    }
+  })
+
+  it('checks departure easing against the actual rendered progress and its serialized precision',()=>{
+    expect(source).toContain('departureWeightBounds(snapshot.progress.rendered)')
+    expect(source).toContain('snapshot.opening.departureWeight<departureBounds.min-1e-6')
+    expect(source).toContain('snapshot.opening.departureWeight>departureBounds.max+1e-6')
+    expect(departureWeightBounds(.13)).toEqual({min:0,expected:0,max:0})
+    expect(departureWeightBounds(.195)).toEqual({min:1,expected:1,max:1})
+    const bounds=departureWeightBounds(.165)
+    expect(bounds.expected).toBeCloseTo(.5,12)
+    expect(bounds.min).toBeLessThan(.5)
+    expect(bounds.max).toBeGreaterThan(.5)
+    expect(bounds.max-bounds.min).toBeLessThan(.000038)
+    const roundedCapture=scrollToJourneyProgress(Math.round(journeyProgressToScroll(.165)*10000)/10000)
+    const actualWeight=departureWeightBounds(roundedCapture).expected
+    const serializedBounds=departureWeightBounds(Number(roundedCapture.toFixed(6)))
+    expect(actualWeight).toBeGreaterThanOrEqual(serializedBounds.min)
+    expect(actualWeight).toBeLessThanOrEqual(serializedBounds.max)
+    expect(Math.abs(actualWeight-.5)).toBeGreaterThan(1e-6)
   })
 
   it('allows only cold targeted desktop captures extra camera settle time without weakening accuracy',()=>{

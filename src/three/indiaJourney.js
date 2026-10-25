@@ -7,6 +7,10 @@ import { createArrivalController,createArrivalClouds,getArrivalCameraFrame } fro
 import { createDaylight } from './daylight'
 import { FINALE_CAMERAS,FOREST_DRIVE_END,getFinaleProgress } from './finaleConfig'
 import { readRuntimeProfile } from './runtimeProfile'
+import { getCityCameraFrame,TREK_DEPARTURE,TREK_ENTRY } from './cityJourney'
+import { journeyProgressToScroll,scrollToJourneyProgress } from '../journey/scrollTimeline'
+import { beginNaturalWaterFrame } from './naturalWater'
+import { captureSceneTransforms,prepareJourneyScene,restoreSceneTransforms } from './scenePreparation'
 
 export const getRenderQuality=width=>width<768?'mobile':'desktop'
 export const getRendererProfile=(width,devicePixelRatio=1,runtimeProfile)=>{
@@ -29,15 +33,31 @@ export const createJourneyProgressController=({
   reducedMotion=false,
   initial=0,
 }={})=>{
-  const response=quality==='mobile'?8:10
-  const velocity=quality==='mobile'?.65:.85
+  const response=quality==='mobile'?4:5
+  const velocity=quality==='mobile'?.18:.22
   let current=clamp01(initial)
   let target=current
   let motionReduced=Boolean(reducedMotion)
-  const snap=()=>{current=target}
+  let seeking=false
+  let pace=0
+  let manualOrigin=journeyProgressToScroll(current)
+  let manualElapsed=0
+  const manualDuration=.22
+  const snap=()=>{current=target;seeking=false;pace=0;manualElapsed=manualDuration}
   return{
-    setTarget(value){
-      target=clamp01(value)
+    setTarget(value,options){
+      const next=clamp01(value)
+      // Repeated React updates must not restart the follow or erase navigation
+      // intent. Native scroll distance already sets the journey's slow pace.
+      if(Math.abs(next-target)>1e-8||options?.navigation===true){
+        seeking=options?.navigation===true
+        if(!seeking){
+          manualOrigin=journeyProgressToScroll(current)
+          manualElapsed=0
+          pace=0
+        }
+      }
+      target=next
       if(motionReduced) snap()
     },
     setReducedMotion(value){
@@ -59,8 +79,22 @@ export const createJourneyProgressController=({
         snap()
         return current
       }
+      if(!seeking){
+        // Finish a wheel/touch follow promptly after the last input. Limiting
+        // route velocity here queued seconds of travel after scrolling stopped.
+        manualElapsed=Math.min(manualDuration,manualElapsed+deltaSeconds)
+        const time=manualElapsed/manualDuration
+        const blend=1-(1-time)**3
+        current=scrollToJourneyProgress(THREE.MathUtils.lerp(
+          manualOrigin,journeyProgressToScroll(target),blend,
+        ))
+        if(manualElapsed>=manualDuration) snap()
+        return current
+      }
       const convergence=1-Math.exp(-deltaSeconds*response)
-      const maximumStep=velocity*deltaSeconds
+      // Deliberate chapter navigation retains its continuous paced journey.
+      pace=Math.min(velocity,pace+.35*deltaSeconds)
+      const maximumStep=pace*deltaSeconds
       const step=Math.sign(gap)*Math.min(
         Math.abs(gap)*convergence,
         maximumStep,
@@ -77,6 +111,16 @@ export const createJourneyProgressController=({
 
 export const advanceJourneyFrame=(controller,delta)=>controller.advance(delta)
 
+// A busy foreground frame must still advance the intro and quality controller.
+// Visibility changes reset the clock; multi-second gaps remain suspended time.
+export const getActiveFrameDelta=delta=>
+  Number.isFinite(delta)&&delta>=0&&delta<2?Math.min(delta,.24):delta
+
+// A missed frame must not teleport the subject or camera to catch up with
+// elapsed wall time. Quality adaptation still receives the measured delta.
+export const getMotionFrameDelta=delta=>
+  Number.isFinite(delta)&&delta>=0&&delta<2?Math.min(delta,.05):0
+
 export const createAdaptivePixelRatioController=(
   initialPixelRatio,
   options={},
@@ -89,7 +133,8 @@ export const createAdaptivePixelRatioController=(
     sampleMs=1000,
     cooldownMs=3000,
     slowFrameMs=22,
-    fastFrameMs=slowFrameMs*.6,
+    fastFrameMs=Math.min(18.5,slowFrameMs*.85),
+    recoveryMs=sampleFrames===undefined?3000:0,
     pixelRatios=MOBILE_PIXEL_RATIOS,
   }=options
   const timedWarmup=warmupFrames===undefined
@@ -105,6 +150,7 @@ export const createAdaptivePixelRatioController=(
   let cooldown=0
   let samples=[]
   let sampledMs=0
+  let healthyMs=0
   return{
     observe(frameDurationMs){
       if(
@@ -124,8 +170,10 @@ export const createAdaptivePixelRatioController=(
       sampledMs+=duration
       if(timedSample?sampledMs<sampleMs:samples.length<sampleFrames) return null
       const average=samples.reduce((sum,value)=>sum+value,0)/samples.length
+      const sampleDuration=sampledMs
       samples=[]
       sampledMs=0
+      healthyMs=average<=fastFrameMs?healthyMs+sampleDuration:0
       if(average>slowFrameMs&&ratio>pixelRatios[0]){
         ratio=pixelRatios
           .filter(candidate=>candidate<ratio)
@@ -133,11 +181,12 @@ export const createAdaptivePixelRatioController=(
         cooldown=Math.max(0,timedCooldown?cooldownMs:cooldownFrames)
         return ratio
       }
-      if(average<=fastFrameMs&&ratio<ceiling){
+      if(average<=fastFrameMs&&healthyMs>=recoveryMs&&ratio<ceiling){
         const nextRatio=pixelRatios
           .find(candidate=>candidate>ratio&&candidate<=ceiling)
         if(nextRatio===undefined) return null
         ratio=nextRatio
+        healthyMs=0
         cooldown=Math.max(0,timedCooldown?cooldownMs:cooldownFrames)
         return ratio
       }
@@ -157,7 +206,9 @@ export const getWorldVisibility=()=>[]
 export const getDampingFactor=delta=>1-Math.exp(-Math.max(0,delta)*4.5)
 export const getCameraDampingFactor=(delta,quality='desktop')=>{
   const duration=Number.isFinite(delta)?Math.min(Math.max(delta,0),.5):0
-  return getDampingFactor(duration*(quality==='mobile'?.72:1))
+  // Progress already smooths scroll input. A second long camera ease made the
+  // view continue drifting after the traveller had reached the scroll position.
+  return 1-Math.exp(-duration*(quality==='mobile'?12:14))
 }
 export const getCameraMaximumStep=delta=>
   Number.isFinite(delta)?Math.min(.78,46.8*Math.max(delta,0)):0
@@ -365,11 +416,6 @@ export const getTransportCamera=(quality,transport,[x,y,z])=>{
 export const getMobileTransportCamera=(transport,position)=>
   getTransportCamera('mobile',transport,position)
 
-const MOBILE_OPENING_FRAME=Object.freeze({
-  camera:Object.freeze([3.5,5.1,67]),
-  target:Object.freeze([-2.5,1.55,34.8]),
-})
-
 const lerpFrame=(from,to,weight)=>({
   camera:from.camera.map(
     (value,index)=>rounded(THREE.MathUtils.lerp(value,to.camera[index],weight)),
@@ -387,10 +433,7 @@ export const getResolvedCameraFrame=({
   transportPositions,
   transportWeights,
 })=>{
-  const cinematicFrame={
-    camera:[...state.cameraPosition],
-    target:[...state.cameraTarget],
-  }
+  if(progress<=TREK_DEPARTURE) return getCityCameraFrame(progress,quality)
   let transportFrame=getTransportCamera(
     quality,
     state.expedition.activeTransport,
@@ -417,23 +460,34 @@ export const getResolvedCameraFrame=({
   if(progress>=.875){
     return lerpFrame(transportFrame,FINALE_CAMERAS[quality]||FINALE_CAMERAS.desktop,smootherstep(.875,.955,progress))
   }
-  if(state.expedition.activeTransport!=='trekker'||progress>=.12){
+  if(state.expedition.activeTransport!=='trekker'||progress>=TREK_ENTRY){
     return transportFrame
   }
   return lerpFrame(
-    quality==='mobile'?MOBILE_OPENING_FRAME:cinematicFrame,
+    getCityCameraFrame(TREK_DEPARTURE,quality),
     transportFrame,
-    smootherstep(.045,.12,progress),
+    smootherstep(TREK_DEPARTURE,TREK_ENTRY,progress),
   )
 }
 
 export const getTransportWorldPosition=(name,transport,target=new THREE.Vector3())=>{
+  if(transport?.userData?.cameraAnchor){
+    target.copy(transport.userData.cameraAnchor)
+    return transport.parent?transport.parent.localToWorld(target):target
+  }
   const members=name==='trekker'?transport?.userData?.members:null
   if(!members?.length) return transport.getWorldPosition(target)
   transport.updateWorldMatrix(true,true)
   const memberPosition=new THREE.Vector3()
   target.set(0,0,0)
-  members.forEach(member=>target.add(member.getWorldPosition(memberPosition)))
+  members.forEach(member=>{
+    if(Number.isFinite(member.userData.cameraGroundY)){
+      memberPosition.copy(member.position)
+      memberPosition.y=member.userData.cameraGroundY
+      member.parent?.localToWorld(memberPosition)
+    }else member.getWorldPosition(memberPosition)
+    target.add(memberPosition)
+  })
   return target.multiplyScalar(1/members.length)
 }
 
@@ -532,6 +586,8 @@ export const getJourneyQASnapshot=({
     },
     opening:{
       departureWeight:transition.opening?.departureWeight??1,
+      city:scenery?.city?.visible??false,
+      journey:coach?.userData.cityJourney??null,
       coach:{
         mounted:Boolean(coach?.parent),
         rendered:coachProjection.rendered,
@@ -614,7 +670,7 @@ const getProjectedVisualDebug=(scene,camera,cameraTarget,desiredCamera,desiredTa
 
 export function createIndiaJourney(
   canvas,
-  {reducedMotion=false,onContextLost=()=>{},onReady=()=>{},intro=false,onIntroComplete=()=>{},onFinaleProgress=()=>{},runtimeProfile=readRuntimeProfile()}={},
+  {reducedMotion=false,onContextLost=()=>{},onReady=()=>{},onPrepareProgress=()=>{},onPrepareError=()=>{},intro=false,onIntroComplete=()=>{},onFinaleProgress=()=>{},onProgress=()=>{},runtimeProfile=readRuntimeProfile()}={},
 ){
   const rendererProfile=getRendererProfile(
     window.innerWidth,
@@ -715,7 +771,6 @@ export function createIndiaJourney(
   const resizeObserver=new ResizeObserver(()=>{resize();wake()})
   if(canvas.parentElement) resizeObserver.observe(canvas.parentElement)
   resize()
-  renderer.compile(scene,camera)
 
   const clock=new THREE.Clock()
   const desiredCamera=new THREE.Vector3(...startingFrame.camera)
@@ -731,15 +786,36 @@ export function createIndiaJourney(
   let lost=false
   let disposed=false
   let ready=false
+  let prepared=false
+  let preparationProgress=0
+  const preparationAbort=new AbortController()
   let skipArrivalFrame=false
   let elapsed=0
   let lastFinaleProgress=0
   let finaleNotifyElapsed=0
+  let progressNotifyElapsed=0
+  let lastNotifiedProgress=-1
+
+  const resolveSceneFrame=(state,transition,progress)=>{
+    const transport=expedition.transports[state.expedition.activeTransport]
+    const transportPosition=getTransportWorldPosition(state.expedition.activeTransport,transport).toArray()
+    const transportPositions={[state.expedition.activeTransport]:transportPosition}
+    Object.entries(transition.transports).forEach(([name,weight])=>{
+      if(weight>0&&!transportPositions[name]){
+        transportPositions[name]=getTransportWorldPosition(name,expedition.transports[name]).toArray()
+      }
+    })
+    return getResolvedCameraFrame({
+      quality:cameraQuality,progress,state,transportPosition,transportPositions,
+      transportWeights:transition.transports,
+    })
+  }
 
   const animate=()=>{
     frame=0
-    if(paused||lost||disposed) return
-    const delta=clock.getDelta()
+    if(!prepared||paused||lost||disposed) return
+    const measuredDelta=getActiveFrameDelta(clock.getDelta())
+    const delta=getMotionFrameDelta(measuredDelta)
     const arrived=arrival.advance(delta,rendererReducedMotion)
     const arriving=arrival.phase()!=='complete'
     const skippedArrival=skipArrivalFrame
@@ -753,30 +829,7 @@ export function createIndiaJourney(
       delta,
     )
     const damping=getCameraDampingFactor(delta,cameraQuality)
-    const transport=expedition.transports[state.expedition.activeTransport]
-    const transportPosition=getTransportWorldPosition(
-      state.expedition.activeTransport,
-      transport,
-    ).toArray()
-    const transportPositions={
-      [state.expedition.activeTransport]:transportPosition,
-    }
-    Object.entries(transition.transports).forEach(([name,weight])=>{
-      if(weight>0&&!transportPositions[name]){
-        transportPositions[name]=getTransportWorldPosition(
-          name,
-          expedition.transports[name],
-        ).toArray()
-      }
-    })
-    const resolvedFrame=getResolvedCameraFrame({
-      quality:cameraQuality,
-      progress:renderedProgress,
-      state,
-      transportPosition,
-      transportPositions,
-      transportWeights:transition.transports,
-    })
+    const resolvedFrame=resolveSceneFrame(state,transition,renderedProgress)
     desiredCamera.set(...resolvedFrame.camera)
     desiredTarget.set(...resolvedFrame.target)
     if(!rendererReducedMotion&&!arriving&&!arrived){
@@ -800,10 +853,19 @@ export function createIndiaJourney(
       dampCameraVector(cameraTarget,desiredTarget,damping,maximumCameraStep)
     }
     camera.lookAt(cameraTarget)
-    if(arriving||arrived||skippedArrival) cameraJumpTracker.reset(camera.position,cameraTarget)
+    if(arriving||arrived||skippedArrival||rendererReducedMotion) cameraJumpTracker.reset(camera.position,cameraTarget)
     else cameraJumpTracker.observe(camera.position,cameraTarget)
     latestState=state
     latestTransition=transition
+    progressNotifyElapsed+=Number.isFinite(delta)?Math.min(delta,.08):0
+    if(progressNotifyElapsed>=.05||rendererReducedMotion||arrived){
+      const visibleProgress=Math.round(renderedProgress*10000)/10000
+      if(visibleProgress!==lastNotifiedProgress){
+        onProgress(visibleProgress)
+        lastNotifiedProgress=visibleProgress
+      }
+      progressNotifyElapsed=0
+    }
     finaleNotifyElapsed+=Number.isFinite(delta)?Math.min(delta,.08):0
     if((renderedProgress>=FOREST_DRIVE_END||lastFinaleProgress>=FOREST_DRIVE_END)&&
       (finaleNotifyElapsed>=.08||rendererReducedMotion||renderedProgress===1)){
@@ -851,8 +913,9 @@ export function createIndiaJourney(
     clouds.update(arrival.progress(),initialFrame)
     daylight.update(camera)
 
+    beginNaturalWaterFrame(renderer,{reducedMotion:rendererReducedMotion,constrainedDevice:runtimeProfile.constrainedDevice})
     renderer.render(scene,camera)
-    applyAdaptivePixelRatio(adaptivePixelRatio,delta,renderer,resize)
+    applyAdaptivePixelRatio(adaptivePixelRatio,measuredDelta,renderer,resize)
     if(!ready){
       ready=true
       onReady()
@@ -866,7 +929,7 @@ export function createIndiaJourney(
   }
 
   const wake=()=>{
-    if(frame||paused||lost||disposed) return
+    if(!prepared||frame||paused||lost||disposed) return
     clock.getDelta()
     frame=requestAnimationFrame(animate)
   }
@@ -875,14 +938,87 @@ export function createIndiaJourney(
     event.preventDefault()
     lost=true
     cancelAnimationFrame(frame)
-    onContextLost()
+    preparationAbort.abort()
+    if(prepared) onContextLost()
+    else onPrepareError(new Error('The graphics context was interrupted while preparing the journey.'))
   }
   canvas.addEventListener('webglcontextlost',onLost)
-  animate()
+
+  const initialTransforms=captureSceneTransforms(scene)
+  const restoreInitialScene=()=>{
+    if(disposed||lost) return
+    resize()
+    // Warmup route jumps must not leave a reversing vehicle or a spun wheel in
+    // the first real journey frame. Rebuild motion history from the true start.
+    Object.values(expedition.transports).forEach(transport=>{
+      delete transport.userData.travelMotion
+      if('lastProgress' in transport.userData) transport.userData.lastProgress=0
+    })
+    latestState=initialState
+    latestTransition=expedition.update(initialState.expedition,0,true,0)
+    restoreSceneTransforms(initialTransforms)
+    scene.background.copy(initialAtmosphere.background)
+    scene.fog.color.copy(initialAtmosphere.background)
+    scene.fog.near=initialAtmosphere.fogNear
+    scene.fog.far=initialAtmosphere.fogFar
+    renderer.toneMappingExposure=initialAtmosphere.exposure
+    hemisphere.intensity=initialAtmosphere.hemisphereIntensity
+    sun.color.copy(initialAtmosphere.directionalColor)
+    const restored=arrival.phase()==='complete'?initialFrame:getArrivalCameraFrame(initialFrame,arrival.progress())
+    desiredCamera.set(...restored.camera)
+    desiredTarget.set(...restored.target)
+    camera.position.copy(desiredCamera)
+    cameraTarget.copy(desiredTarget)
+    camera.lookAt(cameraTarget)
+    clouds.update(arrival.progress(),initialFrame)
+    daylight.update(camera)
+    cameraJumpTracker.reset(camera.position,cameraTarget)
+    scene.updateMatrixWorld(true)
+  }
+  const preparation=prepareJourneyScene({
+    renderer,scene,camera,canvas,signal:preparationAbort.signal,
+    onProgress:value=>{
+      preparationProgress=value
+      if(!disposed&&!lost) onPrepareProgress(value)
+    },
+    applyStage:({progress,arrivalProgress})=>{
+      const state=getJourneyState(progress)
+      const transition=expedition.update(state.expedition,0,true,0)
+      const view=arrivalProgress===undefined?resolveSceneFrame(state,transition,progress)
+        :getArrivalCameraFrame(initialFrame,arrivalProgress)
+      camera.position.set(...view.camera)
+      cameraTarget.set(...view.target)
+      camera.lookAt(cameraTarget)
+      const atmosphere=getAtmosphere(transition.worlds)
+      scene.background.copy(atmosphere.background)
+      scene.fog.color.copy(atmosphere.background)
+      scene.fog.near=atmosphere.fogNear
+      scene.fog.far=atmosphere.fogFar
+      renderer.toneMappingExposure=atmosphere.exposure
+      hemisphere.intensity=atmosphere.hemisphereIntensity
+      sun.color.copy(atmosphere.directionalColor)
+      sun.target.position.copy(cameraTarget)
+      sun.position.copy(cameraTarget).add(sunOffset)
+      clouds.update(arrivalProgress??1,initialFrame)
+      daylight.update(camera)
+      beginNaturalWaterFrame(renderer,{reducedMotion:true,constrainedDevice:runtimeProfile.constrainedDevice})
+    },
+    restore:restoreInitialScene,
+  }).then(()=>{
+    initialTransforms.clear()
+    if(disposed||lost) return
+    prepared=true
+    clock.start()
+    animate()
+  }).catch(error=>{
+    initialTransforms.clear()
+    if(disposed||lost||error?.name==='AbortError') return
+    onPrepareError(error)
+  })
 
   return{
-    setProgress:value=>{
-      progressController.setTarget(arrival.phase()==='complete'?value:0)
+    setProgress:(value,options)=>{
+      progressController.setTarget(arrival.phase()==='complete'?value:0,options)
       wake()
     },
     setIntroPhase:phase=>{
@@ -897,9 +1033,16 @@ export function createIndiaJourney(
       wake()
     },
     getQASnapshot:extras=>({
+      preparation:{ready,progress:rounded(preparationProgress)},
       arrival:{phase:arrival.phase(),progress:rounded(arrival.progress())},
       finale:{progress:rounded(getFinaleProgress(progressController.value())),stages:expedition.finale.group.userData.stages,members:expedition.finale.members.map(member=>({role:member.role,position:member.getWorldPosition(new THREE.Vector3()).toArray().map(rounded),heading:member.rotation.y}))},
       progress:{rendered:rounded(progressController.value()),target:rounded(progressController.target())},
+      wildlife:expedition.worlds.forest.userData.wildlife.group.userData.animals.map(animal=>({
+        kind:animal.kind,visible:animal.root.visible,
+        position:animal.root.position.toArray().map(rounded),
+        heading:rounded(animal.root.rotation.y),speed:rounded(animal.motion.speed*animal.scale),
+        feet:animal.hoofPositions.map(foot=>foot.toArray().map(rounded)),
+      })),
       vehicleMotion:Object.fromEntries(['boat','jeep'].map(name=>{
         const vehicle=expedition.transports[name]
         const motion=vehicle.userData.travelMotion
@@ -908,8 +1051,11 @@ export function createIndiaJourney(
           position:vehicle.position.toArray().map(rounded),
           nose:[rounded(-Math.sin(vehicle.rotation.y)),0,rounded(-Math.cos(vehicle.rotation.y))]}]
       })),
-      renderer:{quality,cameraQuality,compactAssets:runtimeProfile.compactAssets,fov:camera.fov,pixelRatio:renderer.getPixelRatio(),calls:renderer.info.render.calls,triangles:renderer.info.render.triangles},
-      destinations:{waterfall:getProjectedObjectBounds(expedition.scenery.waterfall.getObjectByName('waterfall-cascade-1'),camera)},
+      renderer:{quality,cameraQuality,reducedMotion:rendererReducedMotion,compactAssets:runtimeProfile.compactAssets,fov:camera.fov,pixelRatio:renderer.getPixelRatio(),calls:renderer.info.render.calls,triangles:renderer.info.render.triangles},
+      destinations:{
+        boat:getProjectedObjectBounds(expedition.transports.boat.getObjectByName('boat-hull'),camera),
+        waterfall:getProjectedObjectBounds(expedition.scenery.waterfall.getObjectByName('waterfall-cascade-1'),camera),
+      },
       ...getJourneyQASnapshot({
         state:latestState,
         transition:latestTransition,
@@ -947,15 +1093,22 @@ export function createIndiaJourney(
     dispose:()=>{
       if(disposed) return
       disposed=true
+      preparationAbort.abort()
       cancelAnimationFrame(frame)
       resizeObserver.disconnect()
       canvas.removeEventListener('webglcontextlost',onLost)
-      daylight.dispose()
-      sun.shadow.dispose()
-      expedition.dispose()
-      disposeObject3D(scene)
-      Object.values(materials).forEach(material=>material.dispose())
-      renderer.dispose()
+      const release=()=>{
+        daylight.dispose()
+        sun.shadow.dispose()
+        expedition.dispose()
+        disposeObject3D(scene)
+        Object.values(materials).forEach(material=>material.dispose())
+        renderer.dispose()
+      }
+      // Let the abort unwind viewport/visibility restoration before destroying
+      // its renderer. The cancellation wait clears its timer immediately.
+      if(prepared) release()
+      else preparation.finally(release)
     },
   }
 }

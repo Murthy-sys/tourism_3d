@@ -1,6 +1,8 @@
 import { mkdir,rm } from 'node:fs/promises'
 import path from 'node:path'
 import { chromium } from '@playwright/test'
+import { journeyProgressToScroll } from '../src/journey/scrollTimeline.js'
+import { captureProgressBounds,departureWeightBounds } from './visual-qa-progress.mjs'
 import {
   BRAND_CAPABILITIES,
   CHAPTERS,
@@ -26,9 +28,12 @@ const captureTravel=10000
 const startupTimeout=30000
 const WHO_WE_ARE=CHAPTERS.find(chapter=>chapter.id==='who-we-are')
 const states=[
+  {name:'city-establishing',progress:0,phase:'mountain-trek',activeBiome:'mountain',activeTransport:'trekker',city:'city'},
+  {name:'city-boarding',progress:.035,phase:'mountain-trek',activeBiome:'mountain',activeTransport:'trekker',city:'boarding'},
+  {name:'city-to-mountains',progress:.072,phase:'mountain-trek',activeBiome:'mountain',activeTransport:'trekker',city:'drive'},
   {
     name:'trailhead-establishing',
-    progress:0,
+    progress:.112,
     phase:'mountain-trek',
     activeBiome:'mountain',
     activeTransport:'trekker',
@@ -36,7 +41,7 @@ const states=[
   },
   {
     name:'travelers-beside-coach',
-    progress:.035,
+    progress:.13,
     phase:'mountain-trek',
     activeBiome:'mountain',
     activeTransport:'trekker',
@@ -44,19 +49,19 @@ const states=[
   },
   {
     name:'trailhead-departure',
-    progress:.08,
+    progress:.165,
     phase:'mountain-trek',
     activeBiome:'mountain',
     activeTransport:'trekker',
     opening:{
-      departureWeight:.4376849383,
+      departureWeight:.5,
       coach:'rendered',
       party:'visible',
     },
   },
   {
     name:'mountain-entry',
-    progress:.12,
+    progress:.195,
     phase:'mountain-trek',
     activeBiome:'mountain',
     activeTransport:'trekker',
@@ -72,7 +77,7 @@ const states=[
       title:'Destination stories. Brand impact.',
       creatorCard:false,
       body:WHO_WE_ARE.body,
-      items:BRAND_CAPABILITIES,
+      items:[],
     },
   },
   {
@@ -82,10 +87,10 @@ const states=[
     activeBiome:'mountain',
     activeTransport:'trekker',
     content:{
-      title:'Karnataka, experienced deeply.',
-      creatorCard:true,
-      body:WHO_WE_ARE.creator.body,
-      items:WHO_WE_ARE.creator.pillars,
+      title:WHO_WE_ARE.title,
+      creatorCard:false,
+      body:WHO_WE_ARE.body,
+      items:[],
     },
   },
   {
@@ -178,10 +183,11 @@ const states=[
   {name:'waterfall-contact',progress:.995,phase:'contact',activeBiome:'forest',activeTransport:'jeep'},
 ]
 const requestedState=process.env.QA_STATE
-const captureStates=requestedState
-  ?states.filter(state=>state.name===requestedState)
+const requestedStates=requestedState?.split(',').map(name=>name.trim())
+const captureStates=requestedStates
+  ?states.filter(state=>requestedStates.includes(state.name))
   :states
-if(requestedState&&!captureStates.length){
+if(requestedStates?.some(name=>!states.some(state=>state.name===name))){
   throw new Error(`Unknown visual QA state: ${requestedState}`)
 }
 const isColdTargetedDesktop=requested==='desktop'&&Boolean(requestedState)
@@ -198,6 +204,13 @@ const rectanglesOverlap=(a,b)=>
 let coachWorldMatrix
 const assertSnapshot=(snapshot,state,externalFailures)=>{
   if(!snapshot||typeof snapshot!=='object') throw new Error('Journey QA snapshot is unavailable')
+  if(!Number.isFinite(snapshot.progress?.target)||!Number.isFinite(snapshot.progress?.rendered)){
+    throw new Error(`${state.name} semantic progress evidence is unavailable`)
+  }
+  const progressBounds=captureProgressBounds(state.progress,captureTravel)
+  if(snapshot.progress.target<progressBounds.min||snapshot.progress.target>progressBounds.max){
+    throw new Error(`${state.name} scroll target exceeds one-pixel semantic bounds: ${snapshot.progress.target}`)
+  }
   if(snapshot.phase!==state.phase){
     throw new Error(`${state.name} phase mismatch: expected ${state.phase}, received ${snapshot.phase}`)
   }
@@ -228,23 +241,27 @@ const assertSnapshot=(snapshot,state,externalFailures)=>{
   if(!snapshot.opening.coach.worldMatrix?.length){
     throw new Error('Coach world matrix evidence is unavailable')
   }
-  if(!coachWorldMatrix){
+  if(state.city){
+    if(snapshot.opening.journey?.phase!==state.city) throw new Error(`${state.name} city stage mismatch`)
+    if(!snapshot.opening.coach.fullyFramed) throw new Error(`${state.name} coach is clipped`)
+  }else if(!coachWorldMatrix){
     coachWorldMatrix=[...snapshot.opening.coach.worldMatrix]
   }else if(
     snapshot.opening.coach.worldMatrix.some(
       (value,index)=>Math.abs(value-coachWorldMatrix[index])>1e-6
     )
   ){
-    throw new Error('Coach world matrix changed')
+    throw new Error('Parked coach world matrix changed')
   }
   if(state.opening){
+    const departureBounds=departureWeightBounds(snapshot.progress.rendered)
     if(
-      Math.abs(
-        snapshot.opening.departureWeight-state.opening.departureWeight
-      )>1e-6
+      !Number.isFinite(snapshot.opening.departureWeight)||
+      snapshot.opening.departureWeight<departureBounds.min-1e-6||
+      snapshot.opening.departureWeight>departureBounds.max+1e-6
     ){
       throw new Error(
-        `${state.name} departure weight mismatch: `+
+        `${state.name} departure weight mismatch: expected ${departureBounds.expected}, received `+
         `${snapshot.opening.departureWeight}`
       )
     }
@@ -267,7 +284,7 @@ const assertSnapshot=(snapshot,state,externalFailures)=>{
       }
     }
   }
-  if(snapshot.visibleMembers.guides!==1||snapshot.visibleMembers.tourists!==3){
+  if(!state.city&&(snapshot.visibleMembers.guides!==1||snapshot.visibleMembers.tourists!==3)){
     throw new Error(
       `${state.name} trekking party is incomplete: `+
       JSON.stringify(snapshot.visibleMembers),
@@ -308,7 +325,9 @@ const browser=await chromium.launch({headless:true})
 try{
   await rm(outputRoot,{recursive:true,force:true})
   await mkdir(outputRoot,{recursive:true})
-  const context=await browser.newContext({viewport,deviceScaleFactor:1})
+  const context=await browser.newContext({viewport,deviceScaleFactor:1,
+    reducedMotion:process.env.QA_REDUCED_MOTION==='1'?'reduce':'no-preference',
+  })
   await context.addInitScript(()=>{
     const failures=[]
     window.__journeyConsoleFailures=failures
@@ -387,7 +406,7 @@ try{
         }
         requestAnimationFrame(advance)
       })
-    },{progress:state.progress})
+    },{progress:journeyProgressToScroll(state.progress)})
     await page.waitForFunction(({phase,nextBiome,handoff})=>{
       const snapshot=window.__journeyQA?.()
       if(!snapshot||snapshot.phase!==phase) return false
@@ -401,7 +420,16 @@ try{
       phase:state.phase,
       nextBiome:state.nextBiome,
       handoff:state.handoff,
-    },{timeout:15000})
+    },{timeout:15000}).catch(async error=>{
+      const evidence=await page.evaluate(()=>({
+        phase:window.__journeyQA?.().phase,
+        progress:window.__journeyQA?.().progress,
+        scroll:scrollY,
+        trackHeight:document.querySelector('.experience__track')?.offsetHeight,
+        viewport:innerHeight,
+      }))
+      throw new Error(`${state.name}: ${error.message}; ${JSON.stringify(evidence)}`)
+    })
     await page.waitForFunction(()=>{
       const debug=window.__journeyQA?.().visualDebug
       if(!debug) return false

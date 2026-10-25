@@ -240,6 +240,11 @@ describe('hill world',()=>{
       }
     })
     expect(Math.max(...sizes)).toBeLessThan(2.8)
+    ;['hill-vegetation','hill-rock-faces'].forEach(name=>{
+      world.getObjectByName(name).children.forEach(object=>{
+        expect(sampleRiverSurface(object.position.x,object.position.z).edgeDistance).toBeGreaterThan(2.5)
+      })
+    })
     disposeObject3D(world)
   })
 

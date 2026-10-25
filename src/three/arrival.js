@@ -33,8 +33,7 @@ export const getArrivalCameraFrame=(destination,progress)=>{
   const t=smootherstep(0,1,progress)
   const inverse=1-t
   const [x,y,z]=destination.camera
-  // Begin above the valley looking across the cloud horizon, then tilt toward
-  // the same road and coach while descending along one uninterrupted approach.
+  // Descend from the cloud horizon into the city departure composition.
   const start=[x+2,y+58,z+20]
   const controlA=[x+2,y+47,z+16]
   const controlB=[x+.5,y+9,z+3]
